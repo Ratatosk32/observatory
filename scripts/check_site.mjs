@@ -1,0 +1,76 @@
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { join, dirname, extname, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const site = join(root, 'site');
+const TEXT = new Set(['.js', '.mjs', '.css', '.html', '.py', '.md', '.yml', '.svg', '.txt', '.json']);
+const SKIP = new Set(['.git', 'node_modules', 'data', 'shots', '__pycache__']);
+const problems = [];
+const CYRILLIC = new RegExp(`[${String.fromCharCode(0x400)}-${String.fromCharCode(0x4ff)}]`);
+
+function walk(dir, out = []) {
+  for (const name of readdirSync(dir)) {
+    if (SKIP.has(name) && dir === root) continue;
+    if (name === '.git' || name === 'node_modules' || name === '__pycache__') continue;
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) walk(p, out); else out.push(p);
+  }
+  return out;
+}
+
+function checkText(file) {
+  const ext = extname(file);
+  if (!TEXT.has(ext)) return;
+  const rel = relative(root, file);
+  const body = readFileSync(file, 'utf8');
+  if (CYRILLIC.test(body)) problems.push(`${rel}: contains Cyrillic text`);
+  if (ext === '.json') return;
+  if (/\b(TODO|FIXME|XXX)\b/.test(body) && !rel.endsWith('check_site.mjs')) problems.push(`${rel}: contains a TODO marker`);
+  if (['.js', '.mjs'].includes(ext) && /\bconsole\.(log|debug|info)\(/.test(body) && !rel.endsWith('check_site.mjs')) problems.push(`${rel}: contains console logging`);
+  if (['.js', '.mjs', '.css'].includes(ext)) {
+    body.split('\n').forEach((line, i) => {
+      const t = line.trim();
+      if (t.startsWith('//') || t.startsWith('/*')) problems.push(`${rel}:${i + 1}: comment line`);
+    });
+  }
+}
+
+function referenced(html) {
+  const refs = [];
+  for (const m of html.matchAll(/(?:src|href)="([^"#?]+)(?:\?[^"]*)?"/g)) {
+    const url = m[1];
+    if (/^(https?:|mailto:|data:)/.test(url)) continue;
+    refs.push(url);
+  }
+  return refs;
+}
+
+function checkModules(file, seen = new Set()) {
+  if (seen.has(file)) return;
+  seen.add(file);
+  const body = readFileSync(file, 'utf8');
+  for (const m of body.matchAll(/(?:import\s[^'"]*from\s*|import\()\s*'(\.[^']+)'/g)) {
+    const target = resolve(dirname(file), m[1]);
+    if (!existsSync(target)) problems.push(`${relative(root, file)}: imports missing ${m[1]}`);
+    else checkModules(target, seen);
+  }
+  for (const m of body.matchAll(/'(data\/[^'?]+)(?:\?[^']*)?'/g)) {
+    if (!existsSync(join(site, m[1]))) problems.push(`${relative(root, file)}: loads missing ${m[1]}`);
+  }
+}
+
+walk(root).forEach(checkText);
+const index = join(site, 'index.html');
+for (const ref of referenced(readFileSync(index, 'utf8'))) {
+  const target = join(site, ref);
+  if (!existsSync(target)) problems.push(`site/index.html: references missing ${ref}`);
+  else if (ref.endsWith('.js')) checkModules(target);
+}
+for (const f of walk(join(site, 'js'))) checkModules(f);
+
+if (problems.length) {
+  process.stderr.write(problems.join('\n') + '\n');
+  process.exit(1);
+}
+process.stdout.write('site checks passed\n');
