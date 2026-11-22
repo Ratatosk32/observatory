@@ -1,4 +1,4 @@
-# Rubin Observatory alert explorer
+# Observatory · exploring public Rubin alerts
 
 An interactive look at the first season of public alerts from the NSF–DOE Vera C. Rubin Observatory, as distributed by the [Fink](https://fink-broker.org) broker.
 
