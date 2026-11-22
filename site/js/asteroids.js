@@ -1210,7 +1210,7 @@ export function start(params) {
 }
 export function show(params) {
   $('h1').textContent = ASTRO_TITLE;
-  setUrl({ mode: null, obj: null, chapter: null, beat: null, sel: state.sel ? state.sel.name : null });
+  setUrl({ mode: 'asteroids', obj: null, chapter: null, beat: null, sel: state.sel ? state.sel.name : null });
   metaText(); staticKey = ''; redrawAll();
   $('#search').value = state.sel ? state.sel.name : '';
   if (params && !reduceMotion && !params.has('still')) setPlaying(true);

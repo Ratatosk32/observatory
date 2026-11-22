@@ -56,15 +56,15 @@ initTheme();
 panelControls();
 
 const params = new URLSearchParams(location.search);
-const asteroids = await import('./asteroids.js');
-let mode = 'asteroids';
-const MODES = ['asteroids', 'stars', 'dm'];
+let mode = null;
+const MODES = ['stars', 'asteroids', 'dm'];
 const loaders = {
+  asteroids: () => import('./asteroids.js'),
   stars: () => import('./stars.js').then(async (m) => { await import('./story.js'); return m; }),
   dm: () => import('./darkmatter.js'),
 };
-const LOADING = { stars: ['#starsLoading', 'the stars data'], dm: ['#dmLoading', 'the dark-matter data'] };
-const modules = {};
+const LOADING = { stars: ['#starsLoading', 'the stars data'], dm: ['#dmLoading', 'the dark-matter data'], asteroids: [null, 'the asteroid data'] };
+const modules = {}, started = new Set();
 const loadMode = (m) => (modules[m] ||= loaders[m]());
 
 function syncModeUi() {
@@ -72,6 +72,11 @@ function syncModeUi() {
     const on = b.dataset.mode === mode;
     b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1;
   });
+}
+async function leaveMode(m) {
+  if (!m || !modules[m]) return;
+  const mod = await modules[m];
+  if (m === 'asteroids') mod.hide(); else mod.api.leave();
 }
 async function setMode(m, opts = {}) {
   if (m === mode && !opts.force) return;
@@ -81,23 +86,25 @@ async function setMode(m, opts = {}) {
   syncModeUi();
   closeSuggestions(); sIn.value = '';
   if (fullscreenPanel()) exitFs();
-  if (prev !== m && modules[prev]) (await modules[prev]).api.leave();
-  if (prev === 'asteroids' && m !== 'asteroids') asteroids.hide();
+  if (prev !== m) await leaveMode(prev);
   activateData(m);
-  if (m === 'asteroids') {
-    shell.setSearch(asteroids.provider, `Search ${asteroids.count()} asteroids, e.g. 2026 CZ10`);
-    asteroids.show(opts.params);
-    return;
-  }
-  setUrl({ mode: m, sel: null });
   const [sel, what] = LOADING[m];
-  $(sel).hidden = false;
+  if (sel) $(sel).hidden = false;
   try {
     const mod = await loadMode(m);
-    $(sel).hidden = true;
-    if (mode === m) { activateData(m); mod.api.enter(opts.obj); }
+    if (sel) $(sel).hidden = true;
+    if (mode !== m) return;
+    activateData(m);
+    if (m === 'asteroids') {
+      if (!started.has(m)) { started.add(m); mod.start(opts.params || new URLSearchParams()); }
+      shell.setSearch(mod.provider, `Search ${mod.count()} asteroids, e.g. 2026 CZ10`);
+      mod.show(opts.params);
+    } else {
+      setUrl({ mode: m, sel: null });
+      mod.api.enter(opts.obj);
+    }
   } catch (e) {
-    $(sel).textContent = `Could not load ${what}: ${e.message}`;
+    if (sel) $(sel).textContent = `Could not load ${what}: ${e.message}`;
   }
 }
 shell.setMode = setMode;
@@ -112,10 +119,8 @@ document.querySelectorAll('#modeSeg button').forEach((b) => {
   });
 });
 
-shell.setSearch(asteroids.provider, `Search ${asteroids.count()} asteroids, e.g. 2026 CZ10`);
-asteroids.start(params);
-syncModeUi();
 if (params.get('theme')) applyTheme(params.get('theme'));
-if (params.get('mode') === 'stars' || params.get('mode') === 'dm') setMode(params.get('mode'), { obj: params.get('obj') });
-else asteroids.show(params);
+const wanted = params.get('mode');
+const first = MODES.includes(wanted) ? wanted : params.has('sel') ? 'asteroids' : 'stars';
+await setMode(first, { obj: params.get('obj'), params, force: true });
 ns.ready = true;
