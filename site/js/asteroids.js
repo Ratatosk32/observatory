@@ -111,11 +111,12 @@ function planetSprite(name, rad, dpr) {
     g.globalAlpha = 1;
   }
   g.save(); g.beginPath(); g.arc(cx, cy, rad, 0, 6.283); g.clip();
-  g.globalAlpha = 0.55; g.fillStyle = col; g.fillRect(0, 0, size, size); g.globalAlpha = 1;
-  g.fillStyle = hatch(g, col, 2, 35, 1.4); g.fillRect(0, 0, size, size);
-  if (name === 'Jupiter') { g.fillStyle = hatch(g, '#c99a74', 2.2, 4, 1.2); g.fillRect(cx - rad, cy - rad * 0.35, rad * 2, rad * 0.25); g.fillRect(cx - rad, cy + rad * 0.15, rad * 2, rad * 0.22); }
-  if (name === 'Earth') { g.fillStyle = hatch(g, '#8fb583', 1.8, 60, 1.2); g.beginPath(); g.ellipse(cx - rad * 0.25, cy - rad * 0.1, rad * 0.45, rad * 0.3, 0.6, 0, 6.283); g.fill(); }
-  g.fillStyle = 'rgba(40,40,60,0.22)'; g.beginPath(); g.arc(cx + rad * 0.45, cy + rad * 0.35, rad, 0, 6.283); g.fill();
+  const shade = g.createRadialGradient(cx - rad * 0.35, cy - rad * 0.35, rad * 0.1, cx, cy, rad * 1.05);
+  shade.addColorStop(0, col); shade.addColorStop(1, C.dark ? 'rgba(20, 22, 34, 1)' : 'rgba(120, 112, 100, 1)');
+  g.fillStyle = col; g.fillRect(0, 0, size, size);
+  g.globalAlpha = 0.55; g.fillStyle = shade; g.fillRect(0, 0, size, size); g.globalAlpha = 1;
+  if (name === 'Jupiter') { g.globalAlpha = 0.45; g.fillStyle = '#b98a64'; g.fillRect(cx - rad, cy - rad * 0.35, rad * 2, rad * 0.22); g.fillRect(cx - rad, cy + rad * 0.15, rad * 2, rad * 0.2); g.globalAlpha = 1; }
+  if (name === 'Earth') { g.globalAlpha = 0.7; g.fillStyle = '#7fa874'; g.beginPath(); g.ellipse(cx - rad * 0.25, cy - rad * 0.1, rad * 0.45, rad * 0.3, 0.6, 0, 6.283); g.fill(); g.globalAlpha = 1; }
   g.restore();
   if (name === 'Saturn') {
     g.save(); g.translate(cx, cy); g.rotate(-0.35); g.scale(1, 0.34);
@@ -320,7 +321,7 @@ function buildStatic(s) {
     ellipse((E) => {
       const xp = o.a * (Math.cos(E) - o.e), yp = o.b * Math.sin(E);
       return [xp * o.Px + yp * o.Qx, xp * o.Py + yp * o.Qy];
-    }, 240, seedOf(o.idx, 5), 0.004, C.hi, 1.5, 2);
+    }, 240, seedOf(o.idx, 5), 0, C.hi, 1.2, 1);
     g.fillStyle = C.hi;
     for (const d of o.det) if (d[6] !== null) { g.beginPath(); g.arc(cx + d[6] * sc, cy - d[7] * sc, 2.2, 0, 7); g.fill(); }
   }
@@ -627,13 +628,14 @@ function drawElem(s) {
   const bw = 0.025, nb = Math.ceil((5.6 - 1.4) / bw), hist = new Array(nb).fill(0);
   for (const o of O) if (inFilter(o) && o.a >= 1.4 && o.a < 5.6) hist[Math.floor((o.a - 1.4) / bw)]++;
   const hmax = Math.max(1, ...hist), hT = 20, hB = f.T - 26;
-  g.fillStyle = hatch(g, C.gold, 2.6, 52, 1.1);
+  g.fillStyle = C.gold; g.globalAlpha = 0.55;
   for (let k = 0; k < nb; k++) {
     if (!hist[k]) continue;
     const x = f.X(1.4 + k * bw), w = Math.max(1, f.X(1.4 + (k + 1) * bw) - x - 0.6);
     const hgt = Math.sqrt(hist[k] / hmax) * (hB - hT);
     g.fillRect(x, hB - hgt, w, hgt);
-  }
+  }  g.globalAlpha = 1;
+
   g.strokeStyle = C.gold; g.lineWidth = 1; g.beginPath();
   let prevY = hB;
   for (let k = 0; k <= nb; k++) {
@@ -815,7 +817,7 @@ function drawCad(s) {
   const w = Math.max(1.5, (s.w - f.L - f.Rm) / 365 - 0.6);
   for (const [t, a, sso] of nights) {
     const x = f.X(t);
-    g.fillStyle = hatch(g, C.bar, 2.4, 52, 1); g.fillRect(x, Yl(a), w, topB - Yl(a));
+    g.fillStyle = C.bar; g.globalAlpha = 0.45; g.fillRect(x, Yl(a), w, topB - Yl(a)); g.globalAlpha = 1;
     g.fillStyle = C.bar; g.fillRect(x, Yl(a), w, 1.2);
     if (sso > 0) { g.fillStyle = C.bar2; g.globalAlpha = 0.85; g.fillRect(x, Yl(sso), w, topB - Yl(sso)); g.globalAlpha = 1; }
   }
@@ -1085,7 +1087,7 @@ function legendMap() {
   const counts = META.classes;
   const clsBtns = (withN) => CLASS_ORDER.filter((c) => counts[c]).map((c) => `<button type="button" class="k${state.preset === 'cls-' + c ? ' on' : ''}" data-cls="${c}" title="${CLASS[c].name}: ${CLASS[c].desc}. Click to show only these." aria-pressed="${state.preset === 'cls-' + c}"><span class="sw" style="background:${C.cls[c]}"></span>${CLASS[c].short}${withN ? ' ' + fmtN(counts[c]) : ''}</button>`).join('');
   $('#legend-map').innerHTML = `<span class="ttl">Orbit class (click to filter):</span>` + clsBtns(true) +
-    `<span class="k"><span class="sw ring" style="border-color:${C.det}"></span>Rubin detection ±2 d</span><span class="k"><span class="sw ring" style="border-color:${C.hi}"></span>selected</span>`;
+    `<span class="k"><span class="sw" style="background:${C.dark ? '#ffe4be' : '#8a3a14'};box-shadow:0 0 6px ${C.dark ? 'rgba(242,168,120,0.9)' : 'rgba(176,70,24,0.6)'}"></span>detected by Rubin within ±2 d</span><span class="k"><span class="sw sq" style="background:${C.det};opacity:.45"></span>Rubin's lines of sight</span><span class="k"><span class="sw ring" style="border-color:${C.hi}"></span>selected</span>`;
   $('#legend-el').innerHTML = clsBtns(false) +
     `<span class="k"><span class="sw ln" style="border-color:${C.gold}"></span>Jupiter resonance</span>`;
   document.querySelectorAll('[data-cls]').forEach((b) => b.addEventListener('click', () => {

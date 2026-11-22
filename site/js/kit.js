@@ -64,41 +64,14 @@ export function rng(seed) {
 }
 export const seedOf = (...xs) => xs.reduce((h, x) => Math.imul(h ^ Math.round(x * 97), 2654435761) >>> 0, 2166136261);
 
-export function pencilLine(g, x1, y1, x2, y2, { color = C.graphite, width = 1, amp = 0.9, passes = 2, alpha = 1 } = {}) {
-  const r = rng(seedOf(x1, y1, x2, y2));
-  const len = Math.hypot(x2 - x1, y2 - y1) || 1;
-  const nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
-  const a = Math.min(amp, len / 60 + 0.25);
-  g.strokeStyle = color; g.lineWidth = width; g.lineCap = 'round';
-  for (let p = 0; p < passes; p++) {
-    g.globalAlpha = alpha * (p === 0 ? 1 : 0.45);
-    const j = () => (r() - 0.5) * 2 * a;
-    const o1 = (r() - 0.3) * Math.min(4, len * 0.02), o2 = (r() - 0.3) * Math.min(4, len * 0.02);
-    const sx = x1 - (x2 - x1) / len * o1 + nx * j(), sy = y1 - (y2 - y1) / len * o1 + ny * j();
-    const ex = x2 + (x2 - x1) / len * o2 + nx * j(), ey = y2 + (y2 - y1) / len * o2 + ny * j();
-    const b = (r() - 0.5) * a * 2.2;
-    g.beginPath(); g.moveTo(sx, sy);
-    g.quadraticCurveTo((sx + ex) / 2 + nx * b, (sy + ey) / 2 + ny * b, ex, ey);
-    g.stroke();
-  }
+export function pencilLine(g, x1, y1, x2, y2, { color = C.graphite, width = 1, alpha = 1 } = {}) {
+  g.strokeStyle = color; g.lineWidth = width; g.lineCap = 'butt'; g.globalAlpha = alpha;
+  g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
   g.globalAlpha = 1;
 }
-export function pencilCircle(g, cx, cy, rad, { color = C.graphite, width = 1, passes = 2, alpha = 1, wob = 0.03 } = {}) {
-  const r = rng(seedOf(cx, cy, rad));
-  g.strokeStyle = color; g.lineWidth = width;
-  for (let p = 0; p < passes; p++) {
-    g.globalAlpha = alpha * (p === 0 ? 1 : 0.5);
-    const ph = r() * 6.283, k1 = (r() - 0.5) * wob, k2 = (r() - 0.5) * wob, over = 0.25 + r() * 0.3;
-    const steps = Math.max(24, Math.min(180, Math.round(rad * 0.8)));
-    g.beginPath();
-    for (let i = 0; i <= steps; i++) {
-      const t = ph + (i / steps) * (6.283 + over);
-      const rr = rad * (1 + k1 * Math.sin(2 * t) + k2 * Math.cos(3 * t));
-      const x = cx + Math.cos(t) * rr, y = cy + Math.sin(t) * rr;
-      if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
-    }
-    g.stroke();
-  }
+export function pencilCircle(g, cx, cy, rad, { color = C.graphite, width = 1, alpha = 1 } = {}) {
+  g.strokeStyle = color; g.lineWidth = width; g.globalAlpha = alpha;
+  g.beginPath(); g.arc(cx, cy, rad, 0, 6.2832); g.stroke();
   g.globalAlpha = 1;
 }
 const hatchCache = new Map();
@@ -121,9 +94,9 @@ export function hatch(g, color, gap = 4, angle = 45, weight = 1.1) {
 }
 export function sketchBar(g, x, y, w, h, color, { fill = true } = {}) {
   if (h <= 0.5 || w <= 0) return;
-  if (fill) { g.fillStyle = hatch(g, color, 3.2, 52, 1.2); g.fillRect(x, y, w, h); }
-  g.strokeStyle = color; g.lineWidth = 1;
-  g.beginPath(); g.moveTo(x, y + h); g.lineTo(x + 0.3, y); g.lineTo(x + w - 0.2, y + 0.4); g.lineTo(x + w, y + h); g.stroke();
+  if (fill) { g.globalAlpha = 0.5; g.fillStyle = color; g.fillRect(x, y, w, h); g.globalAlpha = 1; }
+  g.strokeStyle = color; g.lineWidth = 1.2;
+  g.beginPath(); g.moveTo(x, y + 0.6); g.lineTo(x + w, y + 0.6); g.stroke();
 }
 
 export function paperTile() {

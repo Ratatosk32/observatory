@@ -247,8 +247,8 @@ main {
 }
 .stack { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
 .panel.card { position: sticky; top: 16px; }
-.card :is(#cardBody, #sCardBody) { max-height: calc(100vh - 32px - 72px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--gold-soft) transparent; margin-right: -12px; padding-right: 12px; }
-.card.fs :is(#cardBody, #sCardBody) { max-height: none; overflow: visible; }
+.card :is(#cardBody, #sCardBody, #dCardBody) { max-height: calc(100vh - 32px - 72px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--gold-soft) transparent; margin-right: -12px; padding-right: 12px; }
+.card.fs :is(#cardBody, #sCardBody, #dCardBody) { max-height: none; overflow: visible; }
 main:has(.card.collapsed) { grid-template-columns: minmax(0, 1fr); }
 main:has(.card.collapsed) .card { order: -1; position: relative; top: auto; }
 
@@ -274,7 +274,7 @@ main:has(.card.collapsed) .card { order: -1; position: relative; top: auto; }
 .panel.fs #ribbon, .panel.fs #cadence { flex: 0 0 auto; }
 .panel.fs #cadence { height: min(60vh, 520px); }
 .panel.fs .stamps img { width: 240px; height: 240px; }
-.panel.fs :is(#cardBody, #sCardBody) canvas { height: min(34vh, 320px); }
+.panel.fs :is(#cardBody, #sCardBody, #dCardBody) canvas { height: min(34vh, 320px); }
 .cap { margin: 4px 0 16px; color: var(--ink2); font-size: 13.5px; line-height: 1.5; max-width: 78ch; }
 .note { margin: 8px 0 0; color: var(--ink3); font-size: 12.5px; max-width: 90ch; }
 .body { color: var(--ink2); font-size: 14px; max-width: 80ch; margin: 16px 0 0; }
@@ -331,19 +331,19 @@ canvas { display: block; width: 100%; touch-action: none; }
 #colours { height: 440px; }
 #cadence { height: 240px; cursor: pointer; }
 
-:is(#cardBody, #sCardBody) h3.ph { font-size: 20px; line-height: 1.2; font-weight: 650; margin: 0 0 8px; color: var(--gold); }
-:is(#cardBody, #sCardBody) h3 { font-size: 24px; font-weight: 600; margin: 0; line-height: 1.2; }
-:is(#cardBody, #sCardBody) .cls { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink2); margin: 4px 0 16px; }
-:is(#cardBody, #sCardBody) .cls .sw { width: 10px; height: 10px; border-radius: 50%; }
-:is(#cardBody, #sCardBody) dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 16px; margin: 0 0 16px; }
-:is(#cardBody, #sCardBody) dt { font-size: 12px; color: var(--ink3); }
-:is(#cardBody, #sCardBody) dd { margin: 0; font-size: 16px; font-weight: 600; }
-:is(#cardBody, #sCardBody) dd small { font-weight: 400; color: var(--ink3); font-size: 12px; }
-:is(#cardBody, #sCardBody) h4 { font-size: 14px; font-weight: 600; margin: 16px 0 0; }
-:is(#cardBody, #sCardBody) .cap { font-size: 12.5px; margin: 0 0 8px; }
-:is(#cardBody, #sCardBody) canvas { height: 200px; }
-:is(#cardBody, #sCardBody) .warn { font-size: 12.5px; color: var(--ink2); border-left: 2px solid var(--accent); padding: 4px 8px; margin: 8px 0 0; }
-:is(#cardBody, #sCardBody) .empty { color: var(--ink3); font-size: 13px; padding: 24px 0; text-align: center; }
+:is(#cardBody, #sCardBody, #dCardBody) h3.ph { font-size: 20px; line-height: 1.2; font-weight: 650; margin: 0 0 8px; color: var(--gold); }
+:is(#cardBody, #sCardBody, #dCardBody) h3 { font-size: 24px; font-weight: 600; margin: 0; line-height: 1.2; }
+:is(#cardBody, #sCardBody, #dCardBody) .cls { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink2); margin: 4px 0 16px; }
+:is(#cardBody, #sCardBody, #dCardBody) .cls .sw { width: 10px; height: 10px; border-radius: 50%; }
+:is(#cardBody, #sCardBody, #dCardBody) dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 16px; margin: 0 0 16px; }
+:is(#cardBody, #sCardBody, #dCardBody) dt { font-size: 12px; color: var(--ink3); }
+:is(#cardBody, #sCardBody, #dCardBody) dd { margin: 0; font-size: 16px; font-weight: 600; }
+:is(#cardBody, #sCardBody, #dCardBody) dd small { font-weight: 400; color: var(--ink3); font-size: 12px; }
+:is(#cardBody, #sCardBody, #dCardBody) h4 { font-size: 14px; font-weight: 600; margin: 16px 0 0; }
+:is(#cardBody, #sCardBody, #dCardBody) .cap { font-size: 12.5px; margin: 0 0 8px; }
+:is(#cardBody, #sCardBody, #dCardBody) canvas { height: 200px; }
+:is(#cardBody, #sCardBody, #dCardBody) .warn { font-size: 12.5px; color: var(--ink2); border-left: 2px solid var(--accent); padding: 4px 8px; margin: 8px 0 0; }
+:is(#cardBody, #sCardBody, #dCardBody) .empty { color: var(--ink3); font-size: 13px; padding: 24px 0; text-align: center; }
 .picks { display: flex; flex-wrap: wrap; gap: 8px; }
 .picks .btn { border-radius: var(--r-chip); }
 .picks .btn small { color: var(--ink3); font-size: 11.5px; }
@@ -376,7 +376,7 @@ canvas { display: block; width: 100%; touch-action: none; }
   main { grid-template-columns: minmax(0, 1fr); }
   .stack { display: contents; }
   .map-panel { order: 1; } .panel.card { order: 2; position: relative; top: auto; } .el-panel { order: 3; } .col-panel { order: 4; } .cad-panel { order: 5; } .stamp-panel { order: 6; }
-  .card :is(#cardBody, #sCardBody) { max-height: none; overflow: visible; margin-right: 0; padding-right: 0; }
+  .card :is(#cardBody, #sCardBody, #dCardBody) { max-height: none; overflow: visible; margin-right: 0; padding-right: 0; }
 }
 @media (max-width: 600px) {
   body { font-size: 16px; }
