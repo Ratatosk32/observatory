@@ -217,6 +217,39 @@ def milky_way(base):
     }
 
 
+def milky_way_png(base, out_path):
+    import numpy as np
+    from PIL import Image
+    fn = os.path.join(base, 'gaia', 'density-l025-b025.csv.gz')
+    W, H = 1440, 720
+    n = np.zeros((H, W))
+    for r in read_csv_gz(fn):
+        li, bi = int(float(r['li'])), int(float(r['bi']))
+        if 0 <= li < W and 0 <= bi < H:
+            n[bi, li] += float(r['n'])
+
+    def smooth(a, sigma):
+        rad = int(3 * sigma)
+        x = np.arange(-rad, rad + 1)
+        k = np.exp(-0.5 * (x / sigma) ** 2)
+        k /= k.sum()
+        p = np.concatenate([a[:, -rad:], a, a[:, :rad]], axis=1)
+        a = np.stack([np.convolve(row, k, mode='valid') for row in p])
+        p = np.concatenate([np.repeat(a[:1], rad, 0), a, np.repeat(a[-1:], rad, 0)], axis=0)
+        return np.stack([np.convolve(col, k, mode='valid') for col in p.T]).T
+
+    fine, coarse = smooth(n, 0.8), smooth(n, 3.0)
+    w = np.clip((fine - 8) / 40, 0, 1)
+    d = w * fine + (1 - w) * coarse
+    ln = np.log10(np.maximum(d, 0.05))
+    lo, hi = np.percentile(ln, 0.5), np.percentile(ln, 99.95)
+    v = np.clip((ln - lo) / (hi - lo), 0, 1)
+    img = np.round(v * 255).astype(np.uint8)[::-1]
+    Image.fromarray(img, 'L').save(out_path, optimize=True)
+    return {'width': W, 'height': H, 'cellDeg': 0.25, 'log10Min': round(float(lo), 4), 'log10Max': round(float(hi), 4),
+            'rows': 'row 0 is b = +90; column j is l = (j + 0.5) / 4 deg', 'stars': int(n.sum())}
+
+
 def bright_stars(base, gmax):
     fn = os.path.join(base, 'gaia', 'bright-g7.csv.gz')
     if not os.path.exists(fn):
@@ -911,8 +944,14 @@ def main():
     ap.add_argument('--data-dir', default=os.path.join(ROOT, 'data'))
     ap.add_argument('--out-dir', default=os.path.join(ROOT, 'site', 'data'))
     ap.add_argument('--tiles', action='store_true', help='build stars-tiles.json instead of stars.json')
+    ap.add_argument('--milkyway', action='store_true', help='build site/data/milkyway.png (Gaia DR3 star density at 0.25 deg) instead of stars.json')
     a = ap.parse_args()
     fetch_stars.DATA = os.path.abspath(a.data_dir)
+    if a.milkyway:
+        out = os.path.join(a.out_dir, 'milkyway.png')
+        info = milky_way_png(os.path.join(fetch_stars.DATA, f'stars-{a.date}'), out)
+        print('wrote', out, os.path.getsize(out), json.dumps(info))
+        return
     if a.tiles:
         tiles = build_tiles(a.date)
         out = os.path.join(a.out_dir, 'stars-tiles.json')

@@ -383,8 +383,8 @@ def tap_sync(query, upload=None, fmt='csv', timeout=600):
                 {'Content-Type': f'multipart/form-data; boundary={boundary}'}, timeout)
 
 
-def tap_async(query, timeout=900):
-    fields = {'REQUEST': 'doQuery', 'LANG': 'ADQL', 'FORMAT': 'csv', 'QUERY': query, 'PHASE': 'RUN', 'MAXREC': '400000'}
+def tap_async(query, timeout=900, maxrec=400000):
+    fields = {'REQUEST': 'doQuery', 'LANG': 'ADQL', 'FORMAT': 'csv', 'QUERY': query, 'PHASE': 'RUN', 'MAXREC': str(maxrec)}
     req = urllib.request.Request(GAIA_TAP + 'async', data=urllib.parse.urlencode(fields).encode(),
                                  headers={'User-Agent': UA})
     opener = urllib.request.build_opener(NoRedirect)
@@ -440,6 +440,19 @@ def step_gaia_map(date):
         with gzip.open(fn, 'wb') as fh:
             fh.write(body)
         print('gaia hrd ok', len(body), flush=True)
+
+
+def step_gaia_map_fine(date):
+    d = out_dir(date, 'gaia')
+    fn = os.path.join(d, 'density-l025-b025.csv.gz')
+    if os.path.exists(fn):
+        return
+    q = ('SELECT FLOOR(l*4) AS li, FLOOR((b+90)*4) AS bi, COUNT(*) AS n '
+         'FROM gaiadr3.gaia_source WHERE random_index < 100000000 GROUP BY li, bi')
+    body = tap_async(q, timeout=5400, maxrec=1100000)
+    with gzip.open(fn, 'wb') as fh:
+        fh.write(body)
+    print('gaia fine density ok', len(body), flush=True)
 
 
 def nearest_target(row, targets, radius_arcsec):
@@ -701,7 +714,7 @@ def step_story(date, extra=None):
 STEPS = {
     'stats': step_stats, 'explore': step_explore, 'tags': step_tags, 'objects': step_objects,
     'sources': step_sources, 'fp': step_fp, 'cutouts': step_cutouts,
-    'gaia_map': step_gaia_map, 'gaia_xmatch': step_gaia_xmatch, 'sdss': step_sdss, 'tiles': step_tiles, 'names': step_names, 'story': step_story,
+    'gaia_map': step_gaia_map, 'gaia_map_fine': step_gaia_map_fine, 'gaia_xmatch': step_gaia_xmatch, 'sdss': step_sdss, 'tiles': step_tiles, 'names': step_names, 'story': step_story,
 }
 
 

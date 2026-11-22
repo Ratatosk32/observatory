@@ -242,6 +242,54 @@ function mwAt(l, b) {
   const a = (xx, yy) => mwD[yy * 720 + ((xx % 720) + 720) % 720];
   return (a(x0, y0) * (1 - fx) + a(x0 + 1, y0) * fx) * (1 - fy) + (a(x0, y0 + 1) * (1 - fx) + a(x0 + 1, y0 + 1) * fx) * fy;
 }
+let mwF = null, mwLoading = null;
+const MWW = 1440, MWH = 720;
+function mwFineAt(l, b) {
+  const x = l * 4 - 0.5, y = (90 - b) * 4 - 0.5;
+  const x0 = Math.floor(x), y0 = clamp(Math.floor(y), 0, MWH - 2), fx = x - x0, fy = clamp(y - y0, 0, 1);
+  const a = (xx, yy) => mwF[yy * MWW + ((xx % MWW) + MWW) % MWW];
+  return (a(x0, y0) * (1 - fx) + a(x0 + 1, y0) * fx) * (1 - fy) + (a(x0, y0 + 1) * (1 - fx) + a(x0 + 1, y0 + 1) * fx) * fy;
+}
+function loadMilkyWay() {
+  if (mwLoading) return mwLoading;
+  mwLoading = new Promise((res) => {
+    const im = new Image();
+    im.onload = () => {
+      const c = document.createElement('canvas'); c.width = MWW; c.height = MWH;
+      const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0);
+      const px = x.getImageData(0, 0, MWW, MWH).data, out = new Uint8Array(MWW * MWH);
+      for (let i = 0; i < out.length; i++) out[i] = px[i * 4];
+      mwF = out; skyKey = ''; if (entered) drawSky(skyS); res(true);
+    };
+    im.onerror = () => res(false);
+    im.src = 'data/milkyway.png?v=2026-11-22';
+  });
+  return mwLoading;
+}
+const washLuts = {};
+function washLut(dark) {
+  const key = (dark ? 'd' : 'l') + (mwF ? 'f' : 'c');
+  if (washLuts[key]) return washLuts[key];
+  const lut = new Uint8ClampedArray(1024);
+  for (let i = 0; i < 256; i++) {
+    const v = i / 255;
+    let r, g, b, a;
+    if (!mwF) {
+      [r, g, b] = dark ? [236 * 0.6 + 240 * 0.4, 230 * 0.6 + 191 * 0.4, 214 * 0.6 + 79 * 0.4] : [60, 62, 70];
+      a = 255 * 0.55 * (dark ? 1 : 0.8) * Math.pow(v, 1.6);
+    } else if (dark) {
+      const t = clamp((v - 0.45) / 0.55, 0, 1), m1 = clamp(t / 0.6, 0, 1), m2 = clamp((t - 0.6) / 0.4, 0, 1);
+      r = 165 + (238 - 165) * m1 + (255 - 238) * m2; g = 104 + (190 - 104) * m1 + (238 - 190) * m2; b = 48 + (102 - 48) * m1 + (205 - 102) * m2;
+      a = 255 * 0.8 * Math.pow(clamp((v - 0.34) / 0.66, 0, 1), 1.8);
+    } else {
+      [r, g, b] = [58, 60, 68];
+      a = 255 * 0.62 * Math.pow(clamp((v - 0.28) / 0.72, 0, 1), 1.7);
+    }
+    lut[i * 4] = r; lut[i * 4 + 1] = g; lut[i * 4 + 2] = b; lut[i * 4 + 3] = a;
+  }
+  washLuts[key] = lut;
+  return lut;
+}
 const GALT = [0, 1, 2].map((c) => GAL.map((r) => r[c]));
 function galToEqVec(l, b) {
   const L = l * DEG, B = b * DEG, g = [Math.cos(B) * Math.cos(L), Math.cos(B) * Math.sin(L), Math.sin(B)];
@@ -264,8 +312,7 @@ function buildSkyStatic(s) {
   const W = Math.max(1, Math.round(s.w * res)), H = Math.max(1, Math.round(s.h * res));
   const wash = document.createElement('canvas'); wash.width = W; wash.height = H;
   const wg = wash.getContext('2d'), img = wg.createImageData(W, H), d = img.data;
-  const col = dark ? [236 * 0.6 + 240 * 0.4, 230 * 0.6 + 191 * 0.4, 214 * 0.6 + 79 * 0.4] : [60, 62, 70];
-  const amax = 255 * 0.55 * (dark ? 1 : 0.8);
+  const lut = washLut(dark);
   const tw = clamp((k - 6) / 4, 0, 1), tl = tw > 0 ? visibleTiles(s, f) : [];
   let grainy = false;
   for (let y = 0; y < H; y++) {
@@ -273,7 +320,7 @@ function buildSkyStatic(s) {
       const [u, v] = f.inv((x + 0.5) / res, (y + 0.5) / res);
       const lb2 = invHammer(u, v);
       if (!lb2) continue;
-      let val = mwAt(lb2[0], lb2[1]);
+      let val = mwF ? mwFineAt(lb2[0], lb2[1]) : mwAt(lb2[0], lb2[1]);
       for (const t of tl) {
         const tv = tileAt(t, lb2[0], lb2[1]);
         if (tv < 0) continue;
@@ -283,8 +330,8 @@ function buildSkyStatic(s) {
       }
       if (!val) continue;
       const p = (y * W + x) * 4;
-      d[p] = col[0]; d[p + 1] = col[1]; d[p + 2] = col[2];
-      d[p + 3] = Math.round(amax * Math.pow(val / 255, 1.6));
+      const q = Math.min(255, Math.round(val)) * 4;
+      d[p] = lut[q]; d[p + 1] = lut[q + 1]; d[p + 2] = lut[q + 2]; d[p + 3] = lut[q + 3];
     }
   }
   wg.putImageData(img, 0, 0);
@@ -292,6 +339,12 @@ function buildSkyStatic(s) {
   if (grainy) g.filter = 'blur(1px)';
   g.drawImage(wash, 0, 0, s.w, s.h);
   g.filter = 'none';
+  if (dark && mwF) {
+    const sm = document.createElement('canvas'); sm.width = Math.max(2, Math.round(s.w / 10)); sm.height = Math.max(2, Math.round(s.h / 10));
+    const sg = sm.getContext('2d'); sg.imageSmoothingEnabled = true; sg.drawImage(wash, 0, 0, sm.width, sm.height);
+    g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.4; g.drawImage(sm, 0, 0, s.w, s.h);
+    g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+  }
   const LW = Math.ceil(s.w / LSTEP), LH = Math.ceil(s.h / LSTEP), vec = new Float32Array(LW * LH * 3).fill(NaN);
   for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
     const [u, v] = f.inv((x + 0.5) * LSTEP, (y + 0.5) * LSTEP), lb2 = invHammer(u, v);
@@ -308,7 +361,7 @@ function buildSkyStatic(s) {
   const grid = fine ? fineGrid() : smoothGrid();
   const levels = fine ? [[120, 0.12], [140, 0.16], [160, 0.2], [180, 0.26], [200, 0.32], [220, 0.4]] : [[150, 0.15], [175, 0.25], [200, 0.35]];
   g.lineWidth = 1;
-  levels.forEach(([lev, a]) => { contour(g, f, grid, lev, s); g.strokeStyle = gold; g.globalAlpha = a; g.stroke(); });
+  levels.forEach(([lev, a]) => { contour(g, f, grid, lev, s); g.strokeStyle = gold; g.globalAlpha = a * (mwF ? 0.45 : 1); g.stroke(); });
   g.globalAlpha = 1;
   const BS = S.brightStars, rk = Math.min(3, Math.sqrt(k));
   for (let i = 0; i < BS.l.length; i++) {
@@ -1709,6 +1762,7 @@ function rebuildData() {
 }
 function enter(objId) {
   if (!built) build();
+  loadMilkyWay();
   entered = true;
   readColors(); makeSprites();
   skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1;

@@ -644,3 +644,9 @@ ul.hooks span:last-child { font-size: 12.5px; color: var(--ink3); }
   .lensbar { flex-wrap: wrap; height: auto; }
   .lensbar .scnt { white-space: normal; }
 }
+
+.panel.fs.s-sky .cap, .panel.fs.s-sky .about, .panel.fs.d-sky .cap, .panel.fs.d-sky .about { display: none; }
+.panel.fs.s-sky .phead, .panel.fs.d-sky .phead { margin-bottom: 4px; }
+.panel.fs.s-sky .time, .panel.fs.d-sky .time { margin-top: 8px; }
+.panel.fs.s-sky .sky-tools { margin-top: 8px; }
+.panel.fs.s-sky .legend, .panel.fs.d-sky .legend { margin-top: 8px; }
