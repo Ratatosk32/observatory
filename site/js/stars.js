@@ -233,11 +233,12 @@ function galToEqVec(l, b) {
   return GALT.map((r) => r[0] * g[0] + r[1] * g[1] + r[2] * g[2]);
 }
 const LSTEP = 4;
-let lanGrid = null, lanCv = null, staticView = null;
+let lanGrid = null, lanCv = null, staticView = null, skyFade = null, fadeRaf = 0;
 function buildSkyStatic(s) {
   const key = [s.w, s.h, s.dpr, C().dark, view.k.toFixed(4), view.px.toFixed(1), view.py.toFixed(1)].join('|');
   if (key === skyKey && skyStatic) return;
   skyKey = key;
+  if (skyStatic && staticView && !reduceMotion) skyFade = { cv: skyStatic, view: staticView, t0: performance.now() };
   staticView = { ...view };
   const cv = document.createElement('canvas');
   cv.width = Math.round(s.w * s.dpr); cv.height = Math.round(s.h * s.dpr);
@@ -257,7 +258,7 @@ function buildSkyStatic(s) {
       const [u, v] = f.inv((x + 0.5) / res, (y + 0.5) / res);
       const lb2 = invHammer(u, v);
       if (!lb2) continue;
-      let val = k > 1.5 ? mwAt(lb2[0], lb2[1]) : mwD[Math.min(359, Math.max(0, Math.floor((lb2[1] + 90) * 2))) * 720 + Math.min(719, Math.floor(lb2[0] * 2))];
+      let val = mwAt(lb2[0], lb2[1]);
       for (const t of tl) {
         const tv = tileAt(t, lb2[0], lb2[1]);
         if (tv < 0) continue;
@@ -336,7 +337,7 @@ function buildSkyStatic(s) {
   skyGeom = { eclLabel: [f.X(xu), f.Y(xv) - 20, 260, 26] };
   g.strokeStyle = C().ink; g.lineWidth = 1;
   DDF.forEach(([nm, ra, dec], i) => {
-    polyLB(g, f, smallCircleEq(ra, dec, 1.75, k > 3 ? 96 : 32)); g.closePath(); g.stroke();
+    polyLB(g, f, smallCircleEq(ra, dec, 1.75, 96)); g.closePath(); g.stroke();
     const [u, v] = hammer(...eq2gal(ra, dec)), x = f.X(u), y = f.Y(v), off = 1.75 * f.sc / 57 + 6;
     if (nm && vis2(x, y)) annotate(g, nm, x + (i % 2 ? -off : off), y + (i % 2 ? off + 8 : -off), { size: sz - 2, color: C().ink, align: i % 2 ? 'right' : 'left' });
   });
@@ -473,10 +474,33 @@ function zenith(t) {
   const gmst = ((280.46061837 + 360.98564736629 * (jd0 - 2451545.0) + 0.98564736629 * (mjd - d0)) % 360 + 360) % 360;
   return { ra: ((gmst - 70.7494) % 360 + 360) % 360, dec: -30.2446 };
 }
-function lanternPts(t) { const z = zenith(t); return smallCircleEq(z.ra, z.dec, 60, 160); }
-function paintLantern(t) {
+const LAN_DEC = -30.2446;
+const lan = { ra: null, v: 0, last: 0, raf: 0 };
+const wrap180 = (d) => ((d + 540) % 360) - 180;
+function stepLantern(now) {
+  const target = zenith(st.t).ra;
+  const dt = lan.ra == null ? 0 : clamp((now - lan.last) / 1000, 0, 0.05);
+  lan.last = now;
+  if (lan.ra == null || reduceMotion) { lan.ra = target; lan.v = 0; return true; }
+  if (!dt) return false;
+  const diff = wrap180(target - lan.ra), ad = Math.abs(diff);
+  const rate = st.playing && !st.tween ? st.speed * 0.9856 : 0;
+  const vmax = Math.max(15, 1.3 * st.speed * 0.9856, st.playing ? 0 : 0.5 * ad), amax = st.playing ? 40 : 90;
+  const vd = clamp(rate + Math.sign(diff) * Math.min(Math.sqrt(2 * amax * ad), 4 * ad), -vmax, vmax);
+  lan.v += clamp(vd - lan.v, -amax * dt, amax * dt);
+  lan.ra = (lan.ra + lan.v * dt + 360) % 360;
+  if (Math.abs(diff) < 0.002 && Math.abs(lan.v) < 0.01) { lan.ra = target; lan.v = 0; return true; }
+  return false;
+}
+function followLantern() {
+  if (lan.raf || st.playing) return;
+  const tick = () => { lan.raf = 0; if (st.playing || !entered) return; drawSky(skyS); if (!lan.done) lan.raf = requestAnimationFrame(tick); };
+  lan.raf = requestAnimationFrame(tick);
+}
+function lanternPts(ra) { return smallCircleEq(ra, LAN_DEC, 60, 160); }
+function paintLantern(ra) {
   if (!lanGrid) return;
-  const { LW, LH, vec } = lanGrid, z = zenith(t), a = z.ra * DEG, dd = z.dec * DEG;
+  const { LW, LH, vec } = lanGrid, z = { ra, dec: LAN_DEC }, a = z.ra * DEG, dd = z.dec * DEG;
   const zx = Math.cos(dd) * Math.cos(a), zy = Math.cos(dd) * Math.sin(a), zz = Math.sin(dd);
   const lg = lanCv.getContext('2d'), im = lg.createImageData(LW, LH), d = im.data;
   const gc = C().dark ? [240, 191, 79] : [74, 74, 74], c0 = Math.cos(56 * DEG), c1 = Math.cos(62 * DEG), amax = C().dark ? 34 : 26;
@@ -531,9 +555,21 @@ function drawSky(s) {
   if (!gesturing) buildSkyStatic(s);
   const g = s.ctx, f = skyFrame(s);
   g.clearRect(0, 0, s.w, s.h);
-  const sv = staticView || view, r = view.k / sv.k;
-  const dx = (-s.w / 2 - sv.px) * r + s.w / 2 + view.px, dy = (-s.h / 2 - sv.py) * r + s.h / 2 + view.py;
-  g.globalAlpha = hooks.skyAlpha;
+  const place = (sv) => { const r = view.k / sv.k; return [(-s.w / 2 - sv.px) * r + s.w / 2 + view.px, (-s.h / 2 - sv.py) * r + s.h / 2 + view.py, r]; };
+  const [dx, dy, r] = place(staticView || view);
+  let fa = 1;
+  if (skyFade) {
+    const p = (performance.now() - skyFade.t0) / 220;
+    if (p >= 1 || skyFade.cv.width !== skyStatic.width) skyFade = null;
+    else {
+      fa = p * p * (3 - 2 * p);
+      const [ox, oy, orr] = place(skyFade.view);
+      g.globalAlpha = hooks.skyAlpha * (1 - fa);
+      g.drawImage(skyFade.cv, ox, oy, s.w * orr, s.h * orr);
+      if (!st.playing && !fadeRaf) fadeRaf = requestAnimationFrame(() => { fadeRaf = 0; drawSky(skyS); });
+    }
+  }
+  g.globalAlpha = hooks.skyAlpha * fa;
   g.drawImage(skyStatic, dx, dy, s.w * r, s.h * r);
   g.globalAlpha = 1;
   if (s.__w !== s.w || s.__h !== s.h) {
@@ -544,10 +580,12 @@ function drawSky(s) {
   }
   const w2 = s.w / 2, h2 = s.h / 2;
   for (let i = 0; i < N; i++) { qx[i] = (sx[i] - w2) * view.k + w2 + view.px; qy[i] = (sy[i] - h2) * view.k + h2 + view.py; }
-  paintLantern(st.t);
+  lan.done = stepLantern(performance.now());
+  if (!lan.done) followLantern();
+  paintLantern(lan.ra);
   g.imageSmoothingEnabled = true;
   g.drawImage(lanCv, dx, dy, lanGrid.LW * LSTEP * r, lanGrid.LH * LSTEP * r);
-  lantern = lanternPts(st.t);
+  lantern = lanternPts(lan.ra);
   polyLB(g, f, lantern);
   g.strokeStyle = C().gold; g.lineWidth = 1; g.globalAlpha = 0.45; g.stroke(); g.globalAlpha = 1;
   const nNow = lb(t0Sorted, st.t + 1e-9);
@@ -1390,13 +1428,20 @@ let raf = 0, lastTs = 0, frameN = 0;
 function frame(ts) {
   raf = 0;
   if (!st.playing || !entered) return;
-  const dt = lastTs ? Math.min(0.1, (ts - lastTs) / 1000) : 0;
+  const dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 0;
   if (lastTs) { perf.frame.push(ts - lastTs); if (perf.frame.length > 600) perf.frame.shift(); }
   lastTs = ts;
-  const gp = st.skip && st.stopAt == null && inGap(st.t);
-  st.t += dt * (gp ? 30 : st.speed);
+  if (st.tween) {
+    const p = Math.min(1, (ts - st.tween.t0) / st.tween.ms), e = p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2;
+    st.t = st.tween.from + (st.tween.to - st.tween.from) * e;
+    if (p >= 1) st.tween = null;
+  } else {
+    const next = st.t + dt * st.speed, gp = st.skip && st.stopAt == null && inGap(next);
+    if (gp) st.tween = { from: st.t, to: gp[1] + 0.01, t0: ts, ms: 600 };
+    else st.t = next;
+  }
   if (st.stopAt != null && st.t >= st.stopAt) { st.t = st.stopAt; st.stopAt = null; drawSky(skyS); drawLadder(ladS); drawRibbon(ribS); setPlay(false); if (hooks.onStop) { const cb = hooks.onStop; hooks.onStop = null; cb(); } return; }
-  if (st.t > T1) { st.t = T0; emberN = -1; }
+  if (st.t > T1) { st.t = T0; st.tween = null; emberN = -1; }
   const c0 = performance.now();
   drawSky(skyS); drawLadder(ladS); drawRibbon(ribS);
   perf.draw.push(performance.now() - c0);
@@ -1406,6 +1451,7 @@ function frame(ts) {
 }
 function setPlay(p) {
   st.playing = p;
+  if (!p) st.tween = null;
   const b = $('#sPlay');
   b.querySelector('span').textContent = p ? 'Pause' : 'Play';
   b.querySelector('path.pl').setAttribute('d', p ? 'M8 5.5v13M16 5.5v13' : 'M8 5.5v13l10.5-6.5z');
@@ -1415,7 +1461,7 @@ function setPlay(p) {
   if (!p) $('#sDate').textContent = fmtD(st.t);
 }
 function syncSlider() { const sl = $('#sSlider'); if (sl) sl.value = ((st.t - T0) / (T1 - T0) * 1000).toFixed(2); }
-function setT(t) { st.t = clamp(t, T0, T1); $('#sDate').textContent = fmtD(st.t); syncSlider(); redraw(); }
+function setT(t) { st.tween = null; st.t = clamp(t, T0, T1); $('#sDate').textContent = fmtD(st.t); syncSlider(); redraw(); }
 function redraw() {
   if (!entered) return;
   drawSky(skyS); drawLadder(ladS); drawRibbon(ribS); drawHr(hrS);
@@ -1541,7 +1587,7 @@ function enter(objId) {
   const handled = ext.story ? ext.story.onEnter(params) : false;
   if (!handled && !reduceMotion && !params.has('still')) setPlay(true);
 }
-function leave() { if (ext.story && ext.story.chapter) ext.story.exitStory(); entered = false; setPlay(false); stopTour(); K.hideTip(); }
+function leave() { lan.ra = null; st.tween = null; if (ext.story && ext.story.chapter) ext.story.exitStory(); entered = false; setPlay(false); stopTour(); K.hideTip(); }
 
 function zoomAnim(l, b, k, ms = 1200, done) {
   const s = skyS, k0 = view.k;
@@ -1561,7 +1607,7 @@ function zoomAnim(l, b, k, ms = 1200, done) {
   requestAnimationFrame(step);
 }
 export const api = (K.ns.stars = { enter, leave, zoomTo, zoomAnim, resetView, hrZoomTo, hrView, eq2gal, hammer, hooks, loadTiles, setPlay, redraw, renderCard, applyFilter, humanName, hookOf, fmtPer, fmtAgo, fmtPc, fmtD, nameOf, catOf, famLabel,
-  S, Ob, get N() { return N; }, GROUPS, FKEY, get grp() { return grp; }, get vis() { return vis; }, rebuildData, get gcol() { return gcol; }, get sprites() { return sprites; }, get view() { return view; }, get skyS() { return skyS; }, get ribS() { return ribS; }, get lanGrid() { return lanGrid; }, invalidateSky: () => { skyKey = ''; emberN = -1; }, get entered() { return entered; }, get state() { return st; }, select, setT, runPreset, perf});
+  S, Ob, get N() { return N; }, get lanternRa() { return lan.ra; }, zenithRa: (t) => zenith(t).ra, GROUPS, FKEY, get grp() { return grp; }, get vis() { return vis; }, rebuildData, get gcol() { return gcol; }, get sprites() { return sprites; }, get view() { return view; }, get skyS() { return skyS; }, get ribS() { return ribS; }, get lanGrid() { return lanGrid; }, invalidateSky: () => { skyKey = ''; emberN = -1; }, get entered() { return entered; }, get state() { return st; }, select, setT, runPreset, perf});
 
 const dataProvider = {
   title: 'Stars & beyond data', short: 'stars', noun: 'objects', unit: 'sample alerts', bundled: sync.BUNDLED,
