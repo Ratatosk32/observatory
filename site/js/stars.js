@@ -1,4 +1,5 @@
 import * as K from './kit.js';
+import * as SL from './starlight.js';
 import { createStarSync, QUERIES } from './starsync.js';
 import { register as registerData, refresh as refreshData, fmtBytes } from './datapanel.js';
 
@@ -28,11 +29,13 @@ const GROUPS = [
   { key: 'unk', label: 'Unclassified', fams: ['unk'], tok: '--ink3' },
 ];
 const famGroup = FKEY.map((k) => GROUPS.findIndex((g) => g.fams.includes(k)));
-let gcol = [], hrGold = '';
+let gcol = [], hrGold = '', atlas = null;
 function readColors() {
   const cs = getComputedStyle(document.documentElement);
   hrGold = cs.getPropertyValue('--hr-gold').trim();
   gcol = GROUPS.map((g) => cs.getPropertyValue(g.tok).trim());
+  const dk = document.documentElement.dataset.theme !== 'light';
+  if (!atlas || atlas.dark !== dk) atlas = SL.makeAtlas(dk, dk ? 'rgba(240,191,79,0.9)' : 'rgba(154,116,32,0.85)');
 }
 
 const GAL = [[-0.0548755604162154, -0.873437090234885, -0.4838350155487132], [0.4941094278755837, -0.4448296299600112, 0.7469822444972189], [-0.8676661490190047, -0.1980763734312015, 0.4559837761750669]];
@@ -51,7 +54,8 @@ const decode = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 const MW = S.milkyWay, mwD = decode(MW.density);
 const HR = S.hrDiagram, hrC = decode(HR.counts);
 
-let grp, pU, pV, nights, T0, T1, gaps, byT0, t0Sorted, vis, sx, sy, qx, qy, jit, lx, ly;
+let grp, pU, pV, nights, T0, T1, gaps, byT0, t0Sorted, vis, sx, sy, qx, qy, jit, lx, ly, bucket, magOf, pl, agnList, flick, trList, trT0;
+const tracks = new Map();
 function derive() {
   N = Ob.id.length; NA = AL.t.length;
   grp = Uint8Array.from(Ob.fam, (f) => famGroup[f]);
@@ -68,6 +72,18 @@ function derive() {
   jit = new Float32Array(N);
   for (let i = 0; i < N; i++) { let h = 0; const id = Ob.id[i]; for (let k = id.length - 6; k < id.length; k++) h = (h * 31 + id.charCodeAt(k)) % 1000; jit[i] = h / 1000; }
   lx = new Float32Array(N); ly = new Float32Array(N);
+  bucket = new Uint8Array(N); magOf = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const mm = Ob.meanMag[i] || [], gr = mm[1] != null && mm[2] != null ? mm[1] - mm[2] : null;
+    bucket[i] = SL.bucketOf(Ob.gaiaBpRp[i] != null ? Ob.gaiaBpRp[i] : gr != null && Math.abs(gr) < 2.5 ? SL.gToBpRp(gr) : null);
+    magOf[i] = mm[Ob.refBand[i]] != null ? mm[Ob.refBand[i]] : 21.5;
+  }
+  pl = SL.buildPulses(S, FKEY, OFF);
+  agnList = []; trList = [];
+  for (let i = 0; i < N; i++) { const fk = FKEY[Ob.fam[i]]; if (fk === 'agn') agnList.push(i); else if ((fk === 'sn' || fk === 'sncand' || fk === 'tde') && Ob.t0[i] != null) trList.push(i); }
+  trList.sort((a, b) => Ob.t0[a] - Ob.t0[b]); trT0 = Float64Array.from(trList, (i) => Ob.t0[i]);
+  flick = SL.flickerAmps(S, agnList);
+  tracks.clear();
 }
 derive();
 const inGap = (t) => gaps.find((g) => t >= g[0] && t < g[1]);
@@ -83,7 +99,7 @@ const DDF = [['COSMOS', 150.11, 2.18], ['XMM-LSS', 35.71, -4.75], ['ECDFS', 53.1
 
 const st = {
   t: Math.min(T1, Math.max(T0, Ob.t1.reduce((a, b) => Math.max(a, b), -1e9))), playing: false, speed: 2, skip: true,
-  sel: -1, hover: -1, groupsOn: new Set(GROUPS.map((_, i) => i)), pred: null, preset: 'all', lcMode: 'flux', tour: null,
+  secPerDay: 2, sel: -1, hover: -1, groupsOn: new Set(GROUPS.map((_, i) => i)), pred: null, preset: 'all', lcMode: 'flux', tour: null,
 };
 function applyFilter() {
   for (let i = 0; i < N; i++) vis[i] = st.groupsOn.has(grp[i]) && (!st.pred || st.pred(i)) ? 1 : 0;
@@ -118,7 +134,7 @@ function buildDom() {
       </div>
       <details class="about"><summary>About this view</summary><p>Embers stay where something has changed so far. Clusters are deep drilling fields, where Rubin returns night after night. In this first season the sample’s alerts come mostly from high Galactic latitudes, looking out of the Milky Way: its stars are halo stars, and the plane and the Magellanic Clouds have almost no alerts here. The soft gold disc is the sky more than 30° above Cerro Pachón at local midnight (computed, not data); north of the gold dec +30° line Rubin cannot see. Gaps with no data are skipped while playing.</p></details>
       <div class="legend" id="sLegend"></div>
-      <div class="sky-tools"><button class="btn" type="button" id="dropBtn">Drop to distance</button></div>
+      <div class="sky-tools"><button class="btn" type="button" id="dropBtn">Drop to distance</button><label class="speed"><span>Pulses</span><select id="sPulse" aria-label="Pulse time scale"><option value="0">off</option><option value="0.5">1 day = 0.5 s</option><option value="1">1 day = 1 s</option><option value="2" selected>1 day = 2 s</option><option value="5">1 day = 5 s</option><option value="20">1 day = 20 s</option></select></label><span class="note pulsecap" id="sPulseCap"></span></div>
     </section>
     <section class="panel s-ribbon" aria-labelledby="h-rib">
       <div class="phead"><div class="pbar"><h2 id="h-rib">When was Rubin watching?</h2></div>
@@ -497,8 +513,11 @@ function followLantern() {
   lan.raf = requestAnimationFrame(tick);
 }
 function lanternPts(ra) { return smallCircleEq(ra, LAN_DEC, 60, 160); }
+let lanPainted = { ra: null, grid: null, dark: null };
 function paintLantern(ra) {
   if (!lanGrid) return;
+  if (lanPainted.ra === ra && lanPainted.grid === lanGrid && lanPainted.dark === C().dark) return;
+  lanPainted = { ra, grid: lanGrid, dark: C().dark };
   const { LW, LH, vec } = lanGrid, z = { ra, dec: LAN_DEC }, a = z.ra * DEG, dd = z.dec * DEG;
   const zx = Math.cos(dd) * Math.cos(a), zy = Math.cos(dd) * Math.sin(a), zz = Math.sin(dd);
   const lg = lanCv.getContext('2d'), im = lg.createImageData(LW, LH), d = im.data;
@@ -541,6 +560,7 @@ function zoomAt(factor, x, y) {
   view.k = k1; clampView(s); viewChanged();
 }
 function zoomTo(l, b, k) {
+  if (!Number.isFinite(l + b + k)) return;
   const s = skyS, bf = baseFrame(s), [u, v] = hammer(l, b);
   const mx = bf.cx + u * bf.sc, my = bf.cy - v * bf.sc;
   view.k = clamp(k, 1, KMAX); view.px = -(mx - s.w / 2) * view.k; view.py = -(my - s.h / 2) * view.k;
@@ -602,9 +622,10 @@ function drawSky(s) {
     }
     eg.globalAlpha = 1; emberN = nNow;
   }
-  g.globalAlpha = hooks.emberAlpha;
+  g.globalAlpha = hooks.emberAlpha * (C().dark ? 0.75 : 0.85);
   g.drawImage(emberCv, 0, 0, s.w, s.h);
   g.globalAlpha = 1;
+  drawStarsOnSky(g, s, Math.min(2, Math.sqrt(view.k)));
   const win = reduceMotion ? [Math.floor(st.t), Math.floor(st.t) + 1] : [st.t - 4, st.t];
   let i0 = lb(AL.t, win[0]), i1 = lb(AL.t, win[1] + 1e-9);
   if (i1 - i0 > 1500) i0 = i1 - 1500;
@@ -622,8 +643,7 @@ function drawSky(s) {
       g.beginPath(); g.arc(x, y, rad * 0.6, 0, 6.283); g.stroke();
       g.globalCompositeOperation = add ? 'lighter' : 'source-over';
     } else {
-      g.globalAlpha = a * (dark ? 0.5 : 0.7);
-      g.drawImage(sprites[grp[o]], x - rad, y - rad, 2 * rad, 2 * rad);
+      blit(g, bucket[o], AL.m[k] < SPIKE_MAG, x, y, rad * 0.55, a * (dark ? 0.8 : 0.85));
     }
   }
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
@@ -786,6 +806,7 @@ function drawLadder(s) {
     }
     g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   }
+  drawLadderPulses(g);
   for (const [i, col, w] of [[st.hover, C().ink, 1.5], [st.sel, C().hi, 2]]) {
     if (i < 0) continue;
     if (i === st.sel && Ob.distLo[i] != null && Ob.distHi[i] != null) { g.strokeStyle = col; g.lineWidth = 1.5; g.beginPath(); g.moveTo(f.X(Math.max(1, Ob.distLo[i])), ly[i]); g.lineTo(f.X(Math.min(1e10, Ob.distHi[i])), ly[i]); g.stroke(); }
@@ -848,8 +869,6 @@ const SUN_HR = [0.82, 4.67];
 const UP = 4;
 const MS_LINE = [[-0.4, -0.3], [0, 1.6], [0.4, 2.9], [0.8, 4.5], [1.0, 5.4], [1.5, 7.4], [2.0, 9.1], [2.5, 10.6], [3.0, 12.0], [3.5, 13.3], [4.0, 14.4], [4.6, 15.4]];
 const RGB_LINE = [[0.95, 3.6], [1.05, 2.4], [1.15, 1.2], [1.3, 0.0], [1.6, -1.2], [2.0, -2.3], [2.6, -3.3]];
-const STAR_NIGHT = [[-0.4, 155, 176, 255], [0, 172, 192, 255], [0.35, 205, 217, 255], [0.6, 246, 245, 255], [0.82, 255, 243, 230], [1.1, 255, 222, 182], [1.5, 255, 197, 138], [2.0, 255, 171, 98], [2.8, 255, 140, 72], [4.6, 255, 104, 58]];
-const STAR_DAY = [[-0.4, 38, 84, 205], [0, 52, 100, 212], [0.35, 84, 118, 196], [0.6, 118, 120, 146], [0.82, 170, 134, 58], [1.2, 194, 118, 40], [1.8, 198, 92, 34], [2.6, 182, 68, 34], [4.6, 146, 42, 34]];
 const HR_SHAPES = { rrlyr: 'circle', ceph: 'diamond', dsct: 'triangle', lpv: 'square', ecl: 'diamond', active: 'circle', yso: 'triangle', cv: 'square', star: 'ring', sn: 'circle', sncand: 'circle', tde: 'circle', agn: 'circle', unk: 'ring' };
 let hrGrid = null, hrImg = null, hrStatic = null, hrGesture = false, hrSettle = 0, hrPts = [];
 
@@ -857,13 +876,6 @@ const teffOf = (c) => 5040 / (0.4929 + 0.5092 * c - 0.0353 * c * c);
 const colourOfTeff = (T) => { const q = 5040 / T - 0.4929; return (0.5092 - Math.sqrt(0.5092 ** 2 - 4 * 0.0353 * q)) / (2 * 0.0353); };
 const absG = (i) => Ob.gaiaG[i] + 5 * Math.log10(Ob.gaiaPlx[i] / 100);
 const onHr = (i) => vis[i] && Ob.gaiaPlx[i] != null && Ob.gaiaPlxErr[i] && Ob.gaiaPlx[i] / Ob.gaiaPlxErr[i] >= 5 && Ob.gaiaBpRp[i] != null && Ob.gaiaG[i] != null;
-function lerpStops(stops, c) {
-  if (c <= stops[0][0]) return stops[0].slice(1);
-  for (let k = 1; k < stops.length; k++) {
-    if (c <= stops[k][0]) { const a = stops[k - 1], b = stops[k], u = (c - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u, a[3] + (b[3] - a[3]) * u]; }
-  }
-  return stops[stops.length - 1].slice(1);
-}
 function lineDist(line, c, m) {
   let best = 1e9;
   for (let k = 1; k < line.length; k++) {
@@ -901,11 +913,11 @@ function buildHrGrid() {
 }
 function buildHrImage(dark) {
   if (!hrGrid) buildHrGrid();
-  const { UW, UH, u, glow } = hrGrid, stops = dark ? STAR_NIGHT : STAR_DAY;
+  const { UW, UH, u, glow } = hrGrid, stops = dark ? SL.STAR_NIGHT : SL.STAR_DAY;
   const mk = () => { const c = document.createElement('canvas'); c.width = UW; c.height = UH; return c; };
   const img = mk(), gl = mk();
   const id = img.getContext('2d').createImageData(UW, UH), gd = gl.getContext('2d').createImageData(UW, UH);
-  const lut = Array.from({ length: UW }, (_, x) => lerpStops(stops, HR.bpRpMin + ((x + 0.5) / UP) * HR.bpRpStep));
+  const lut = Array.from({ length: UW }, (_, x) => SL.lerpStops(stops, HR.bpRpMin + ((x + 0.5) / UP) * HR.bpRpStep));
   for (let y = 0; y < UH; y++) {
     for (let x = 0; x < UW; x++) {
       const k = y * UW + x, v = u[k], p = k * 4, col = lut[x];
@@ -1089,6 +1101,8 @@ function drawHr(s) {
     hrLabel(g, nameOf(st.sel), sp[0] + (right ? 14 : -14), sp[1] - 12, { size: 13, color: C().hi, align: right ? 'left' : 'right', weight: 600 });
   }
   g.restore();
+  snapHr(s);
+  hrGlows(g);
 }
 function hrChanged() {
   hrGesture = true;
@@ -1168,6 +1182,124 @@ function wireHr() {
   $('#hrIn').addEventListener('click', () => hrZoomAt(2, hrS.w / 2, hrS.h / 2));
   $('#hrOut').addEventListener('click', () => hrZoomAt(0.5, hrS.w / 2, hrS.h / 2));
   $('#hrReset').addEventListener('click', () => hrZoomTo(2, 6.5, 1));
+}
+const SPIKE_MAG = 18.8;
+const pulsesOn = () => st.secPerDay > 0 && !reduceMotion;
+const tauNow = () => performance.now() / 1000 / st.secPerDay + OFF + T1;
+const starR = (m, sk) => clamp(3.4 - (m - 18) * 0.38, 1.3, 4.4) * sk;
+function blit(g, bk, spiked, x, y, r, a) {
+  const R = r * 3;
+  g.globalAlpha = a;
+  g.drawImage((spiked ? atlas.spiked : atlas.core)[bk], x - R, y - R, 2 * R, 2 * R);
+}
+function flickerOf(i, now) {
+  const amp = flick.get(i);
+  if (!amp || !pulsesOn()) return 1;
+  const ph = (i % 97) * 0.37;
+  const n = (Math.sin(1.3 * now + ph) + 0.6 * Math.sin(2.9 * now + 2 * ph) + 0.8 * Math.sin(0.7 * now + 3 * ph)) / 2.4;
+  return 1 - amp * 0.5 * (1 + n);
+}
+function drawStarsOnSky(g, s, sk) {
+  const on = pulsesOn(), tau = on ? tauNow() : 0, dark = C().dark, now = performance.now() / 1000, ea = hooks.emberAlpha;
+  const out = (x, y) => x < -24 || y < -24 || x > s.w + 24 || y > s.h + 24;
+  g.globalCompositeOperation = dark ? 'lighter' : 'source-over';
+  const fast = [];
+  for (const i of pl.list) {
+    if (!vis[i] || Ob.t0[i] == null || Ob.t0[i] > st.t) continue;
+    const x = qx[i], y = qy[i]; if (out(x, y)) continue;
+    const v = on ? SL.pulseLevel(pl, i, tau, st.secPerDay) : 1, r = starR(magOf[i], sk), sp = magOf[i] < SPIKE_MAG;
+    if (v < 0) { blit(g, bucket[i], sp, x, y, r, 0.8 * ea); fast.push(x, y, r); continue; }
+    blit(g, bucket[i], sp, x, y, r * (0.75 + 0.4 * v), (0.22 + 0.78 * v) * ea);
+  }
+  g.globalCompositeOperation = 'source-over';
+  for (const i of agnList) {
+    if (!vis[i] || Ob.t0[i] == null || Ob.t0[i] > st.t) continue;
+    const x = qx[i], y = qy[i]; if (out(x, y)) continue;
+    const v = flickerOf(i, now);
+    blit(g, bucket[i], false, x, y, starR(magOf[i], sk) * 0.85, (0.2 + 0.4 * v) * ea);
+  }
+  const k0 = lb(trT0, st.t - 80), k1 = lb(trT0, st.t + 1e-9);
+  const rings = [];
+  for (let k = k0; k < k1; k++) {
+    const i = trList[k];
+    if (!vis[i]) continue;
+    const x = qx[i], y = qy[i]; if (out(x, y)) continue;
+    const age = st.t - Ob.t0[i];
+    let tr = tracks.get(i);
+    if (tr === undefined) { tr = SL.colourTrack(S, i); tracks.set(i, tr); }
+    const bk = tr ? SL.bucketOf(SL.trackAt(tr, st.t)) : SL.NB, fade = Math.exp(-age / 22);
+    const young = Math.max(0, 1 - age / 6);
+    blit(g, bk, young > 0 && magOf[i] < SPIKE_MAG + 1.5, x, y, starR(magOf[i], sk) * (0.7 + 0.7 * fade + 1.3 * young), Math.min(1, 0.08 + 0.6 * fade + 0.4 * young) * ea);
+    if (age < 10 && !reduceMotion) rings.push(x, y, (3 + age * 2.6) * sk, 1 - age / 10);
+  }
+  g.globalCompositeOperation = 'source-over';
+  g.lineWidth = 1;
+  for (let k = 0; k < rings.length; k += 4) {
+    g.strokeStyle = dark ? 'rgb(214,226,255)' : C().ink; g.globalAlpha = rings[k + 3] * 0.75 * ea;
+    g.beginPath(); g.arc(rings[k], rings[k + 1], rings[k + 2], 0, 6.283); g.stroke();
+  }
+  g.strokeStyle = C().ink3; g.lineWidth = 0.8;
+  for (let k = 0; k < fast.length; k += 3) { g.globalAlpha = 0.7 * ea; g.beginPath(); g.arc(fast[k], fast[k + 1], fast[k + 2] + 3, 0, 6.283); g.stroke(); }
+  g.globalAlpha = 1;
+}
+function drawLadderPulses(g) {
+  const on = pulsesOn(), tau = on ? tauNow() : 0;
+  g.globalCompositeOperation = C().dark ? 'lighter' : 'source-over';
+  const fast = [];
+  for (const i of pl.list) {
+    if (!vis[i] || Ob.distMethod[i] < 0 || Ob.dist[i] == null) continue;
+    const v = on ? SL.pulseLevel(pl, i, tau, st.secPerDay) : 1;
+    if (v < 0) { blit(g, bucket[i], false, lx[i], ly[i], 2.6, 0.75); fast.push(i); continue; }
+    blit(g, bucket[i], false, lx[i], ly[i], 2 + 1.6 * v, 0.25 + 0.7 * v);
+  }
+  g.globalCompositeOperation = 'source-over';
+  g.strokeStyle = C().ink3; g.lineWidth = 0.8; g.globalAlpha = 0.7;
+  for (const i of fast) { g.beginPath(); g.arc(lx[i], ly[i], 6.5, 0, 6.283); g.stroke(); }
+  g.globalAlpha = 1;
+}
+let hrSnap = null;
+function hrGlows(g) {
+  const on = pulsesOn(), tau = on ? tauNow() : 0, dark = C().dark;
+  g.globalCompositeOperation = dark ? 'lighter' : 'source-over';
+  for (const p of hrPts) {
+    const i = p[2]; if (!pl.P[i]) continue;
+    const v = on ? SL.pulseLevel(pl, i, tau, st.secPerDay) : 1;
+    if (v < 0) continue;
+    blit(g, bucket[i], false, p[0], p[1], 3 + 2.5 * v, dark ? 0.2 + 0.6 * v : 0.12 + 0.35 * v);
+  }
+  g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+}
+function snapHr(s) {
+  const c = s.ctx.canvas;
+  if (!hrSnap || hrSnap.width !== c.width || hrSnap.height !== c.height) { hrSnap = document.createElement('canvas'); hrSnap.width = c.width; hrSnap.height = c.height; }
+  const h = hrSnap.getContext('2d'); h.clearRect(0, 0, c.width, c.height); h.drawImage(c, 0, 0);
+}
+function drawHrPulse(s) {
+  if (!s.w || !entered) return;
+  const c = s.ctx.canvas;
+  if (!hrSnap || hrSnap.width !== c.width || hrSnap.height !== c.height || hrGesture) { drawHr(s); return; }
+  const g = s.ctx;
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height); g.drawImage(hrSnap, 0, 0); g.restore();
+  hrGlows(g);
+}
+const onScreen = { sky: true, ladder: false, hr: false };
+let pulseRaf = 0;
+function pulseTick() {
+  pulseRaf = 0;
+  if (!entered || !pulsesOn() || document.hidden) return;
+  const c0 = performance.now();
+  if (!st.playing) { if (onScreen.sky) drawSky(skyS); if (onScreen.ladder) drawLadder(ladS); }
+  if (onScreen.hr) drawHrPulse(hrS);
+  K.pushPerf(perf.pulse || (perf.pulse = []), performance.now() - c0);
+  if (onScreen.sky || onScreen.ladder || onScreen.hr) pulseRaf = requestAnimationFrame(pulseTick);
+}
+function startPulses() { if (!pulseRaf && entered && pulsesOn()) pulseRaf = requestAnimationFrame(pulseTick); }
+function pulseCaption() {
+  const el = $('#sPulseCap'); if (!el) return;
+  const n = pl.list.length, own = pl.list.filter((i) => pl.own[i]).length;
+  if (reduceMotion) { el.textContent = `${fmtN(n)} periodic stars shown steady: your system asks for reduced motion.`; return; }
+  if (!st.secPerDay) { el.textContent = `Pulsing off. ${fmtN(n)} stars have a known period.`; return; }
+  el.textContent = `1 day = ${st.secPerDay} s · relative rhythms are real · ${fmtN(n)} stars pulse at their own period, shaped by their own folded light curve (${fmtN(own)}) or their family's average (${fmtN(n - own)}). A ring: too fast to show (over 3 per second).`;
 }
 function hrLegend() {
   const shapes = { circle: '<circle cx="7" cy="7" r="4.2"/>', diamond: '<path d="M7 2 12 7 7 12 2 7z"/>', triangle: '<path d="M7 2 12 11 2 11z"/>', square: '<rect x="3" y="3" width="8" height="8"/>', ring: '<circle cx="7" cy="7" r="3.6" fill="none" stroke-width="1.8"/>' };
@@ -1547,10 +1679,15 @@ function build() {
   const sl = $('#sSlider');
   sl.addEventListener('input', () => setT(T0 + +sl.value / 1000 * (T1 - T0)));
   $('#dropBtn').addEventListener('click', dropToDistance);
+  const sp = $('#sPulse');
+  if (reduceMotion) sp.disabled = true;
+  sp.addEventListener('change', () => { st.secPerDay = +sp.value; pulseCaption(); redraw(); startPulses(); });
+  const io = new IntersectionObserver((es) => { for (const e of es) onScreen[e.target.id === 'sky' ? 'sky' : e.target.id === 'ladder' ? 'ladder' : 'hr'] = e.isIntersecting; startPulses(); });
+  ['#sky', '#ladder', '#hr'].forEach((q) => io.observe($(q)));
   document.addEventListener('keydown', onKey);
-  document.addEventListener('visibilitychange', () => { if (document.hidden && st.playing) { st.wasPlaying = true; setPlay(false); } else if (!document.hidden && st.wasPlaying) { st.wasPlaying = false; if (entered) setPlay(true); } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && st.playing) { st.wasPlaying = true; setPlay(false); } else if (!document.hidden && st.wasPlaying) { st.wasPlaying = false; if (entered) setPlay(true); } if (!document.hidden) startPulses(); });
   K.onTheme(() => { if (!entered) { skyKey = ''; return; } readColors(); makeSprites(); skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1; legend(); census(); renderCard(); redraw(); });
-  legend(); census(); scaleText();
+  legend(); census(); scaleText(); pulseCaption();
   built = true;
 }
 
@@ -1567,7 +1704,7 @@ function rebuildData() {
   st.t = clamp(st.t, T0, T1);
   skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1;
   if (skyS) skyS.__w = 0;
-  if (built) { legend(); census(); scaleText(); }
+  if (built) { legend(); census(); scaleText(); pulseCaption(); }
   if (entered) { headerText(); renderCard(); $('#sDate').textContent = fmtD(st.t); syncSlider(); redraw(); }
 }
 function enter(objId) {
@@ -1585,10 +1722,12 @@ function enter(objId) {
   const params = new URLSearchParams(location.search);
   const handled = ext.story ? ext.story.onEnter(params) : false;
   if (!handled && !reduceMotion && !params.has('still')) setPlay(true);
+  startPulses();
 }
 function leave() { lan.ra = null; st.tween = null; if (ext.story && ext.story.chapter) ext.story.exitStory(); entered = false; setPlay(false); stopTour(); K.hideTip(); }
 
 function zoomAnim(l, b, k, ms = 1200, done) {
+  if (!Number.isFinite(l + b + k)) { if (done) done(); return; }
   const s = skyS, k0 = view.k;
   if (view.cu == null) clampView(s);
   const u0 = view.cu || 0, v0 = view.cv || 0, [u1, v1] = hammer(l, b);

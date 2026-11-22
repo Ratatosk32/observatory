@@ -35,6 +35,8 @@ There are two modes on one page:
 - **Sky:** Gaia DR3's Milky Way in Galactic coordinates, with nightly sparks for the sample's alerts.
   - A soft disc marks the sky above Cerro Pachón at local midnight.
   - The map zooms with fine Gaia tiles and IAU star names.
+  - Stars are drawn as glows coloured by their measured colour (Gaia BP − RP, or g − r), with thin spikes on the brightest. Supernovae flare with an expanding ring and fade; AGN flicker by their light-curve scatter.
+  - The 427 objects with a known period pulse at that period, sped up by one shared factor (1 day = 2 s by default) so relative rhythms are real. The shape comes from each star's folded light curve where it has enough points, otherwise from its family's average. Pulses faster than 3 per second are shown steady with a ring, and reduced motion turns pulsing off.
 - **Season ribbon:** Fink alerts per night by filter, as a scrubber.
 - **Distance ladder:** 1 pc to 10 Gpc, with the marker style showing how each distance was measured.
 - **Census:** objects per family, and how they were selected.
@@ -121,6 +123,7 @@ Refetching changes the numbers. Data versions are pinned with a `?v=` query in `
   - `sync.js` and `starsync.js`: live updates for each mode, kept in separate IndexedDB databases;
   - `datapanel.js`: the shared Data dialog that both modes plug into;
   - `stars.js`: the sky, ladder, ribbon, census and HR diagram;
+  - `starlight.js`: star colours, glow sprites and the pulse shapes;
   - `story.js`: the stories and toys.
   
   The stars modules and their data load only on the first switch.

@@ -501,7 +501,8 @@ body:not([data-mode="stars"]) .stars-only { display: none !important; }
 #ribbon { height: 112px; cursor: pointer; }
 .panel.fs #ribbon { height: min(50vh, 400px); }
 #hr { height: 480px; }
-.sky-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; margin-top: 16px; }
+.sky-tools { display: flex; align-items: center; justify-content: flex-start; gap: 8px 16px; flex-wrap: wrap; margin-top: 16px; }
+.sky-tools .pulsecap { margin: 0; flex: 1 1 320px; }
 .census { display: grid; grid-template-columns: minmax(120px, 200px) 1fr; gap: 4px 16px; align-items: center; font-size: 13px; }
 .census button.row { display: contents; font: inherit; color: inherit; }
 .census .nm { color: var(--ink2); text-align: left; background: none; border: 0; padding: 4px 0; font: inherit; cursor: pointer; border-radius: 4px; }
