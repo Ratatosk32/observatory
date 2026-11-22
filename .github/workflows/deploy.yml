@@ -28,6 +28,8 @@ jobs:
       - name: Say why nothing was deployed
         if: ${{ env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == '' }}
         run: echo "::warning::Checked, but not deployed. Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets to deploy."
+      - name: Stamp asset URLs with the commit
+        run: node scripts/stamp_versions.mjs site "${GITHUB_SHA::8}"
       - name: Create the Pages project on first run
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
         run: npx --yes wrangler@3 pages project create observatory --production-branch=main || echo exists
