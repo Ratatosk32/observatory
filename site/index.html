@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rubin Observatory alert explorer</title>
+<meta name="description" content="An independent, interactive look at the public Vera C. Rubin Observatory alert stream via the Fink broker: asteroid orbits and light curves, variable stars, supernovae and quasars.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/IBMPlexSans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Rubin’s first asteroid season</h1>
+    <p class="sub" id="sub"></p>
+  </div>
+  <div class="searchbox" id="searchbox">
+    <div class="field">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+      <label class="sr" for="search">Search an asteroid by designation</label>
+      <input id="search" type="search" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sugg" placeholder="Search 2,401 asteroids, e.g. 2026 CZ10" autocomplete="off" spellcheck="false">
+      <button id="clear" class="icon-btn sm" type="button" aria-label="Clear search" title="Clear search" hidden><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <ul class="sugg" id="sugg" role="listbox" aria-label="Matching asteroids" hidden></ul>
+  </div>
+  <div class="modeseg" id="modeSeg" role="radiogroup" aria-label="Mode">
+    <button type="button" role="radio" data-mode="asteroids" aria-checked="true" aria-label="Asteroids" title="Asteroids"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9.5" ry="4.2" transform="rotate(-20 12 12)"/><circle cx="12" cy="12" r="2.2"/><path d="M19.3 8.1c.9-.2 1.6.4 1.4 1.3-.2.8-1.1 1.1-1.7.6-.6-.4-.5-1.6.3-1.9z"/></svg></button>
+    <button type="button" role="radio" data-mode="stars" aria-checked="false" aria-label="Stars &amp; beyond" title="Stars &amp; beyond"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 5.2 5.4.3-4.2 3.4 1.4 5.3L12 14.7l-4.5 3 1.4-5.3-4.2-3.4 5.4-.3z"/><path d="M19 3v3M17.5 4.5h3M5 18.5v2.5M3.75 19.75h2.5"/></svg></button>
+  </div>
+  <div class="right">
+    <button id="dataBtn" class="btn data-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="dataPanel" title="Data source and updates">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6M5 12v6c0 1.4 3.1 2.6 7 2.6.6 0 1.2 0 1.7-.1M19 12v2.5M17.5 17.5l2 2 2-2M19.5 14.5v5"/></svg>
+      <span class="long" id="dataLbl">Data</span>
+    </button>
+    <button id="theme" class="icon-btn theme" type="button"></button>
+    <div id="dataPanel" class="sheet" role="dialog" aria-modal="false" aria-labelledby="dataTtl" hidden>
+      <div class="sheet-head"><h2 id="dataTtl">Data</h2><button id="dataClose" class="icon-btn sm" type="button" aria-label="Close" title="Close"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <p id="dataStatus" class="status"></p>
+      <label class="opt"><input type="checkbox" id="optRefresh" checked> <span>Refresh the asteroids already here <small id="optRefreshN"></small></span></label>
+      <label class="opt"><span>Add new asteroids, most recently seen first</span>
+        <select id="optExtra" aria-label="Number of new asteroids">
+          <option value="0">none</option>
+          <option value="50" selected>+50</option>
+          <option value="200">+200</option>
+          <option value="1000">+1000</option>
+        </select>
+      </label>
+      <p class="note">Also fetches the newest nightly statistics. Requests go straight to api.lsst.fink-portal.org: 50 asteroids per request, 3 at a time, with retries. Everything is kept in this browser (IndexedDB); the bundled data is never changed.</p>
+      <div class="actions">
+        <button id="doUpdate" class="btn play" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v4.5h-4.5"/></svg><span>Update data</span></button>
+        <button id="doCancel" class="btn" type="button" hidden>Cancel</button>
+      </div>
+      <div class="progress" id="prog" hidden><div class="bar"><span id="progBar"></span></div><p id="progTxt" class="note" aria-live="polite"></p></div>
+      <div class="store">
+        <p id="storeTxt" class="note"></p>
+        <button id="doReset" class="btn" type="button">Reset to bundled data</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="subbar">
+<nav class="presets ast" id="presets" aria-label="Guided views of the asteroids"><span class="lbl">Explore</span></nav>
+<nav class="presets stars-only" id="sPresets" aria-label="Guided views of the stars sample"><span class="lbl">Explore</span></nav>
+<div class="toolrow">
+<nav class="chapters stars-only" id="chapters" aria-label="Stories"><span class="lbl">Stories</span></nav>
+<div class="sizebar ast" id="sizebar" role="group" aria-labelledby="sizeLbl">
+  <span class="lbl" id="sizeLbl" title="Estimated diameter D = 1329 km / √p × 10^(−H/5), from the absolute magnitude H measured here. Albedo p = 0.15, except 0.40 for Hungarias and 0.06 for Cybeles, Hildas and Trojans. Real sizes can differ by about 2×.">Size</span>
+  <div class="dual" id="dual">
+    <canvas id="sizeHist" aria-hidden="true"></canvas>
+    <input type="range" id="dMin" min="0" max="1000" step="1" value="0" aria-label="Minimum estimated diameter">
+    <input type="range" id="dMax" min="0" max="1000" step="1" value="1000" aria-label="Maximum estimated diameter">
+  </div>
+  <span class="sval" id="sizeVal"></span>
+  <span class="scnt" id="sizeCnt" aria-live="polite"></span>
+  <button class="btn" type="button" id="sizeReset" hidden>Reset</button>
+</div>
+</div>
+<p class="lead"><span class="ast">New here? Press <b>Play</b> under the map to watch the season unfold, try a guided view above, or tap any dot to open its card.</span><span class="stars-only">A sample of about 4,800 objects from Rubin’s alerts, not the survey. Press <b>Play</b>, pick a story, or tap any spark.</span></p>
+</div>
+
+<p class="loading stars-only" id="starsLoading" hidden>Loading the sky…</p>
+<div id="starsRoot" class="stars-only"></div>
+<main class="ast" id="astMain">
+  <div class="stack">
+  <section class="panel map-panel" aria-labelledby="h-map">
+    <div class="phead">
+      <div class="pbar"><h2 id="h-map">Where are they, and where is Rubin looking?</h2></div>
+      <p class="cap">The Solar System seen from above, distances to scale. Dots are asteroids moving on their own orbits. Red rings are real Rubin detections within two days of the shown date; the faint red lines run from Earth to them, so you can see which way the telescope was pointing.</p>
+    </div>
+    <div class="map-wrap">
+      <canvas id="map" aria-label="Solar System map"></canvas>
+      <div class="zoom">
+        <button class="btn sm" data-zoom="1.8" type="button">Inner</button>
+        <button class="btn sm" data-zoom="3.9" type="button">Belt</button>
+        <button class="btn sm" data-zoom="6.2" type="button">Jupiter</button>
+      </div>
+    </div>
+    <div class="time">
+      <button id="play" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
+      <div class="slider-wrap">
+        <input id="slider" type="range" min="0" max="1000" step="0.01" aria-label="Date">
+        <div class="slider-scale" aria-hidden="true"><span>Jan 2026</span><span class="win">dates with detections</span><span>Dec 2027</span></div>
+      </div>
+      <output id="date" class="date"></output>
+      <label class="speed"><span>Speed</span>
+        <select id="speed" aria-label="Days per second">
+          <option value="1">1 day/s</option>
+          <option value="5">5 days/s</option>
+          <option value="15" selected>15 days/s</option>
+          <option value="60">60 days/s</option>
+          <option value="200">200 days/s</option>
+        </select>
+      </label>
+    </div>
+    <p class="note" id="timenote"></p>
+    <div class="legend" id="legend-map"></div>
+  </section>
+
+
+  <section class="panel el-panel" aria-labelledby="h-el">
+    <div class="phead">
+      <div class="pbar"><h2 id="h-el">How does Jupiter sculpt the asteroid belt?</h2></div>
+      <p class="cap">Each dot is an asteroid: its orbit size (semi-major axis a) against its <span id="ycap">eccentricity e, how stretched the orbit is</span>. The strip on top counts asteroids per 0.025 AU. Dashed lines mark orbits whose period is a simple fraction of Jupiter's (4:1, 3:1, …); Jupiter's regular tugs clear those zones, so look for the dips.</p>
+    </div>
+    <div class="seg" role="group" aria-label="Vertical axis">
+      <button class="btn sm on" data-y="e" type="button">a vs e</button>
+      <button class="btn sm" data-y="i" type="button">a vs i</button>
+    </div>
+    <canvas id="elem" aria-label="Orbital element scatter plot"></canvas>
+    <div class="legend" id="legend-el"></div>
+  </section>
+
+  <section class="panel col-panel" aria-labelledby="h-col">
+    <div class="phead">
+      <div class="pbar"><h2 id="h-col">What are they made of?</h2></div>
+      <p class="cap">Colour from two exposures in different filters taken minutes apart, so distance and lighting barely change. Gold line: the Sun's colour. Redder than the Sun in r − i hints at stony S-types; close to solar hints at dark carbon-rich C-types.</p>
+    </div>
+    <canvas id="colours" aria-label="Colour histograms"></canvas>
+    <p class="note" id="colnote"></p>
+  </section>
+
+  <section class="panel cad-panel" aria-labelledby="h-cad">
+    <div class="phead">
+      <div class="pbar"><h2 id="h-cad">When was Rubin observing?</h2></div>
+      <p class="cap">One bar per night of 2026 with data. Top: all alerts that night (log scale), and in blue those matched to known Solar System objects. Bottom: detections of the asteroids on this page. Empty stretches mean no data. Click a night to send the map there.</p>
+    </div>
+    <canvas id="cadence" aria-label="Nightly cadence chart"></canvas>
+    <div class="legend" id="legend-cad"></div>
+  </section>
+
+  <section class="panel stamp-panel" aria-labelledby="h-st">
+    <div class="phead">
+      <div class="pbar"><h2 id="h-st">How does one alert find a moving dot?</h2></div>
+      <p class="cap" id="stampCap">The three 36 × 36 pixel stamps (0.2″ per pixel, about 7″ across) that came with alert 171211557626183684: near-Earth asteroid 2020 HJ4, i band, 15 Nov 2026, 0.30 AU from Earth. Open any asteroid's card and press <b>Show cutouts</b> to load its latest stamps here.</p>
+    </div>
+    <div class="stamps">
+      <figure><span class="im"><img id="stSci" src="stamps/science.png" alt="Science image stamp" width="36" height="36"></span><figcaption><b>Science</b>tonight's exposure</figcaption></figure>
+      <div class="op">−</div>
+      <figure><span class="im"><img id="stTpl" src="stamps/template.png" alt="Template image stamp" width="36" height="36"></span><figcaption><b>Template</b>deep stack of earlier visits</figcaption></figure>
+      <div class="op">=</div>
+      <figure><span class="im"><img id="stDif" src="stamps/difference.png" alt="Difference image stamp" width="36" height="36"></span><figcaption><b>Difference</b>only what changed</figcaption></figure>
+    </div>
+    <p class="body" id="stampBody">The template holds only noise at this spot: the asteroid was elsewhere when the template visits were taken. Subtracting it leaves the asteroid alone. It is an elongated streak rather than a round star because it moved about 3″ during the 30-second exposure, which is the signature of a nearby, fast-moving object. The alert pipeline then matches the source to a predicted position of a known object and attaches its heliocentric position and velocity, which is what every orbit on this page is built from.</p>
+  </section>
+  </div>
+  <aside class="panel card" id="card" aria-labelledby="h-card">
+    <div class="phead"><div class="pbar"><h2 id="h-card">Asteroid card</h2></div></div>
+    <div id="cardBody" aria-live="polite"></div>
+  </aside>
+</main>
+
+<footer class="foot">
+  <p class="indep">Independent project, not affiliated with or endorsed by the Vera C. Rubin Observatory.</p>
+  <p>Data: <a href="https://lsst.fink-broker.org/">Fink</a> LSST broker API (api.lsst.fink-portal.org): SSO alerts, SSOFT, nightly statistics, alert cutouts, from the alert stream of the NSF–DOE Vera C. Rubin Observatory. Planet positions from JPL approximate Keplerian elements (Standish). Orbits are two-body Keplerian; see README for caveats.</p>
+  <p class="stars-only">Stars &amp; beyond: this work uses alert data from the NSF–DOE Vera C. Rubin Observatory Legacy Survey of Space and Time, via the Fink broker (Möller et al. 2021, MNRAS 501, 3272), with crossmatch labels from AAVSO VSX, SIMBAD (CDS), the Transient Name Server, Mangrove and Legacy Surveys DR8 photo-z. This work has made use of data from the European Space Agency (ESA) mission <a href="https://www.cosmos.esa.int/gaia">Gaia</a>, processed by the Gaia Data Processing and Analysis Consortium (<a href="https://www.cosmos.esa.int/web/gaia/dpac/consortium">DPAC</a>). Funding for the DPAC has been provided by national institutions, in particular the institutions participating in the Gaia Multilateral Agreement. Gaia Collaboration, Vallenari et al. 2023, A&amp;A 674, A1; distances from Bailer-Jones et al. 2021, AJ 161, 147. Gaia-derived grids: CC BY-SA 3.0 IGO. Redshifts: SDSS DR16 (Ahumada et al. 2020) via the GAVO Data Center; funding for the Sloan Digital Sky Survey IV has been provided by the Alfred P. Sloan Foundation, the U.S. Department of Energy Office of Science, and the Participating Institutions. Star names: IAU Catalog of Star Names, IAU Working Group on Star Names (WGSN), compiled by E. Mamajek (CC BY). RR Lyrae M<sub>G</sub> = 0.63 (Muraveva et al. 2018); flat ΛCDM, H<sub>0</sub> = 70, Ω<sub>m</sub> = 0.3.</p>
+</footer>
+
+<div id="tip" class="tip" role="tooltip" hidden></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
