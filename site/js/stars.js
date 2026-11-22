@@ -28,9 +28,10 @@ const GROUPS = [
   { key: 'unk', label: 'Unclassified', fams: ['unk'], tok: '--ink3' },
 ];
 const famGroup = FKEY.map((k) => GROUPS.findIndex((g) => g.fams.includes(k)));
-let gcol = [];
+let gcol = [], hrGold = '';
 function readColors() {
   const cs = getComputedStyle(document.documentElement);
+  hrGold = cs.getPropertyValue('--hr-gold').trim();
   gcol = GROUPS.map((g) => cs.getPropertyValue(g.tok).trim());
 }
 
@@ -138,8 +139,10 @@ function buildDom() {
     </section>
     <section class="panel s-hr" aria-labelledby="h-hrd">
       <div class="phead"><div class="pbar"><h2 id="h-hrd">What kind of star is it?</h2></div>
-      <p class="cap">Background: 1.34 million Gaia stars within 200 pc, colour (BP − RP) against absolute magnitude. On top: the sample's stars with a Gaia parallax better than 5σ. Flare stars sit at the cool bottom of the main sequence, white-dwarf binaries below it. RR Lyrae are too far for good parallaxes, so only one appears.</p></div>
-      <canvas id="hr" aria-label="Hertzsprung-Russell diagram"></canvas>
+      <p class="cap">Background: 1.34 million Gaia DR3 stars within 200 pc, each cell tinted with the stars’ own BP − RP colour and lit by how many stars it holds (log scale, lightly smoothed). Top and right axes are approximate: temperature from a dwarf colour–temperature relation, luminosity in the G band without bolometric correction. Gold band: the instability strip, where RR Lyrae, Cepheids and δ Scuti stars pulsate. On top: the sample’s stars with a Gaia parallax better than 5σ, shaped by family. Flare stars sit at the cool bottom of the main sequence, white-dwarf binaries below it; RR Lyrae are too far for good parallaxes, so only one appears. Scroll or pinch to zoom, drag to pan.</p></div>
+      <div class="map-wrap"><canvas id="hr" tabindex="0" aria-label="Hertzsprung-Russell diagram. Plus and minus zoom, 0 resets."></canvas>
+        <div class="zoom"><button class="btn sm" type="button" id="hrIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="hrOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="hrReset" hidden>Reset view</button></div></div>
+      <div class="legend" id="hrLegend"></div>
     </section>
   </div>
   <aside class="panel card" id="sCard" aria-labelledby="h-scard">
@@ -801,47 +804,343 @@ function drawRibbon(s) {
   s.__X = X; s.__inv = (px) => T0 + (px - L) / (R - L) * (T1 - T0);
 }
 
+const HR_BASE = { c0: -0.5, c1: 4.5, m0: -4, m1: 17 };
+const HR_KMAX = 12;
+const hrView = { k: 1, cc: (HR_BASE.c0 + HR_BASE.c1) / 2, mc: (HR_BASE.m0 + HR_BASE.m1) / 2 };
+const SUN_HR = [0.82, 4.67];
+const UP = 4;
+const MS_LINE = [[-0.4, -0.3], [0, 1.6], [0.4, 2.9], [0.8, 4.5], [1.0, 5.4], [1.5, 7.4], [2.0, 9.1], [2.5, 10.6], [3.0, 12.0], [3.5, 13.3], [4.0, 14.4], [4.6, 15.4]];
+const RGB_LINE = [[0.95, 3.6], [1.05, 2.4], [1.15, 1.2], [1.3, 0.0], [1.6, -1.2], [2.0, -2.3], [2.6, -3.3]];
+const STAR_NIGHT = [[-0.4, 155, 176, 255], [0, 172, 192, 255], [0.35, 205, 217, 255], [0.6, 246, 245, 255], [0.82, 255, 243, 230], [1.1, 255, 222, 182], [1.5, 255, 197, 138], [2.0, 255, 171, 98], [2.8, 255, 140, 72], [4.6, 255, 104, 58]];
+const STAR_DAY = [[-0.4, 38, 84, 205], [0, 52, 100, 212], [0.35, 84, 118, 196], [0.6, 118, 120, 146], [0.82, 170, 134, 58], [1.2, 194, 118, 40], [1.8, 198, 92, 34], [2.6, 182, 68, 34], [4.6, 146, 42, 34]];
+const HR_SHAPES = { rrlyr: 'circle', ceph: 'diamond', dsct: 'triangle', lpv: 'square', ecl: 'diamond', active: 'circle', yso: 'triangle', cv: 'square', star: 'ring', sn: 'circle', sncand: 'circle', tde: 'circle', agn: 'circle', unk: 'ring' };
+let hrGrid = null, hrImg = null, hrStatic = null, hrGesture = false, hrSettle = 0, hrPts = [];
+
+const teffOf = (c) => 5040 / (0.4929 + 0.5092 * c - 0.0353 * c * c);
+const colourOfTeff = (T) => { const q = 5040 / T - 0.4929; return (0.5092 - Math.sqrt(0.5092 ** 2 - 4 * 0.0353 * q)) / (2 * 0.0353); };
+const absG = (i) => Ob.gaiaG[i] + 5 * Math.log10(Ob.gaiaPlx[i] / 100);
+const onHr = (i) => vis[i] && Ob.gaiaPlx[i] != null && Ob.gaiaPlxErr[i] && Ob.gaiaPlx[i] / Ob.gaiaPlxErr[i] >= 5 && Ob.gaiaBpRp[i] != null && Ob.gaiaG[i] != null;
+function lerpStops(stops, c) {
+  if (c <= stops[0][0]) return stops[0].slice(1);
+  for (let k = 1; k < stops.length; k++) {
+    if (c <= stops[k][0]) { const a = stops[k - 1], b = stops[k], u = (c - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u, a[3] + (b[3] - a[3]) * u]; }
+  }
+  return stops[stops.length - 1].slice(1);
+}
+function lineDist(line, c, m) {
+  let best = 1e9;
+  for (let k = 1; k < line.length; k++) {
+    const ax = line[k - 1][0] / 0.16, ay = line[k - 1][1] / 0.8, bx = line[k][0] / 0.16, by = line[k][1] / 0.8, px = c / 0.16, py = m / 0.8;
+    const dx = bx - ax, dy = by - ay, u = clamp(((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy), 0, 1);
+    best = Math.min(best, Math.hypot(px - ax - u * dx, py - ay - u * dy));
+  }
+  return best;
+}
+function buildHrGrid() {
+  const W = HR.width, H = HR.height, d = new Float32Array(W * H), tmp = new Float32Array(W * H);
+  for (let k = 0; k < d.length; k++) d[k] = hrC[k] / 255;
+  const ker = [0.0545, 0.2442, 0.4026, 0.2442, 0.0545];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let s = 0; for (let j = -2; j <= 2; j++) s += ker[j + 2] * d[y * W + clamp(x + j, 0, W - 1)]; tmp[y * W + x] = s; }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let s = 0; for (let j = -2; j <= 2; j++) s += ker[j + 2] * tmp[clamp(y + j, 0, H - 1) * W + x]; d[y * W + x] = s; }
+  const UW = W * UP, UH = H * UP, u = new Float32Array(UW * UH), glow = new Float32Array(UW * UH);
+  const cub = (p0, p1, p2, p3, t) => p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
+  const at = (x, y) => d[clamp(y, 0, H - 1) * W + clamp(x, 0, W - 1)];
+  for (let y = 0; y < UH; y++) {
+    const gy = (y + 0.5) / UP - 0.5, y0 = Math.floor(gy), ty = gy - y0;
+    const m = HR.absGMin + (gy + 0.5) * HR.absGStep;
+    for (let x = 0; x < UW; x++) {
+      const gx = (x + 0.5) / UP - 0.5, x0 = Math.floor(gx), tx = gx - x0;
+      const r = [-1, 0, 1, 2].map((j) => cub(at(x0 - 1, y0 + j), at(x0, y0 + j), at(x0 + 1, y0 + j), at(x0 + 2, y0 + j), tx));
+      const v = clamp(cub(r[0], r[1], r[2], r[3], ty), 0, 1);
+      u[y * UW + x] = v;
+      if (v > 0.02) {
+        const c = HR.bpRpMin + (gx + 0.5) * HR.bpRpStep;
+        const w = Math.max(Math.exp(-(lineDist(MS_LINE, c, m) ** 2)), 0.9 * Math.exp(-(lineDist(RGB_LINE, c, m) ** 2)));
+        glow[y * UW + x] = w * Math.min(1, v * 2.2);
+      }
+    }
+  }
+  hrGrid = { UW, UH, u, glow };
+}
+function buildHrImage(dark) {
+  if (!hrGrid) buildHrGrid();
+  const { UW, UH, u, glow } = hrGrid, stops = dark ? STAR_NIGHT : STAR_DAY;
+  const mk = () => { const c = document.createElement('canvas'); c.width = UW; c.height = UH; return c; };
+  const img = mk(), gl = mk();
+  const id = img.getContext('2d').createImageData(UW, UH), gd = gl.getContext('2d').createImageData(UW, UH);
+  const lut = Array.from({ length: UW }, (_, x) => lerpStops(stops, HR.bpRpMin + ((x + 0.5) / UP) * HR.bpRpStep));
+  for (let y = 0; y < UH; y++) {
+    for (let x = 0; x < UW; x++) {
+      const k = y * UW + x, v = u[k], p = k * 4, col = lut[x];
+      if (v <= 0.004) continue;
+      const lum = dark ? 0.4 + 0.6 * v : 1;
+      id.data[p] = col[0] * lum; id.data[p + 1] = col[1] * lum; id.data[p + 2] = col[2] * lum;
+      id.data[p + 3] = 255 * Math.min(1, (dark ? 1.55 : 1.35) * v ** 1.1);
+      const gw = glow[k];
+      if (gw > 0.01) { gd.data[p] = col[0]; gd.data[p + 1] = col[1]; gd.data[p + 2] = col[2]; gd.data[p + 3] = 255 * gw; }
+    }
+  }
+  img.getContext('2d').putImageData(id, 0, 0);
+  gl.getContext('2d').putImageData(gd, 0, 0);
+  hrImg = { dark, img, gl };
+}
+
+function hrFrame(s, v = hrView) {
+  const nar = s.w < 520;
+  const P = { L: nar ? 40 : 50, R: nar ? 46 : 64, T: 38, B: 42 };
+  const pw = Math.max(10, s.w - P.L - P.R), ph = Math.max(10, s.h - P.T - P.B);
+  const cw = (HR_BASE.c1 - HR_BASE.c0) / v.k, mh = (HR_BASE.m1 - HR_BASE.m0) / v.k;
+  const c0 = v.cc - cw / 2, m0 = v.mc - mh / 2;
+  return {
+    ...P, pw, ph, nar, c0, c1: c0 + cw, m0, m1: m0 + mh, cw, mh,
+    X: (c) => P.L + (c - c0) / cw * pw, Y: (m) => P.T + (m - m0) / mh * ph,
+    C: (x) => c0 + (x - P.L) / pw * cw, M: (y) => m0 + (y - P.T) / ph * mh,
+  };
+}
+function clampHr() {
+  hrView.k = clamp(hrView.k, 1, HR_KMAX);
+  const hc = (HR_BASE.c1 - HR_BASE.c0) / hrView.k / 2, hm = (HR_BASE.m1 - HR_BASE.m0) / hrView.k / 2;
+  hrView.cc = clamp(hrView.cc, HR_BASE.c0 + hc, HR_BASE.c1 - hc);
+  hrView.mc = clamp(hrView.mc, HR_BASE.m0 + hm, HR_BASE.m1 - hm);
+}
+function niceStep(span, n) {
+  const raw = span / n, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p;
+  return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p;
+}
+const fmtTick = (v, st) => (Math.abs(v) < 1e-9 ? 0 : v).toFixed(Math.max(0, -Math.floor(Math.log10(st) + 1e-9))).replace('-', '−');
+function hrLabel(g, str, x, y, { size = 13, color = C().ink2, align = 'center', angle = 0, weight = 500 } = {}) {
+  g.save(); g.translate(x, y); if (angle) g.rotate(angle);
+  g.font = K.font(size, weight); g.textAlign = align; g.textBaseline = 'middle';
+  try { g.letterSpacing = '0.04em'; } catch {}
+  g.lineJoin = 'round'; g.lineWidth = 4; g.strokeStyle = C().bg; g.globalAlpha = 0.85; g.strokeText(str, 0, 0);
+  g.globalAlpha = 1; g.fillStyle = color; g.fillText(str, 0, 0);
+  g.restore();
+}
+function sunSymbol(g, x, y, r, col) {
+  g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 1.4;
+  g.beginPath(); g.arc(x, y, r, 0, 6.283); g.stroke();
+  g.beginPath(); g.arc(x, y, 1.3, 0, 6.283); g.fill();
+}
+function buildHrStatic(s) {
+  const dark = C().dark;
+  if (!hrImg || hrImg.dark !== dark) buildHrImage(dark);
+  const f = hrFrame(s);
+  hrStatic = { cv: hrStatic && hrStatic.cv || document.createElement('canvas'), view: { ...hrView }, w: s.w, h: s.h, dpr: s.dpr, dark };
+  const cv = hrStatic.cv;
+  cv.width = Math.round(s.w * s.dpr); cv.height = Math.round(s.h * s.dpr);
+  const g = cv.getContext('2d');
+  g.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
+  g.save(); g.beginPath(); g.rect(f.L, f.T, f.pw, f.ph); g.clip();
+  const ix = f.X(HR.bpRpMin), iy = f.Y(HR.absGMin), iw = f.X(HR.bpRpMin + HR.width * HR.bpRpStep) - ix, ih = f.Y(HR.absGMin + HR.height * HR.absGStep) - iy;
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  const sc = 1 / 6, small = document.createElement('canvas');
+  small.width = Math.max(2, Math.ceil(f.pw * sc)); small.height = Math.max(2, Math.ceil(f.ph * sc));
+  const sg = small.getContext('2d'); sg.imageSmoothingEnabled = true;
+  sg.drawImage(hrImg.gl, (ix - f.L) * sc, (iy - f.T) * sc, iw * sc, ih * sc);
+  g.globalCompositeOperation = dark ? 'lighter' : 'source-over'; g.globalAlpha = dark ? 0.55 : 0.28;
+  g.drawImage(small, f.L - 4, f.T - 4, f.pw + 8, f.ph + 8);
+  g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+  g.drawImage(hrImg.img, ix, iy, iw, ih);
+  const blue = (m) => 0.15 + (3.2 - m) * 0.057, red = (m) => 0.52 + (3.2 - m) * 0.095;
+  g.beginPath(); g.moveTo(f.X(blue(3.2)), f.Y(3.2)); g.lineTo(f.X(blue(-4.6)), f.Y(-4.6)); g.lineTo(f.X(red(-4.6)), f.Y(-4.6)); g.lineTo(f.X(red(3.2)), f.Y(3.2)); g.closePath();
+  g.fillStyle = hrGold; g.globalAlpha = dark ? 0.11 : 0.14; g.fill();
+  g.globalAlpha = 0.55; g.strokeStyle = hrGold; g.lineWidth = 1; g.setLineDash([4, 4]);
+  g.beginPath(); g.moveTo(f.X(blue(3.2)), f.Y(3.2)); g.lineTo(f.X(blue(-4.6)), f.Y(-4.6)); g.moveTo(f.X(red(3.2)), f.Y(3.2)); g.lineTo(f.X(red(-4.6)), f.Y(-4.6)); g.stroke();
+  g.setLineDash([]); g.globalAlpha = 1;
+  g.restore();
+}
+function hrNotes(g, f) {
+  const big = f.nar ? 11.5 : 13;
+  const blue = (m) => 0.15 + (3.2 - m) * 0.057, red = (m) => 0.52 + (3.2 - m) * 0.095;
+  const ang = (a, b) => Math.atan2(f.Y(b[1]) - f.Y(a[1]), f.X(b[0]) - f.X(a[0]));
+  hrLabel(g, 'instability strip', f.X((blue(-1.8) + red(-1.8)) / 2), f.Y(-1.8), { size: big - 1, color: hrGold, angle: ang([blue(1.5), 1.5], [blue(-2.5), -2.5]), weight: 600 });
+  hrLabel(g, 'RR Lyrae', f.X(blue(0.6)) - 8, f.Y(0.6), { size: big - 2, color: hrGold, align: 'right', weight: 600 });
+  hrLabel(g, 'main sequence', f.X(3.65), f.Y(15.0), { size: big, color: C().ink, angle: ang([3.5, 13.3], [4.0, 14.4]), weight: 600 });
+  hrLabel(g, 'red giants', f.X(1.95), f.Y(-2.6), { size: big, color: C().ink, align: 'left', weight: 600 });
+  const rx = f.X(1.23), ry = f.Y(0.44);
+  g.strokeStyle = C().ink3; g.lineWidth = 1; g.beginPath(); g.moveTo(rx + 7, ry); g.lineTo(rx + 34, ry); g.stroke();
+  hrLabel(g, 'red clump', rx + 38, ry, { size: big - 1.5, color: C().ink2, align: 'left' });
+  hrLabel(g, 'white dwarfs', f.X(0.55), f.Y(14.1), { size: big, color: C().ink, align: 'left', weight: 600 });
+  const sx0 = f.X(SUN_HR[0]), sy0 = f.Y(SUN_HR[1]);
+  sunSymbol(g, sx0, sy0, 5, hrGold);
+  hrLabel(g, 'Sun', sx0 - 10, sy0, { size: big - 1.5, color: hrGold, align: 'right', weight: 600 });
+}
+function hrAxes(g, s, f) {
+  const ink3 = C().ink3, ink2 = C().ink2, fs = f.nar ? 10 : 11;
+  const cs = niceStep(f.cw, f.nar ? 4 : 6), ms = niceStep(f.mh, f.nar ? 6 : 8);
+  g.save(); g.beginPath(); g.rect(f.L, f.T, f.pw, f.ph); g.clip();
+  g.strokeStyle = C().grid; g.lineWidth = 1; g.globalAlpha = 0.6; g.beginPath();
+  for (let c = Math.ceil(f.c0 / cs) * cs; c <= f.c1; c += cs) { const x = Math.round(f.X(c)) + 0.5; g.moveTo(x, f.T); g.lineTo(x, f.T + f.ph); }
+  for (let m = Math.ceil(f.m0 / ms) * ms; m <= f.m1; m += ms) { const y = Math.round(f.Y(m)) + 0.5; g.moveTo(f.L, y); g.lineTo(f.L + f.pw, y); }
+  g.stroke(); g.restore();
+  const xb = f.T + f.ph, xr = f.L + f.pw;
+  g.strokeStyle = hrGold; g.globalAlpha = 0.85; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(f.L + 0.5, f.T); g.lineTo(f.L + 0.5, xb + 0.5); g.lineTo(xr, xb + 0.5); g.stroke();
+  g.globalAlpha = 0.4;
+  g.beginPath(); g.moveTo(f.L, f.T - 0.5); g.lineTo(xr - 0.5, f.T - 0.5); g.lineTo(xr - 0.5, xb); g.stroke();
+  g.globalAlpha = 1;
+  g.strokeStyle = hrGold;
+  for (let c = Math.ceil(f.c0 / cs) * cs; c <= f.c1 + 1e-9; c += cs) {
+    const x = f.X(c); g.beginPath(); g.moveTo(x, xb); g.lineTo(x, xb + 4); g.stroke();
+    text(g, fmtTick(c, cs), x, xb + 15, { size: fs, color: ink3, align: 'center' });
+  }
+  for (let m = Math.ceil(f.m0 / ms) * ms; m <= f.m1 + 1e-9; m += ms) {
+    const y = f.Y(m); if (y < f.T + 6) continue; g.beginPath(); g.moveTo(f.L - 4, y); g.lineTo(f.L, y); g.stroke();
+    text(g, fmtTick(m, ms), f.L - 7, y + 4, { size: fs, color: ink3, align: 'right' });
+  }
+  let lastX = -1e9;
+  for (const T of [30000, 20000, 15000, 10000, 8000, 7000, 6000, 5000, 4500, 4000, 3500, 3000, 2700]) {
+    const c = colourOfTeff(T), x = f.X(c);
+    if (!(c >= f.c0 && c <= f.c1) || Math.abs(x - lastX) < (f.nar ? 40 : 46)) continue;
+    lastX = x;
+    g.globalAlpha = 0.6; g.beginPath(); g.moveTo(x, f.T); g.lineTo(x, f.T - 4); g.stroke(); g.globalAlpha = 1;
+    text(g, fmtN(T), x, f.T - 8, { size: fs, color: ink3, align: 'center' });
+  }
+  let lastY = -1e9;
+  for (let p = 5; p >= -5; p--) {
+    const m = SUN_HR[1] - 2.5 * p, y = f.Y(m);
+    if (m < f.m0 || m > f.m1 || Math.abs(y - lastY) < 16) continue;
+    lastY = y;
+    g.globalAlpha = 0.6; g.beginPath(); g.moveTo(xr, y); g.lineTo(xr + 4, y); g.stroke(); g.globalAlpha = 1;
+    text(g, p >= 0 ? fmtN(10 ** p) : String(10 ** p), xr + 7, y + 4, { size: fs, color: ink3, align: 'left' });
+  }
+  text(g, 'colour BP − RP (mag) → redder, cooler', f.L + f.pw / 2, s.h - 5, { size: fs + 0.5, color: ink2, align: 'center' });
+  text(g, 'surface temperature, K (approx.)', f.L + f.pw / 2, 12, { size: fs + 0.5, color: ink2, align: 'center' });
+  g.save(); g.translate(11, f.T + f.ph / 2); g.rotate(-Math.PI / 2); text(g, 'absolute magnitude M_G (brighter ↑)', 0, 0, { size: fs + 0.5, color: ink2, align: 'center', base: 'middle' }); g.restore();
+  g.save(); g.translate(s.w - 9, f.T + f.ph / 2); g.rotate(Math.PI / 2); text(g, 'luminosity in G, Suns (approx.)', 0, 0, { size: fs + 0.5, color: ink2, align: 'center', base: 'middle' }); g.restore();
+}
+function hrMarker(g, shape, x, y, r) {
+  g.beginPath();
+  if (shape === 'diamond') { g.moveTo(x, y - r * 1.25); g.lineTo(x + r * 1.25, y); g.lineTo(x, y + r * 1.25); g.lineTo(x - r * 1.25, y); g.closePath(); }
+  else if (shape === 'triangle') { g.moveTo(x, y - r * 1.3); g.lineTo(x + r * 1.15, y + r * 0.75); g.lineTo(x - r * 1.15, y + r * 0.75); g.closePath(); }
+  else if (shape === 'square') g.rect(x - r * 0.9, y - r * 0.9, r * 1.8, r * 1.8);
+  else g.arc(x, y, r, 0, 6.283);
+}
 function drawHr(s) {
   if (!s.w || !entered) return;
-  const L = 44, Rm = 12, T = 12, B = 34;
-  const cx0 = -0.5, cx1 = 4.5, m0 = -4, m1 = 17;
-  const X = (c) => L + (c - cx0) / (cx1 - cx0) * (s.w - L - Rm), Y = (m) => T + (m - m0) / (m1 - m0) * (s.h - T - B);
-  const key = [s.w, s.h, s.dpr, C().dark, st.groupsOn.size, st.preset].join('|');
-  const g = s.ctx;
-  if (key !== hrKey || !hrCv) {
-    hrKey = key;
-    hrCv = document.createElement('canvas'); hrCv.width = Math.round(s.w * s.dpr); hrCv.height = Math.round(s.h * s.dpr);
-    const h = hrCv.getContext('2d'); h.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
-    const im = document.createElement('canvas'); im.width = HR.width; im.height = HR.height;
-    const ig = im.getContext('2d'), id = ig.createImageData(HR.width, HR.height);
-    const col = C().dark ? [236, 230, 214] : [50, 52, 60];
-    for (let k = 0; k < hrC.length; k++) { const v = hrC[k]; id.data[k * 4] = col[0]; id.data[k * 4 + 1] = col[1]; id.data[k * 4 + 2] = col[2]; id.data[k * 4 + 3] = v ? 30 + v * 0.8 : 0; }
-    ig.putImageData(id, 0, 0);
-    const xa = X(HR.bpRpMin), xb = X(HR.bpRpMin + HR.bpRpStep * HR.width), ya = Y(HR.absGMin), yb = Y(HR.absGMin + HR.absGStep * HR.height);
-    h.imageSmoothingEnabled = true; h.globalAlpha = 0.75; h.drawImage(im, xa, ya, xb - xa, yb - ya); h.globalAlpha = 1;
-    for (let c = 0; c <= 4; c++) { pencilLine(h, X(c), T, X(c), s.h - B, { color: C().grid, passes: 1 }); text(h, String(c), X(c), s.h - B + 14, { size: 11, color: C().ink3, align: 'center' }); }
-    for (let m = -4; m <= 16; m += 4) { pencilLine(h, L, Y(m), s.w - Rm, Y(m), { color: C().grid, passes: 1 }); text(h, String(m).replace('-', '−'), L - 6, Y(m) + 4, { size: 11, color: C().ink3, align: 'right' }); }
-    text(h, 'colour BP − RP (mag) → redder, cooler', (L + s.w) / 2, s.h - 4, { size: 11.5, color: C().ink2, align: 'center' });
-    h.save(); h.translate(12, (T + s.h - B) / 2); h.rotate(-Math.PI / 2); text(h, 'absolute magnitude M_G (brighter ↑)', 0, 0, { size: 11.5, color: C().ink2, align: 'center', base: 'middle' }); h.restore();
-    annotate(h, 'main sequence', X(1.6), Y(6.5), { size: 18, color: C().ink2 });
-    annotate(h, 'giants', X(1.4), Y(-1), { size: 18, color: C().ink2 });
-    annotate(h, 'white dwarfs', X(0.3), Y(14.2), { size: 18, color: C().ink2 });
-  }
+  const g = s.ctx, f = hrFrame(s);
+  const key = [s.w, s.h, s.dpr, C().dark, hrView.k.toFixed(4), hrView.cc.toFixed(4), hrView.mc.toFixed(4)].join('|');
+  if (!hrGesture && (key !== hrKey || !hrStatic)) { hrKey = key; buildHrStatic(s); }
   g.clearRect(0, 0, s.w, s.h);
-  g.drawImage(hrCv, 0, 0, s.w, s.h);
+  const sv = hrStatic.view, sf = hrFrame(s, sv), r = sf.cw / f.cw, ry = sf.mh / f.mh;
+  const dx = f.X(sf.c0) - f.L * r, dy = f.Y(sf.m0) - f.T * ry;
+  g.save(); g.beginPath(); g.rect(f.L, f.T, f.pw, f.ph); g.clip();
+  g.drawImage(hrStatic.cv, dx, dy, s.w * r, s.h * ry);
+  g.restore();
+  hrAxes(g, s, f);
   hrPts = [];
+  g.save(); g.beginPath(); g.rect(f.L - 6, f.T - 6, f.pw + 12, f.ph + 12); g.clip();
+  const rad = f.nar ? 3.4 : 3.8;
   for (let i = 0; i < N; i++) {
-    if (!vis[i] || Ob.gaiaPlx[i] == null || !Ob.gaiaPlxErr[i] || Ob.gaiaPlx[i] / Ob.gaiaPlxErr[i] < 5 || Ob.gaiaBpRp[i] == null || Ob.gaiaG[i] == null) continue;
-    const M = Ob.gaiaG[i] + 5 * Math.log10(Ob.gaiaPlx[i] / 100), x = X(Ob.gaiaBpRp[i]), y = Y(M);
-    g.fillStyle = gcol[grp[i]]; g.beginPath(); g.arc(x, y, 3.2, 0, 6.283); g.fill();
+    if (!onHr(i)) continue;
+    const x = f.X(Ob.gaiaBpRp[i]), y = f.Y(absG(i));
+    if (x < f.L - 6 || x > f.L + f.pw + 6 || y < f.T - 6 || y > f.T + f.ph + 6) continue;
+    const shape = HR_SHAPES[FKEY[Ob.fam[i]]] || 'circle';
+    hrMarker(g, shape, x, y, rad);
+    g.lineWidth = 1.6; g.strokeStyle = C().bg; g.stroke();
+    if (shape === 'ring') { g.lineWidth = 1.6; g.strokeStyle = gcol[grp[i]]; hrMarker(g, 'circle', x, y, rad - 0.8); g.stroke(); }
+    else { g.fillStyle = gcol[grp[i]]; g.fill(); }
     hrPts.push([x, y, i]);
   }
-  for (const [i, col] of [[st.hover, C().ink], [st.sel, C().hi]]) {
-    const p = hrPts.find((q) => q[2] === i);
-    if (p) { g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.arc(p[0], p[1], 7, 0, 6.283); g.stroke(); }
+  hrNotes(g, f);
+  const hp = hrPts.find((q) => q[2] === st.hover);
+  if (hp) { g.strokeStyle = C().ink; g.lineWidth = 1.5; g.beginPath(); g.arc(hp[0], hp[1], 8, 0, 6.283); g.stroke(); }
+  const sp = hrPts.find((q) => q[2] === st.sel);
+  if (sp) {
+    g.strokeStyle = C().hi; g.lineWidth = 2.2; g.beginPath(); g.arc(sp[0], sp[1], 9, 0, 6.283); g.stroke();
+    const right = sp[0] < f.L + f.pw * 0.62;
+    hrLabel(g, nameOf(st.sel), sp[0] + (right ? 14 : -14), sp[1] - 12, { size: 13, color: C().hi, align: right ? 'left' : 'right', weight: 600 });
   }
+  g.restore();
 }
-let hrPts = [];
+function hrChanged() {
+  hrGesture = true;
+  clearTimeout(hrSettle);
+  hrSettle = setTimeout(() => { hrGesture = false; drawHr(hrS); }, 180);
+  drawHr(hrS);
+  const zb = $('#hrReset'); if (zb) zb.hidden = hrView.k <= 1.001;
+}
+function hrZoomAt(factor, x, y) {
+  const f = hrFrame(hrS), c = f.C(x), m = f.M(y);
+  hrView.k = clamp(hrView.k * factor, 1, HR_KMAX);
+  const cw = (HR_BASE.c1 - HR_BASE.c0) / hrView.k, mh = (HR_BASE.m1 - HR_BASE.m0) / hrView.k;
+  hrView.cc = c + cw / 2 - (x - f.L) / f.pw * cw; hrView.mc = m + mh / 2 - (y - f.T) / f.ph * mh;
+  clampHr(); hrChanged();
+}
+function hrZoomTo(c, m, k) { hrView.k = k; hrView.cc = c; hrView.mc = m; clampHr(); hrChanged(); }
+function hrTip(i) {
+  const c = Ob.gaiaBpRp[i], M = absG(i);
+  return `${tipFor(i)}<br>M<sub>G</sub> ${M.toFixed(2).replace('-', '−')} · BP − RP ${c.toFixed(2).replace('-', '−')} · about ${fmtN(Math.round(teffOf(c) / 100) * 100)} K`;
+}
+function hrNearest(x, y, rad) {
+  let best = -1, bd = rad * rad;
+  for (const p of hrPts) { const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < bd) { bd = d; best = p[2]; } }
+  return best;
+}
+function wireHr() {
+  const cv = $('#hr');
+  cv.addEventListener('wheel', (e) => { e.preventDefault(); const r = cv.getBoundingClientRect(); hrZoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+  const ptrs = new Map();
+  let start = null, pinch = null, moved = false;
+  cv.addEventListener('pointerdown', (e) => {
+    cv.setPointerCapture(e.pointerId);
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    moved = false;
+    if (ptrs.size === 1) start = { x: e.clientX, y: e.clientY, cc: hrView.cc, mc: hrView.mc };
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; const r = cv.getBoundingClientRect(); pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), k: hrView.k, mx: (a[0] + b[0]) / 2 - r.left, my: (a[1] + b[1]) / 2 - r.top }; }
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!ptrs.size && e.pointerType === 'mouse') {
+      const r = cv.getBoundingClientRect(), i = hrNearest(e.clientX - r.left, e.clientY - r.top, 9);
+      setHover(i);
+      if (i >= 0) K.showTip(hrTip(i), e.clientX, e.clientY); else K.hideTip();
+      return;
+    }
+    if (!ptrs.has(e.pointerId)) return;
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    if (ptrs.size === 2 && pinch) {
+      const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      moved = true; hrZoomAt(pinch.k * d / pinch.d / hrView.k, pinch.mx, pinch.my);
+    } else if (ptrs.size === 1 && start) {
+      const dx = e.clientX - start.x, dy = e.clientY - start.y;
+      if (!moved && Math.hypot(dx, dy) < 5) return;
+      if (hrView.k <= 1.001) return;
+      moved = true; cv.style.cursor = 'grabbing'; K.hideTip();
+      const f = hrFrame(hrS);
+      hrView.cc = start.cc - dx / f.pw * f.cw; hrView.mc = start.mc - dy / f.ph * f.mh; clampHr(); hrChanged();
+    }
+  });
+  const end = (e) => {
+    const wasMoved = moved;
+    ptrs.delete(e.pointerId);
+    if (ptrs.size < 2) pinch = null;
+    if (ptrs.size === 0) { start = null; cv.style.cursor = ''; }
+    if (e.type !== 'pointerup' || wasMoved) return;
+    const r = cv.getBoundingClientRect();
+    select(hrNearest(e.clientX - r.left, e.clientY - r.top, e.pointerType === 'mouse' ? 9 : 16));
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('pointerleave', () => { if (!ptrs.size) { setHover(-1); K.hideTip(); } });
+  cv.addEventListener('dblclick', (e) => { const r = cv.getBoundingClientRect(); hrZoomAt(2, e.clientX - r.left, e.clientY - r.top); });
+  cv.addEventListener('keydown', (e) => {
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); hrZoomAt(1.5, hrS.w / 2, hrS.h / 2); }
+    else if (e.key === '-') { e.preventDefault(); hrZoomAt(1 / 1.5, hrS.w / 2, hrS.h / 2); }
+    else if (e.key === '0') { e.preventDefault(); hrZoomTo(2, 6.5, 1); }
+  });
+  $('#hrIn').addEventListener('click', () => hrZoomAt(2, hrS.w / 2, hrS.h / 2));
+  $('#hrOut').addEventListener('click', () => hrZoomAt(0.5, hrS.w / 2, hrS.h / 2));
+  $('#hrReset').addEventListener('click', () => hrZoomTo(2, 6.5, 1));
+}
+function hrLegend() {
+  const shapes = { circle: '<circle cx="7" cy="7" r="4.2"/>', diamond: '<path d="M7 2 12 7 7 12 2 7z"/>', triangle: '<path d="M7 2 12 11 2 11z"/>', square: '<rect x="3" y="3" width="8" height="8"/>', ring: '<circle cx="7" cy="7" r="3.6" fill="none" stroke-width="1.8"/>' };
+  const fams = new Set();
+  for (let i = 0; i < N; i++) if (Ob.gaiaPlx[i] != null && Ob.gaiaPlxErr[i] && Ob.gaiaPlx[i] / Ob.gaiaPlxErr[i] >= 5 && Ob.gaiaBpRp[i] != null && Ob.gaiaG[i] != null) fams.add(Ob.fam[i]);
+  $('#hrLegend').innerHTML = [...fams].sort((a, b) => a - b).map((fi) => {
+    const sh = HR_SHAPES[FKEY[fi]] || 'circle', col = gcol[famGroup[fi]];
+    return `<span class="k"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="fill:${col};stroke:${col}">${shapes[sh]}</svg>${esc(FAM[fi].label)}</span>`;
+  }).join('') + `<span class="k"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="fill:none;stroke:${hrGold}"><circle cx="7" cy="7" r="4.5" stroke-width="1.3"/><circle cx="7" cy="7" r="1.2" style="fill:${hrGold}"/></svg>the Sun</span>`;
+}
 
 function legend() {
   const counts = GROUPS.map(() => 0);
@@ -854,6 +1153,7 @@ function legend() {
     else if (st.groupsOn.has(gi) && st.groupsOn.size > 1) st.groupsOn.delete(gi); else st.groupsOn.add(gi);
     applyFilter(); legend(); redraw();
   }));
+  hrLegend();
   $('#sBandLegend').innerHTML = BANDS.map((b) => `<span class="k"><span class="sw sq" style="background:${C().band[b]}"></span>${b}</span>`).join('') + `<span class="k"><span class="sw" style="background:${C().gold}"></span>this sample's alerts per night</span><span class="k"><span class="sw sq" style="background:${C().line}"></span>no data</span>`;
 }
 
@@ -1190,7 +1490,7 @@ function build() {
   hrS = setupCanvas($('#hr'), drawHr);
   wireSkyZoom();
   wireCanvas($('#ladder'), (x, y, r) => nearest(lx, ly, x, y, r, (i) => Ob.distMethod[i] >= 0 && Ob.dist[i] != null));
-  wireCanvas($('#hr'), (x, y, r) => { let best = -1, bd = r * r; for (const p of hrPts) { const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < bd) { bd = d; best = p[2]; } } return best; });
+  wireHr();
   const rib = $('#ribbon');
   let drag = false;
   const scrub = (e) => { if (!ribS.__inv) return; const r = rib.getBoundingClientRect(); setT(ribS.__inv(e.clientX - r.left)); };
@@ -1260,7 +1560,7 @@ function zoomAnim(l, b, k, ms = 1200, done) {
   };
   requestAnimationFrame(step);
 }
-export const api = (K.ns.stars = { enter, leave, zoomTo, zoomAnim, resetView, eq2gal, hammer, hooks, loadTiles, setPlay, redraw, renderCard, applyFilter, humanName, hookOf, fmtPer, fmtAgo, fmtPc, fmtD, nameOf, catOf, famLabel,
+export const api = (K.ns.stars = { enter, leave, zoomTo, zoomAnim, resetView, hrZoomTo, hrView, eq2gal, hammer, hooks, loadTiles, setPlay, redraw, renderCard, applyFilter, humanName, hookOf, fmtPer, fmtAgo, fmtPc, fmtD, nameOf, catOf, famLabel,
   S, Ob, get N() { return N; }, GROUPS, FKEY, get grp() { return grp; }, get vis() { return vis; }, rebuildData, get gcol() { return gcol; }, get sprites() { return sprites; }, get view() { return view; }, get skyS() { return skyS; }, get ribS() { return ribS; }, get lanGrid() { return lanGrid; }, invalidateSky: () => { skyKey = ''; emberN = -1; }, get entered() { return entered; }, get state() { return st; }, select, setT, runPreset, perf});
 
 const dataProvider = {
