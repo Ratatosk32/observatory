@@ -1,6 +1,6 @@
-data/
-shots/
-mock/
+/data/
+/shots/
+/mock/
 __pycache__/
 *.pyc
 node_modules/
