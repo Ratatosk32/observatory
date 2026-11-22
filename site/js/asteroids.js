@@ -1015,7 +1015,7 @@ function renderCardInner() {
 
 function select(o, opts = {}) {
   state.sel = o;
-  if (document.body.dataset.mode !== 'stars') setUrl({ sel: o ? o.name : null });
+  if (!document.body.dataset.mode || document.body.dataset.mode === 'asteroids') setUrl({ sel: o ? o.name : null });
   staticKey = '';
   if (o) {
     $('#search').value = o.name;
@@ -1100,7 +1100,7 @@ function legendMap() {
 
 const ASTRO_TITLE = 'Rubin’s first asteroid season';
 function metaText() {
-  if (document.body.dataset.mode === 'stars') return;
+  if (document.body.dataset.mode && document.body.dataset.mode !== 'asteroids') return;
   const d0 = mjdDate(META.tmin), d1 = mjdDate(META.tmax);
   const span = d0.getUTCFullYear() === d1.getUTCFullYear() ? `${MON[d0.getUTCMonth()]}–${MON[d1.getUTCMonth()]} ${d1.getUTCFullYear()}` : `${fmtShort(META.tmin)} ${d0.getUTCFullYear()} – ${fmtDate(META.tmax)}`;
   $('#sub').textContent = `${fmtN(META.nobj)} asteroids · ${fmtN(META.ndet)} detections · ${span}`;
@@ -1184,7 +1184,7 @@ sync.ready.then((res) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (document.body.dataset.mode === 'stars') return;
+  if (document.body.dataset.mode && document.body.dataset.mode !== 'asteroids') return;
   const tg = e.target instanceof Element ? e.target : document.body;
   if (e.key !== ' ' || tg.closest('input, select, button, textarea')) return;
   e.preventDefault(); setPlaying(!state.playing);

@@ -52,6 +52,15 @@ There are two modes on one page:
 
 Each step drives the map, the stage and the timeline, and ends on one number with a "how sure are we?" line.
 
+### Dark matter mode
+
+- **The oldest light:** the Planck SMICA map of the cosmic microwave background, in Galactic coordinates, drawn as a muted warm and cool weave in a WebGL shader.
+- **The lens:** under a movable gold lens the CMB is shifted by the lensing deflection reconstructed by Planck PR4, d = ∇φ with φ_ℓm = 2 κ_ℓm / ℓ(ℓ+1), amplified from ×1 to ×300. At ×1 the shift is the true one, a few arcminutes, and invisible. "Show the shadow" fades into the convergence κ itself, the projected mass.
+- **Clusters:** the 4,195 ACT DR5 SZ clusters as thin gold rings, scaled up from their θ500; the card shows redshift, M500 and the SN-like alerts inside R500.
+- **Explosions:** 146,350 Fink `most_likely_sn` objects appear as sparks on the night they were first seen. The Data button can fetch newer ones.
+- **Meters:** κ stacked at 76,640 SN-like alerts gives −0.2σ against 300 rotated skies (b = −0.8 ± 3.5); ACT clusters through the same pipeline give +7.1σ. SN-like alerts inside clusters: 201 seen against 179.4 expected, 0.9σ. Forecasts: 3σ around late 2027 for the lensing test and mid-2028 for the cluster test.
+- Without WebGL the map is drawn once on a 2D canvas, without the lens.
+
 ### Honesty notes
 
 - These are samples of the alert stream, not the survey. Proportions reflect how the samples were drawn.
@@ -69,6 +78,8 @@ Each step drives the map, the stage and the timeline, and ends on one number wit
 | **SDSS DR16** via the GAVO Data Center | spectroscopic redshifts and classes | Ahumada et al. 2020. "Funding for the Sloan Digital Sky Survey IV has been provided by the Alfred P. Sloan Foundation, the U.S. Department of Energy Office of Science, and the Participating Institutions." |
 | **IAU Catalog of Star Names** (WGSN, compiled by E. Mamajek) | star names at high zoom | CC BY |
 | **JPL approximate Keplerian elements** (E. M. Standish) | planet positions | public JPL documentation |
+| **Planck** (ESA), SMICA CMB map PR2 and PR4 lensing reconstruction | CMB temperature, lensing deflection and κ | Planck Legacy Archive terms of use. "Based on observations obtained with Planck (http://www.esa.int/Planck), an ESA science mission with instruments and contributions directly funded by ESA Member States, NASA, and Canada." Lensing: Carron, Mirmelstein and Lewis 2022, JCAP 09, 039. |
+| **ACT DR5 SZ cluster catalogue** v1.1 via NASA LAMBDA | cluster positions, redshifts, masses | Hilton et al. 2021, ApJS 253, 3. Public via LAMBDA. |
 | **IBM Plex Sans** | typeface | SIL Open Font License 1.1 |
 
 - **Code:** MIT; see [LICENSE](LICENSE).
@@ -101,6 +112,7 @@ python scripts/build_asteroids.py
 python scripts/fetch_stars.py
 python scripts/build_stars.py
 python scripts/build_stars.py --tiles
+python -I scripts/build_cmb.py --smica <COM_CMB_IQU-smica_1024_R2.02_full.fits> --klm <PR42018like_klm_dat_MV.fits> --mask <mask.fits.gz> --act <DR5_cluster-catalog_v1.1.fits> --objects <objects_most_likely_sn.npz> --lensing <lensing_transients_none.json> --control <lensing_positive_control_act_clusters.json> --cluster-test <clusters_most_likely_sn.json> --cluster-forecast <cluster_forecast.json>
 node scripts/check_site.mjs
 ```
 
@@ -108,6 +120,7 @@ node scripts/check_site.mjs
 - `build_asteroids.py` writes `site/data/asteroids.json`. It expects the original sample files in `data/` as well.
 - `fetch_stars.py` fetches the Fink and Gaia data for the stars mode into `data/stars-<date>/`.
 - `build_stars.py` writes `site/data/stars.json`; with `--tiles` it writes `site/data/stars-tiles.json`.
+- `build_cmb.py` writes `site/data/cmb-sky.png`, `cmb-lens.png` and `cmb.json` (about 4.3 MB in all). It needs `ducc0`, `astropy` and `Pillow`. The SMICA map comes from IRSA (Planck release 2, 168 MB); the PR4 lensing alm and mask, the ACT catalogue, the SN-like object table and the test results come from the crossmatch analysis (Fink tag pulls, the κ stack with 300 rotated-sky nulls, and the cluster aperture test).
 - `check_site.mjs` scans the repository: no Cyrillic text, no unfinished-work markers, no console logging, and every file the page references exists.
 
 Refetching changes the numbers. Data versions are pinned with a `?v=` query in `site/js`.
@@ -124,9 +137,10 @@ Refetching changes the numbers. Data versions are pinned with a `?v=` query in `
   - `datapanel.js`: the shared Data dialog that both modes plug into;
   - `stars.js`: the sky, ladder, ribbon, census and HR diagram;
   - `starlight.js`: star colours, glow sprites and the pulse shapes;
-  - `story.js`: the stories and toys.
+  - `story.js`: the stories and toys;
+  - `darkmatter.js`: the dark-matter mode, with its WebGL lens shader and meters.
   
-  The stars modules and their data load only on the first switch.
+  The stars and dark-matter modules and their data load only on the first switch.
 - **`site/data/`** holds the JSON built by `scripts/`.
 - **Deploy:** `.github/workflows/deploy.yml` runs the checks and publishes `site/` to Cloudflare Pages when the Cloudflare secrets are set.
 - **Globals:** only `window.Observatory` exists (performance counters and test hooks).

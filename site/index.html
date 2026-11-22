@@ -27,6 +27,7 @@
   <div class="modeseg" id="modeSeg" role="radiogroup" aria-label="Mode">
     <button type="button" role="radio" data-mode="asteroids" aria-checked="true" aria-label="Asteroids" title="Asteroids"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9.5" ry="4.2" transform="rotate(-20 12 12)"/><circle cx="12" cy="12" r="2.2"/><path d="M19.3 8.1c.9-.2 1.6.4 1.4 1.3-.2.8-1.1 1.1-1.7.6-.6-.4-.5-1.6.3-1.9z"/></svg></button>
     <button type="button" role="radio" data-mode="stars" aria-checked="false" aria-label="Stars &amp; beyond" title="Stars &amp; beyond"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 5.2 5.4.3-4.2 3.4 1.4 5.3L12 14.7l-4.5 3 1.4-5.3-4.2-3.4 5.4-.3z"/><path d="M19 3v3M17.5 4.5h3M5 18.5v2.5M3.75 19.75h2.5"/></svg></button>
+    <button type="button" role="radio" data-mode="dm" aria-checked="false" aria-label="Dark matter" title="Dark matter: the CMB and its lensing"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M3 12c3-5 6-7.5 9-7.5s6 2.5 9 7.5M3 12c3 5 6 7.5 9 7.5s6-2.5 9-7.5"/></svg></button>
   </div>
   <div class="right">
     <button id="dataBtn" class="btn data-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="dataPanel" title="Data source and updates">
@@ -54,7 +55,7 @@
       <div class="progress" id="prog" hidden><div class="bar"><span id="progBar"></span></div><p id="progTxt" class="note" aria-live="polite"></p></div>
       <div class="store">
         <p id="storeTxt" class="note"></p>
-        <div class="resets"><button id="doReset" class="btn" type="button">Reset to bundled data</button><button id="doResetAll" class="btn" type="button">Reset both modes</button></div>
+        <div class="resets"><button id="doReset" class="btn" type="button">Reset to bundled data</button><button id="doResetAll" class="btn" type="button">Reset all modes</button></div>
       </div>
     </div>
   </div>
@@ -63,8 +64,10 @@
 <div class="subbar">
 <nav class="presets ast" id="presets" aria-label="Guided views of the asteroids"><span class="lbl">Explore</span></nav>
 <nav class="presets stars-only" id="sPresets" aria-label="Guided views of the stars sample"><span class="lbl">Explore</span></nav>
+<nav class="presets dm-only" id="dPresets" aria-label="Guided views of the lensing sky"><span class="lbl">Explore</span></nav>
 <div class="toolrow">
 <nav class="chapters stars-only" id="chapters" aria-label="Stories"><span class="lbl">Stories</span></nav>
+<div class="lensbar dm-only" id="lensbar" role="group" aria-label="Lens controls"><label class="lbl" for="dAmp">Amplify bending</label><input type="range" id="dAmp" min="0" max="1000" step="1" value="0"><output id="dAmpV" class="sval">×1</output><button class="btn" type="button" id="dShadow" aria-pressed="false">Show the shadow</button><span class="scnt" id="dAmpNote" aria-live="polite"></span></div>
 <div class="sizebar ast" id="sizebar" role="group" aria-labelledby="sizeLbl">
   <span class="lbl" id="sizeLbl" title="Estimated diameter D = 1329 km / √p × 10^(−H/5), from the absolute magnitude H measured here. Albedo p = 0.15, except 0.40 for Hungarias and 0.06 for Cybeles, Hildas and Trojans. Real sizes can differ by about 2×.">Size</span>
   <div class="dual" id="dual">
@@ -77,11 +80,13 @@
   <button class="btn" type="button" id="sizeReset" hidden>Reset</button>
 </div>
 </div>
-<p class="lead"><span class="ast">New here? Press <b>Play</b> under the map to watch the season unfold, try a guided view above, or tap any dot to open its card.</span><span class="stars-only">A sample of about 4,800 objects from Rubin’s alerts, not the survey. Press <b>Play</b>, pick a story, or tap any spark.</span></p>
+<p class="lead"><span class="ast">New here? Press <b>Play</b> under the map to watch the season unfold, try a guided view above, or tap any dot to open its card.</span><span class="stars-only">A sample of about 4,800 objects from Rubin’s alerts, not the survey. Press <b>Play</b>, pick a story, or tap any spark.</span><span class="dm-only">Move the gold lens over the oldest light in the universe. Rubin’s explosions arrive night by night; do they follow the dark matter yet?</span></p>
 </div>
 
 <p class="loading stars-only" id="starsLoading" hidden>Loading the sky…</p>
 <div id="starsRoot" class="stars-only"></div>
+<p class="loading dm-only" id="dmLoading" hidden>Loading the CMB…</p>
+<div id="dmRoot" class="dm-only"></div>
 <main class="ast" id="astMain">
   <div class="stack">
   <section class="panel map-panel" aria-labelledby="h-map">
@@ -175,6 +180,7 @@
   <p class="indep">Independent project, not affiliated with or endorsed by the Vera C. Rubin Observatory.</p>
   <p>Data: <a href="https://lsst.fink-broker.org/">Fink</a> LSST broker API (api.lsst.fink-portal.org): SSO alerts, SSOFT, nightly statistics, alert cutouts, from the alert stream of the NSF–DOE Vera C. Rubin Observatory. Planet positions from JPL approximate Keplerian elements (Standish). Orbits are two-body Keplerian; see README for caveats.</p>
   <p class="stars-only">Stars &amp; beyond: this work uses alert data from the NSF–DOE Vera C. Rubin Observatory Legacy Survey of Space and Time, via the Fink broker (Möller et al. 2021, MNRAS 501, 3272), with crossmatch labels from AAVSO VSX, SIMBAD (CDS), the Transient Name Server, Mangrove and Legacy Surveys DR8 photo-z. This work has made use of data from the European Space Agency (ESA) mission <a href="https://www.cosmos.esa.int/gaia">Gaia</a>, processed by the Gaia Data Processing and Analysis Consortium (<a href="https://www.cosmos.esa.int/web/gaia/dpac/consortium">DPAC</a>). Funding for the DPAC has been provided by national institutions, in particular the institutions participating in the Gaia Multilateral Agreement. Gaia Collaboration, Vallenari et al. 2023, A&amp;A 674, A1; distances from Bailer-Jones et al. 2021, AJ 161, 147. Gaia-derived grids: CC BY-SA 3.0 IGO. Redshifts: SDSS DR16 (Ahumada et al. 2020) via the GAVO Data Center; funding for the Sloan Digital Sky Survey IV has been provided by the Alfred P. Sloan Foundation, the U.S. Department of Energy Office of Science, and the Participating Institutions. Star names: IAU Catalog of Star Names, IAU Working Group on Star Names (WGSN), compiled by E. Mamajek (CC BY). RR Lyrae M<sub>G</sub> = 0.63 (Muraveva et al. 2018); flat ΛCDM, H<sub>0</sub> = 70, Ω<sub>m</sub> = 0.3.</p>
+  <p class="dm-only">Dark matter: based on observations obtained with Planck (https://www.esa.int/Planck), an ESA science mission with instruments and contributions directly funded by ESA Member States, NASA, and Canada; SMICA CMB map (Planck 2015 release) and the PR4 lensing reconstruction (Carron, Mirmelstein and Lewis 2022). ACT DR5 SZ cluster catalogue (Hilton et al. 2021), via NASA LAMBDA. SN-like alerts from the Fink broker tag most_likely_sn, from the NSF–DOE Vera C. Rubin Observatory alert stream.</p>
 </footer>
 
 <div id="tip" class="tip" role="tooltip" hidden></div>

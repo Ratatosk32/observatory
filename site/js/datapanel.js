@@ -1,5 +1,5 @@
 import { $, MON, fmtN, fmtDate, fmtShort } from './kit.js';
-import { persistOnce } from './net.js';
+import { persistOnce, openStore } from './net.js';
 import { resetStore as resetAsteroids } from './sync.js';
 import { resetStore as resetStars } from './starsync.js';
 
@@ -44,6 +44,7 @@ export function refresh(p) {
   $('#optRefreshTxt').textContent = P.refreshText;
   $('#optRefreshN').textContent = P.refreshHint();
   $('#optExtraTxt').textContent = P.extraText;
+  $('#optExtra').closest('label').hidden = !P.extraText;
   $('#optExtra').setAttribute('aria-label', P.extraAria);
   $('#dataNote').textContent = P.note;
   $('#doReset').textContent = `Reset ${P.short} to bundled data`;
@@ -86,7 +87,7 @@ $('#doUpdate').addEventListener('click', async () => {
       onMerge: () => { txt.textContent = 'Merging…'; },
     });
     const after = P.counts();
-    txt.textContent = `Done: ${signed(after.nunit - before.nunit)} ${P.unit}, ${signed(after.nobj - before.nobj)} ${P.noun}${P.doneExtra ? P.doneExtra(info) : ''}, ${fmtN(info.nights)} nights of statistics${info.failed ? `, ${info.failed} requests failed after retries` : ''}.`;
+    txt.textContent = `Done: ${signed(after.nunit - before.nunit)} ${P.unit}, ${signed(after.nobj - before.nobj)} ${P.noun}${P.doneExtra ? P.doneExtra(info) : ''}${info.nights ? `, ${fmtN(info.nights)} nights of statistics` : ''}${info.failed ? `, ${info.failed} requests failed after retries` : ''}.`;
   } catch (e) {
     txt.textContent = e.name === 'AbortError' ? 'Cancelled. Rows already fetched are kept and merged next time.' : `Update failed: ${e.message || e}. The data on the page is unchanged.`;
   } finally {
@@ -106,5 +107,6 @@ $('#doReset').addEventListener('click', async () => {
 $('#doResetAll').addEventListener('click', async () => {
   await resetAsteroids().catch(() => null);
   await resetStars().catch(() => null);
+  await openStore('observatory-dm', ['points', 'meta']).clearAll().catch(() => null);
   location.reload();
 });
