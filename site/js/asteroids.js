@@ -4,6 +4,7 @@ import {
   fullscreenPanel, onTheme, loadJson, withTokensOf,
 } from './kit.js';
 import { createSync } from './sync.js';
+import { register as registerData, refresh as refreshData, fmtBytes } from './datapanel.js';
 
 const R = await loadJson('data/asteroids.json?v=2026-11-22');
 const sync = createSync(R);
@@ -1077,78 +1078,35 @@ async function showCutouts(o) {
 }
 const STAMP_CAP = $('#stampCap').innerHTML, STAMP_BODY = $('#stampBody').innerHTML;
 
-const dataBtn = $('#dataBtn'), dataPanel = $('#dataPanel');
-let syncCtl = null, lastInfo = null;
-const fmtWhen = (ms) => { const d = new Date(ms); return `${d.getDate()} ${MON[d.getMonth()]} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
-const fmtBytes = (b) => b == null ? 'unknown' : b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round(b / 1e3) + ' kB';
-function dataLabel() {
-  const B = sync.BUNDLED;
-  const plus = META.ndet - B.ndet;
-  if (lastInfo && lastInfo.at) {
-    $('#dataLbl').textContent = `Updated · ${plus >= 0 ? '+' : ''}${fmtN(plus)}`;
-    dataBtn.title = `Data updated ${fmtWhen(lastInfo.at)}: ${plus >= 0 ? '+' : ''}${fmtN(plus)} detections. Click for details and updates.`;
-    dataBtn.classList.add('fresh');
-    $('#dataStatus').innerHTML = `Updated <b>${fmtWhen(lastInfo.at)}</b>: ${fmtN(META.nobj)} asteroids (${fmtN(META.nobj - B.nobj)} new), ${fmtN(META.ndet)} detections (+${fmtN(plus)}), data up to <b>${fmtDate(META.tmax)}</b>.`;
-  } else {
-    $('#dataLbl').textContent = `Data · ${fmtShort(META.tmax)}`;
-    dataBtn.title = `Data: bundled snapshot up to ${fmtDate(META.tmax)}. Click for details and updates.`;
-    dataBtn.classList.remove('fresh');
-    $('#dataStatus').innerHTML = `Bundled snapshot: ${fmtN(META.nobj)} asteroids, ${fmtN(META.ndet)} detections, up to <b>${fmtDate(META.tmax)}</b>.`;
-  }
-  $('#optRefreshN').textContent = `(${fmtN(META.nobj)}, about ${Math.ceil(META.nobj / 50)} requests)`;
-}
-async function storeLabel() {
-  const st = await sync.storageInfo();
-  $('#storeTxt').textContent = `Stored in this browser: ${fmtN(st.rows)} detections, ${st.stamps} stamp set${st.stamps === 1 ? '' : 's'}, ${fmtBytes(st.usage)} used.`;
-}
-function openData(v) {
-  dataPanel.hidden = !v; dataBtn.setAttribute('aria-expanded', String(v));
-  if (v) { dataLabel(); storeLabel(); $('#doUpdate').focus(); }
-}
-dataBtn.addEventListener('click', () => openData(dataPanel.hidden));
-$('#dataClose').addEventListener('click', () => { openData(false); dataBtn.focus(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !dataPanel.hidden && !syncCtl) { openData(false); dataBtn.focus(); } });
-document.addEventListener('click', (e) => { if (!dataPanel.hidden && !syncCtl && !e.target.closest('#dataPanel, #dataBtn')) openData(false); });
-$('#doUpdate').addEventListener('click', async () => {
-  const S = sync;
-  syncCtl = new AbortController();
-  $('#doUpdate').disabled = true; $('#doCancel').hidden = false; $('#prog').hidden = false; $('#doReset').disabled = true;
-  const bar = $('#progBar'), txt = $('#progTxt');
-  S.persistOnce();
-  try {
-    const before = META.ndet, beforeN = META.nobj;
-    const info = await S.update({
-      refresh: $('#optRefresh').checked, extra: +$('#optExtra').value, signal: syncCtl.signal,
-      onProgress: (p) => {
-        const frac = p.batches ? p.done / p.batches : 0;
-        bar.style.width = (5 + 95 * frac).toFixed(1) + '%';
-        txt.textContent = `${p.msg}${p.batches ? ` · request ${p.done} of ${p.batches}` : ''} · ${fmtN(p.rows)} rows${p.failed ? ` · ${p.failed} failed (kept going)` : ''}`;
-      },
-    });
-    txt.textContent = 'Merging…';
-    await S.loadStored();
+let lastInfo = null;
+const dataProvider = {
+  title: 'Asteroid data', short: 'asteroids', noun: 'asteroids', unit: 'detections', bundled: { nobj: sync.BUNDLED.nobj, nunit: sync.BUNDLED.ndet, tmax: sync.BUNDLED.tmax },
+  counts: () => ({ nobj: META.nobj, nunit: META.ndet, tmax: META.tmax }),
+  info: () => lastInfo,
+  refreshText: 'Refresh the asteroids already here',
+  refreshHint: () => `(${fmtN(META.nobj)}, about ${Math.ceil(META.nobj / 50)} requests)`,
+  extraText: 'Add new asteroids, most recently seen first', extraAria: 'Number of new asteroids',
+  note: 'Also fetches the newest nightly statistics. Requests go straight to api.lsst.fink-portal.org: 50 asteroids per request, 3 at a time, with retries. Everything is kept in this browser (IndexedDB); the bundled data is never changed.',
+  async update(opts) {
+    const info = await sync.update(opts);
+    opts.onMerge();
+    await sync.loadStored();
     rebuild();
     lastInfo = info;
-    txt.textContent = `Done: +${fmtN(META.ndet - before)} detections, +${fmtN(META.nobj - beforeN)} asteroids, ${info.nights} nights of statistics${info.failed ? `, ${info.failed} requests failed after retries` : ''}.`;
-  } catch (e) {
-    txt.textContent = e.name === 'AbortError' ? 'Cancelled. Rows already fetched are kept and merged next time.' : `Update failed: ${e.message || e}. The data on the page is unchanged.`;
-  } finally {
-    syncCtl = null;
-    $('#doUpdate').disabled = false; $('#doCancel').hidden = true; $('#doReset').disabled = false;
-    bar.style.width = '100%';
-    dataLabel(); storeLabel();
-  }
-});
-$('#doCancel').addEventListener('click', () => { if (syncCtl) syncCtl.abort(); });
-$('#doReset').addEventListener('click', async () => {
-  await sync.reset().catch(() => null);
-  location.reload();
-});
+    return info;
+  },
+  async storage() {
+    const st = await sync.storageInfo();
+    return `Stored in this browser for asteroids: ${fmtN(st.rows)} detections, ${st.stamps} stamp set${st.stamps === 1 ? '' : 's'}, ${fmtBytes(st.usage)} used in all.`;
+  },
+  reset: () => sync.reset(),
+};
+registerData('asteroids', dataProvider);
 sync.ready.then((res) => {
   lastInfo = res && res.info;
   if (res && res.stats && (res.stats.added || res.stats.newObjs)) rebuild();
   else if (res && res.stats) { metaText(); redrawAll(); }
-  dataLabel();
+  refreshData(dataProvider);
 });
 
 document.addEventListener('keydown', (e) => {
@@ -1173,7 +1131,7 @@ export function start(params) {
   setZoom(3.9);
   syncTime();
   metaText();
-  dataLabel();
+  refreshData(dataProvider);
   if (params.get('sel')) { const o = byName.get(norm(params.get('sel'))); if (o) select(o, { zoom: true }); }
 }
 export function show(params) {

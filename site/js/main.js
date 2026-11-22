@@ -1,4 +1,5 @@
 import { $, esc, ns, shell, setUrl, initTheme, applyTheme, sketchify, panelControls, fullscreenPanel, exitFs } from './kit.js';
+import { activate as activateData } from './datapanel.js';
 
 const sIn = $('#search'), sBox = $('#searchbox'), sList = $('#sugg'), sClear = $('#clear');
 let provider = { items: () => [], empty: '' };
@@ -78,17 +79,19 @@ async function setMode(m, opts = {}) {
   if (fullscreenPanel()) exitFs();
   if (m === 'stars') {
     asteroids.hide();
+    activateData('stars');
     setUrl({ mode: 'stars', sel: null });
     $('#starsLoading').hidden = false;
     try {
       const stars = await loadStars();
       $('#starsLoading').hidden = true;
-      if (mode === 'stars') stars.api.enter(opts.obj);
+      if (mode === 'stars') { activateData('stars'); stars.api.enter(opts.obj); }
     } catch (e) {
       $('#starsLoading').textContent = 'Could not load the stars data: ' + e.message;
     }
   } else {
     if (starsModule) (await starsModule).api.leave();
+    activateData('asteroids');
     shell.setSearch(asteroids.provider, `Search ${asteroids.count()} asteroids, e.g. 2026 CZ10`);
     asteroids.show(opts.params);
   }

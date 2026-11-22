@@ -1,12 +1,17 @@
 import * as K from './kit.js';
+import { createStarSync, QUERIES } from './starsync.js';
+import { register as registerData, refresh as refreshData, fmtBytes } from './datapanel.js';
 
 const S = await K.loadJson('data/stars.json?v=2026-11-22');
+const sync = createStarSync(S);
+let lastInfo = (await sync.loadStored()).info;
 const { $, pencilLine, pencilCircle, hatch, text, annotate, setupCanvas, fmtN, MON, clamp, esc } = K;
 const reduceMotion = K.reduceMotion;
 const DEG = Math.PI / 180;
 const OFF = S.meta.mjdOffset;
 const BANDS = S.meta.bands;
-const Ob = S.objects, N = Ob.id.length, AL = S.alerts, NA = AL.t.length;
+const Ob = S.objects, AL = S.alerts;
+let N = 0, NA = 0;
 const FAM = S.meta.families, FKEY = FAM.map((f) => f.key);
 const METHODS = S.meta.distMethods;
 const C = () => K.C;
@@ -23,7 +28,6 @@ const GROUPS = [
   { key: 'unk', label: 'Unclassified', fams: ['unk'], tok: '--ink3' },
 ];
 const famGroup = FKEY.map((k) => GROUPS.findIndex((g) => g.fams.includes(k)));
-const grp = Uint8Array.from(Ob.fam, (f) => famGroup[f]);
 let gcol = [];
 function readColors() {
   const cs = getComputedStyle(document.documentElement);
@@ -42,19 +46,30 @@ function hammer(l, b) {
   const phi = b * DEG, den = Math.sqrt(1 + Math.cos(phi) * Math.cos(lam / 2));
   return [2 * Math.SQRT2 * Math.cos(phi) * Math.sin(lam / 2) / den, Math.SQRT2 * Math.sin(phi) / den];
 }
-const pU = new Float32Array(N), pV = new Float32Array(N);
-for (let i = 0; i < N; i++) { const [x, y] = hammer(Ob.l[i], Ob.b[i]); pU[i] = x; pV[i] = y; }
 const decode = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 const MW = S.milkyWay, mwD = decode(MW.density);
 const HR = S.hrDiagram, hrC = decode(HR.counts);
 
-const nights = S.nights.map((n) => ({ ...n, t: n.mjd - OFF }));
-const T0 = nights[0].t, T1 = nights[nights.length - 1].t + 1;
-const gaps = [];
-for (let i = 1; i < nights.length; i++) if (nights[i].t - nights[i - 1].t > 1.5) gaps.push([nights[i - 1].t + 1, nights[i].t]);
+let grp, pU, pV, nights, T0, T1, gaps, byT0, t0Sorted, vis, sx, sy, qx, qy, jit, lx, ly;
+function derive() {
+  N = Ob.id.length; NA = AL.t.length;
+  grp = Uint8Array.from(Ob.fam, (f) => famGroup[f]);
+  pU = new Float32Array(N); pV = new Float32Array(N);
+  for (let i = 0; i < N; i++) { const [x, y] = hammer(Ob.l[i], Ob.b[i]); pU[i] = x; pV[i] = y; }
+  nights = S.nights.map((n) => ({ ...n, t: n.mjd - OFF }));
+  T0 = nights[0].t; T1 = nights[nights.length - 1].t + 1;
+  gaps = [];
+  for (let i = 1; i < nights.length; i++) if (nights[i].t - nights[i - 1].t > 1.5) gaps.push([nights[i - 1].t + 1, nights[i].t]);
+  byT0 = Array.from({ length: N }, (_, i) => i).sort((a, b) => Ob.t0[a] - Ob.t0[b]);
+  t0Sorted = Float64Array.from(byT0, (i) => Ob.t0[i]);
+  vis = new Uint8Array(N);
+  sx = new Float32Array(N); sy = new Float32Array(N); qx = new Float32Array(N); qy = new Float32Array(N);
+  jit = new Float32Array(N);
+  for (let i = 0; i < N; i++) { let h = 0; const id = Ob.id[i]; for (let k = id.length - 6; k < id.length; k++) h = (h * 31 + id.charCodeAt(k)) % 1000; jit[i] = h / 1000; }
+  lx = new Float32Array(N); ly = new Float32Array(N);
+}
+derive();
 const inGap = (t) => gaps.find((g) => t >= g[0] && t < g[1]);
-const byT0 = Array.from({ length: N }, (_, i) => i).sort((a, b) => Ob.t0[a] - Ob.t0[b]);
-const t0Sorted = Float64Array.from(byT0, (i) => Ob.t0[i]);
 const lb = (arr, x) => { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < x) lo = m + 1; else hi = m; } return lo; };
 const featuredBy = new Map(S.featured.map((f) => [f.o, f]));
 const nameOf = (i) => Ob.name[i] || 'Rubin object …' + Ob.id[i].slice(-6);
@@ -69,7 +84,6 @@ const st = {
   t: Math.min(T1, Math.max(T0, Ob.t1.reduce((a, b) => Math.max(a, b), -1e9))), playing: false, speed: 2, skip: true,
   sel: -1, hover: -1, groupsOn: new Set(GROUPS.map((_, i) => i)), pred: null, preset: 'all', lcMode: 'flux', tour: null,
 };
-const vis = new Uint8Array(N);
 function applyFilter() {
   for (let i = 0; i < N; i++) vis[i] = st.groupsOn.has(grp[i]) && (!st.pred || st.pred(i)) ? 1 : 0;
   emberN = -1; ladderKey = ''; hrKey = '';
@@ -96,7 +110,7 @@ function buildDom() {
         <button id="sPlay" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
         <div class="slider-wrap">
           <input id="sSlider" type="range" min="0" max="1000" step="0.01" aria-label="Date">
-          <div class="slider-scale" aria-hidden="true"><span>Oct 2025</span><span class="win">nights with data</span><span>Nov 2026</span></div>
+          <div class="slider-scale" aria-hidden="true"><span id="sScale0"></span><span class="win">nights with data</span><span id="sScale1"></span></div>
         </div>
         <output id="sDate" class="date"></output>
         <label class="speed"><span>Speed</span><select id="sSpeed" aria-label="Days per second"><option value="1">1 day/s</option><option value="2" selected>2 days/s</option><option value="5">5 days/s</option><option value="15">15 days/s</option></select></label>
@@ -475,7 +489,6 @@ function paintLantern(t) {
   lg.putImageData(im, 0, 0);
 }
 
-const sx = new Float32Array(N), sy = new Float32Array(N), qx = new Float32Array(N), qy = new Float32Array(N);
 let settleTimer = 0, gesturing = false;
 function viewChanged() {
   gesturing = true; emberN = -1;
@@ -656,9 +669,6 @@ function ladFrame(s) {
   const laneH = (s.h - LAD.top - LAD.bot) / GROUPS.length;
   return { R, pileX: R + 12, pileW, laneH, X: (pc) => LAD.L + Math.log10(pc) / 10 * (R - LAD.L), lane: (gi) => LAD.top + gi * laneH };
 }
-const jit = new Float32Array(N);
-for (let i = 0; i < N; i++) { let h = 0; const id = Ob.id[i]; for (let k = id.length - 6; k < id.length; k++) h = (h * 31 + id.charCodeAt(k)) % 1000; jit[i] = h / 1000; }
-const lx = new Float32Array(N), ly = new Float32Array(N);
 function drawLadder(s) {
   if (!s.w || !entered) return;
   const f = ladFrame(s);
@@ -688,7 +698,7 @@ function drawLadder(s) {
     let row = 0, lastX = -1e9;
     for (const lm of S.meta.landmarks) {
       const x = f.X(lm.pc);
-      g.font = '700 15px Caveat, cursive';
+      g.font = K.font(Math.round(15 * 0.7), 600);
       const w = g.measureText(lm.name).width;
       row = x - lastX < w / 2 + 34 ? (row + 1) % 3 : 0;
       const y = 16 + row * 14;
@@ -1195,19 +1205,33 @@ function build() {
   document.addEventListener('keydown', onKey);
   document.addEventListener('visibilitychange', () => { if (document.hidden && st.playing) { st.wasPlaying = true; setPlay(false); } else if (!document.hidden && st.wasPlaying) { st.wasPlaying = false; if (entered) setPlay(true); } });
   K.onTheme(() => { if (!entered) { skyKey = ''; return; } readColors(); makeSprites(); skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1; legend(); census(); renderCard(); redraw(); });
-  legend(); census();
+  legend(); census(); scaleText();
   built = true;
 }
 
 const STARS_TITLE = 'Rubin’s restless sky';
+const monthYear = (t) => `${MON[dateOf(t).getUTCMonth()]} ${dateOf(t).getUTCFullYear()}`;
+function headerText() {
+  $('#sub').textContent = `${fmtN(N)} objects · ${monthYear(T0)} – ${monthYear(T1 - 1)} · Fink + Gaia DR3`;
+  K.shell.setSearch({ items: searchItems, empty: 'No object in this sample matches. Try a TNS name (SN 2026…), a family or a Rubin ID.' }, `Search ${fmtN(N)} objects, e.g. SN or RR Lyrae`);
+}
+function scaleText() { $('#sScale0').textContent = monthYear(T0); $('#sScale1').textContent = monthYear(T1 - 1); }
+function rebuildData() {
+  derive();
+  applyFilter();
+  st.t = clamp(st.t, T0, T1);
+  skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1;
+  if (skyS) skyS.__w = 0;
+  if (built) { legend(); census(); scaleText(); }
+  if (entered) { headerText(); renderCard(); $('#sDate').textContent = fmtD(st.t); syncSlider(); redraw(); }
+}
 function enter(objId) {
   if (!built) build();
   entered = true;
   readColors(); makeSprites();
   skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1;
   $('h1').textContent = STARS_TITLE;
-  $('#sub').textContent = `${fmtN(N)} objects · ${MON[dateOf(T0).getUTCMonth()]} ${dateOf(T0).getUTCFullYear()} – ${MON[dateOf(T1 - 1).getUTCMonth()]} ${dateOf(T1 - 1).getUTCFullYear()} · Fink + Gaia DR3`;
-  K.shell.setSearch({ items: searchItems, empty: 'No object in this sample matches. Try a TNS name (SN 2026…), a family or a Rubin ID.' }, `Search ${fmtN(N)} objects, e.g. SN or RR Lyrae`);
+  headerText();
   if (objId) { const i = Ob.id.indexOf(objId); if (i >= 0) st.sel = i; }
   $('#sDate').textContent = fmtD(st.t);
   [skyS, ladS, ribS, hrS].forEach((s) => s.resize());
@@ -1237,4 +1261,29 @@ function zoomAnim(l, b, k, ms = 1200, done) {
   requestAnimationFrame(step);
 }
 export const api = (K.ns.stars = { enter, leave, zoomTo, zoomAnim, resetView, eq2gal, hammer, hooks, loadTiles, setPlay, redraw, renderCard, applyFilter, humanName, hookOf, fmtPer, fmtAgo, fmtPc, fmtD, nameOf, catOf, famLabel,
-  S, Ob, N, GROUPS, FKEY, grp, vis, get gcol() { return gcol; }, get sprites() { return sprites; }, get view() { return view; }, get skyS() { return skyS; }, get ribS() { return ribS; }, get lanGrid() { return lanGrid; }, invalidateSky: () => { skyKey = ''; emberN = -1; }, get entered() { return entered; }, get state() { return st; }, select, setT, runPreset, perf});
+  S, Ob, get N() { return N; }, GROUPS, FKEY, get grp() { return grp; }, get vis() { return vis; }, rebuildData, get gcol() { return gcol; }, get sprites() { return sprites; }, get view() { return view; }, get skyS() { return skyS; }, get ribS() { return ribS; }, get lanGrid() { return lanGrid; }, invalidateSky: () => { skyKey = ''; emberN = -1; }, get entered() { return entered; }, get state() { return st; }, select, setT, runPreset, perf});
+
+const dataProvider = {
+  title: 'Stars & beyond data', short: 'stars', noun: 'objects', unit: 'sample alerts', bundled: sync.BUNDLED,
+  counts: () => ({ nobj: N, nunit: NA, tmax: S.meta.mjdRange[1] }),
+  info: () => lastInfo,
+  refreshText: 'Check the objects already here for new alerts',
+  refreshHint: () => `(${fmtN(N)}, about ${Math.ceil(N / 100)} requests, then one per 20 changed objects)`,
+  extraText: 'Add new objects, most recently seen first', extraAria: 'Number of new objects',
+  note: `Also fetches the newest nightly statistics for the ribbon. New objects come from the same ${QUERIES.tags} Fink tag and ${QUERIES.classes} catalogue-class queries the build script uses, with Fink’s per-object summary; their distances come only from TNS redshifts and host galaxies (no Gaia lookup). Requests go straight to api.lsst.fink-portal.org, 3 at a time, with retries. Everything is kept in this browser (IndexedDB), apart from the asteroids; the bundled data is never changed.`,
+  doneExtra: (info) => info.changed ? `, ${fmtN(info.changed)} objects had new alerts` : '',
+  async update(opts) {
+    const info = await sync.update(opts);
+    opts.onMerge();
+    await sync.loadStored();
+    rebuildData();
+    lastInfo = info;
+    return info;
+  },
+  async storage() {
+    const st = await sync.storageInfo();
+    return `Stored in this browser for stars: ${fmtN(st.rows)} alert points, ${fmtN(st.objects)} object summaries, ${fmtBytes(st.usage)} used in all.`;
+  },
+  reset: () => sync.reset(),
+};
+registerData('stars', dataProvider);

@@ -1,9 +1,12 @@
+import { openStore, post, pool, monthsSince, storageUsage, persistOnce, CONCURRENCY } from './net.js';
+
+const idb = openStore('rubin-viz', ['rows', 'nights', 'meta', 'stamps']);
+export const resetStore = () => idb.clearAll();
+
 export function createSync(R) {
 
-const API = 'https://api.lsst.fink-portal.org/api/v1/';
 const SSO_COLS = 'r:designation,r:midpointMjdTai,r:band,r:ra,r:dec,r:helio_x,r:helio_y,r:helio_z,r:helio_vx,r:helio_vy,r:helio_vz,r:topoRange,r:psfFlux,r:psfFluxErr,r:diaSourceId';
 const BATCH = 50;
-const CONCURRENCY = 3;
 const MJD_OFF = 60000;
 const AU_KM = 149597870.7;
 const K2 = 0.01720209895 ** 2;
@@ -11,95 +14,6 @@ const EPS = 23.439281 * Math.PI / 180;
 const BANDS = 'ugrizy';
 const G_FIXED = 0.15;
 const DEG = 180 / Math.PI;
-
-const idb = (() => {
-  let dbp = null;
-  const open = () => {
-    if (dbp) return dbp;
-    dbp = new Promise((res) => {
-      try {
-        const rq = indexedDB.open('rubin-viz', 1);
-        rq.onupgradeneeded = () => {
-          const db = rq.result;
-          for (const st of ['rows', 'nights', 'meta', 'stamps']) if (!db.objectStoreNames.contains(st)) db.createObjectStore(st);
-        };
-        rq.onsuccess = () => res(rq.result);
-        rq.onerror = () => res(null);
-        rq.onblocked = () => res(null);
-      } catch (e) { res(null); }
-    });
-    return dbp;
-  };
-  const run = async (store, mode, fn) => {
-    const db = await open();
-    if (!db) throw new Error('IndexedDB is not available');
-    return new Promise((res, rej) => {
-      const tx = db.transaction(store, mode), st = tx.objectStore(store);
-      let out;
-      try { out = fn(st); } catch (e) { rej(e); return; }
-      tx.oncomplete = () => res(out && 'result' in out ? out.result : out);
-      tx.onerror = () => rej(tx.error);
-      tx.onabort = () => rej(tx.error || new Error('aborted'));
-    });
-  };
-  return {
-    available: async () => !!(await open()),
-    get: (store, key) => run(store, 'readonly', (st) => st.get(key)),
-    getAll: (store) => run(store, 'readonly', (st) => st.getAll()),
-    count: (store) => run(store, 'readonly', (st) => st.count()),
-    put: (store, key, val) => run(store, 'readwrite', (st) => { st.put(val, key); }),
-    putMany: (store, entries) => run(store, 'readwrite', (st) => { for (const [k, v] of entries) st.put(v, k); }),
-    clear: (store) => run(store, 'readwrite', (st) => { st.clear(); }),
-  };
-})();
-
-const sleep = (ms, signal) => new Promise((res, rej) => {
-  const t = setTimeout(res, ms);
-  if (signal) signal.addEventListener('abort', () => { clearTimeout(t); rej(new DOMException('Aborted', 'AbortError')); }, { once: true });
-});
-
-async function post(endpoint, body, { signal, timeout = 90000, retries = 3, as = 'json' } = {}) {
-  let last;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
-    const ctl = new AbortController();
-    const onAbort = () => ctl.abort();
-    if (signal) signal.addEventListener('abort', onAbort, { once: true });
-    const timer = setTimeout(() => ctl.abort(), timeout);
-    try {
-      const r = await fetch(API + endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      if (as === 'blob') {
-        const b = await r.blob();
-        if (!b.type.startsWith('image/')) throw new Error('not an image');
-        return b;
-      }
-      const txt = await r.text();
-      if (txt.trimStart().startsWith('<')) throw new Error('HTML error page');
-      return JSON.parse(txt.replace(/"r:diaSourceId":\s*(\d+)/g, '"r:diaSourceId":"$1"'));
-    } catch (e) {
-      if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
-      last = e;
-      if (attempt < retries) await sleep([2000, 5000, 12000][attempt] || 15000, signal);
-    } finally {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener('abort', onAbort);
-    }
-  }
-  throw last;
-}
-
-async function pool(tasks, n, signal) {
-  let i = 0;
-  const worker = async () => {
-    while (i < tasks.length) {
-      if (signal.aborted) return;
-      const k = i++;
-      await tasks[k]();
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(n, tasks.length) }, worker));
-}
 
 function eq2ecl(x, y, z) { return [x, y * Math.cos(EPS) + z * Math.sin(EPS), -y * Math.sin(EPS) + z * Math.cos(EPS)]; }
 function unit(ra, dec) { const r = ra / DEG, d = dec / DEG; return [Math.cos(d) * Math.cos(r), Math.cos(d) * Math.sin(r), Math.sin(d)]; }
@@ -291,13 +205,6 @@ async function fetchNames(signal) {
   return Array.isArray(out) ? out : [];
 }
 
-function monthsSince(night) {
-  const y0 = Math.floor(night / 10000), m0 = Math.floor(night / 100) % 100;
-  const now = new Date(), out = [];
-  for (let y = y0, m = m0; y < now.getUTCFullYear() || (y === now.getUTCFullYear() && m <= now.getUTCMonth() + 1); m === 12 ? (y++, m = 1) : m++) out.push(`${y}${String(m).padStart(2, '0')}`);
-  return out;
-}
-
 async function update({ refresh = true, extra = 0, onProgress = () => {}, signal }) {
   const report = { batches: 0, done: 0, failed: 0, rows: 0, nights: 0, names: 0 };
   const progress = (msg) => onProgress({ ...report, msg });
@@ -350,22 +257,9 @@ async function update({ refresh = true, extra = 0, onProgress = () => {}, signal
 }
 
 async function storageInfo() {
-  const out = { rows: 0, stamps: 0, usage: null };
+  const out = { rows: 0, stamps: 0, usage: await storageUsage() };
   try { out.rows = await idb.count('rows'); out.stamps = await idb.count('stamps'); } catch {}
-  try { if (navigator.storage && navigator.storage.estimate) out.usage = (await navigator.storage.estimate()).usage; } catch {}
   return out;
-}
-
-async function persistOnce() {
-  try {
-    if (localStorage.getItem('rubin-persist-asked')) return;
-    localStorage.setItem('rubin-persist-asked', '1');
-  } catch {}
-  try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch {}
-}
-
-async function reset() {
-  for (const st of ['rows', 'nights', 'meta', 'stamps']) await idb.clear(st);
 }
 
 async function cutouts(name, signal) {
@@ -385,5 +279,5 @@ async function cutouts(name, signal) {
   return rec;
 }
 
-return { loadStored, update, storageInfo, persistOnce, reset, cutouts, BUNDLED, ready: loadStored() };
+return { loadStored, update, storageInfo, persistOnce, reset: resetStore, cutouts, BUNDLED, ready: loadStored() };
 }

@@ -3,7 +3,7 @@ import { api as R, ext } from './stars.js';
 
 const { $, text, annotate, pencilLine, setupCanvas, fmtN, clamp, esc } = K;
 const C = () => K.C;
-const S = R.S, Ob = R.Ob, N = R.N, ST = S.stories, OFF = S.meta.mjdOffset;
+const S = R.S, Ob = R.Ob, ST = S.stories, OFF = S.meta.mjdOffset;
 const BANDS = S.meta.bands;
 const DEG = Math.PI / 180;
 const reduceMotion = K.reduceMotion;
@@ -283,7 +283,7 @@ function drawClock(cv, pins, opts = {}) {
 
 function makeHalo(cv, opts) {
   const pts = [];
-  for (let i = 0; i < N; i++) { const gc = Ob.gc && Ob.gc[i]; if (gc) pts.push({ i, x: gc[0], y: gc[1], z: gc[2], r: Math.hypot(gc[0], gc[1], gc[2]), rr: R.FKEY[Ob.fam[i]] === 'rrlyr' }); }
+  for (let i = 0; i < R.N; i++) { const gc = Ob.gc && Ob.gc[i]; if (gc) pts.push({ i, x: gc[0], y: gc[1], z: gc[2], r: Math.hypot(gc[0], gc[1], gc[2]), rr: R.FKEY[Ob.fam[i]] === 'rrlyr' }); }
   const radii = pts.map((p) => p.r).sort((a, b) => a - b);
   const fitR = opts.spheres ? 640 : Math.max(20, radii[Math.floor(radii.length * 0.97)] || 60) * 1.05;
   const h = { yaw: opts.yaw != null ? opts.yaw : -0.9, pitch: opts.pitch != null ? opts.pitch : 0.38, vy: 0, vp: 0, zoom: 1, spheres: !!opts.spheres, hover: -1, auto: !reduceMotion, D: fitR * 4.5 };
@@ -430,7 +430,7 @@ function drawHorizon(cv) {
       g.fillStyle = C().gold; g.fillRect(X(single) - 1, y - 7, 2, 14);
       if (quasar) text(g, 'in practice z ~ 6–7 in the reddest filters', X(single) + 6, y + 4, { size: 10.5, color: C().ink3 });
       g.fillStyle = C().ink;
-      for (let i = 0; i < N; i++) { if (Ob.dist[i] == null || Ob.distMethod[i] < 0 || !kindFams[r](i)) continue; g.globalAlpha = 0.7; g.beginPath(); g.arc(X(Ob.dist[i]), y + ((i * 7.3) % 1 - 0.5) * 6, 1.8, 0, 6.283); g.fill(); }
+      for (let i = 0; i < R.N; i++) { if (Ob.dist[i] == null || Ob.distMethod[i] < 0 || !kindFams[r](i)) continue; g.globalAlpha = 0.7; g.beginPath(); g.arc(X(Ob.dist[i]), y + ((i * 7.3) % 1 - 0.5) * 6, 1.8, 0, 6.283); g.fill(); }
       g.globalAlpha = 1;
     });
     text(g, 'bar: how far a single Rubin visit (m = 24.5) sees it; pale: a deep-field night (26.0); dots: this sample', L, s.h - 3, { size: 10.5, color: C().ink3 });
@@ -441,7 +441,7 @@ function coreSample(cv, reasonIdx, named) {
   return setupCanvas(cv, (s) => {
     if (!s.w) return;
     const g = s.ctx; g.clearRect(0, 0, s.w, s.h);
-    const objs = []; for (let i = 0; i < N; i++) if (Ob.reason[i] === reasonIdx) objs.push(i);
+    const objs = []; for (let i = 0; i < R.N; i++) if (Ob.reason[i] === reasonIdx) objs.push(i);
     const withD = objs.filter((i) => Ob.dist[i] != null && Ob.distMethod[i] >= 0);
     const ra = objs.map((i) => Ob.ra[i]), de = objs.map((i) => Ob.dec[i]);
     const r0 = pct(ra, 0.5), d0 = pct(de, 0.5), span = 3.2;
@@ -682,9 +682,9 @@ const BEATS = {
     } },
   ],
 };
-function countReason(r, withD) { let n = 0; for (let i = 0; i < N; i++) if (Ob.reason[i] === r && (!withD || (Ob.dist[i] != null && Ob.distMethod[i] >= 0))) n++; return n; }
-function countBeforeSun() { let n = 0; for (let i = 0; i < N; i++) if ((Ob.zSrc[i] === 'tns' || Ob.zSrc[i] === 'sdss') && Ob.lookbackGyr[i] > 4.57) n++; return n; }
-function countQsoSn() { let n = 0; for (let i = 0; i < N; i++) if (Ob.sdssClass[i] === 'QSO' && R.FKEY[Ob.fam[i]] === 'sncand') n++; return n; }
+function countReason(r, withD) { let n = 0; for (let i = 0; i < R.N; i++) if (Ob.reason[i] === r && (!withD || (Ob.dist[i] != null && Ob.distMethod[i] >= 0))) n++; return n; }
+function countBeforeSun() { let n = 0; for (let i = 0; i < R.N; i++) if ((Ob.zSrc[i] === 'tns' || Ob.zSrc[i] === 'sdss') && Ob.lookbackGyr[i] > 4.57) n++; return n; }
+function countQsoSn() { let n = 0; for (let i = 0; i < R.N; i++) if (Ob.sdssClass[i] === 'QSO' && R.FKEY[Ob.fam[i]] === 'sncand') n++; return n; }
 function hatchNorth(g, s, f) {
   const lg = R.lanGrid;
   if (!lg) return;
