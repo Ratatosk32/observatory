@@ -104,7 +104,7 @@ function buildDom() {
   <div class="stack">
     <section class="panel map-panel s-sky" aria-labelledby="h-sky">
       <div class="phead"><div class="pbar"><h2 id="h-sky">Where in the sky does something change?</h2></div>
-      <p class="cap">Gaia’s Milky Way in Galactic coordinates, centre in the middle. Each spark is one night on which an object in this sample changed; embers stay where something has changed so far. Clusters are deep drilling fields, where Rubin returns night after night.</p></div>
+      <p class="cap">Gaia’s Milky Way in Galactic coordinates, centre in the middle. Sparks: a night on which a sample object changed; embers stay.</p></div>
       <div class="map-wrap"><canvas id="sky" tabindex="0" aria-label="All-sky map in Galactic coordinates. Plus and minus zoom, 0 resets."></canvas>
         <div class="zoom"><button class="btn sm" type="button" id="zoomIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="zoomOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="zoomReset" hidden>Reset view</button></div></div>
       <div class="time">
@@ -116,7 +116,7 @@ function buildDom() {
         <output id="sDate" class="date"></output>
         <label class="speed"><span>Speed</span><select id="sSpeed" aria-label="Days per second"><option value="1">1 day/s</option><option value="2" selected>2 days/s</option><option value="5">5 days/s</option><option value="15">15 days/s</option></select></label>
       </div>
-      <p class="note">In this first season the sample’s alerts come mostly from high Galactic latitudes, looking out of the Milky Way: its stars are halo stars, and the plane and the Magellanic Clouds have almost no alerts here. The soft gold disc is the sky more than 30° above Cerro Pachón at local midnight (computed, not data); north of the gold dec +30° line Rubin cannot see. Gaps with no data are skipped while playing.</p>
+      <details class="about"><summary>About this view</summary><p>Embers stay where something has changed so far. Clusters are deep drilling fields, where Rubin returns night after night. In this first season the sample’s alerts come mostly from high Galactic latitudes, looking out of the Milky Way: its stars are halo stars, and the plane and the Magellanic Clouds have almost no alerts here. The soft gold disc is the sky more than 30° above Cerro Pachón at local midnight (computed, not data); north of the gold dec +30° line Rubin cannot see. Gaps with no data are skipped while playing.</p></details>
       <div class="legend" id="sLegend"></div>
       <div class="sky-tools"><button class="btn" type="button" id="dropBtn">Drop to distance</button></div>
     </section>
@@ -150,7 +150,6 @@ function buildDom() {
     <div id="sCardBody" aria-live="polite"></div>
   </aside>
 </main>`;
-  K.sketchify(root);
   K.panelControls(root);
 }
 
@@ -1203,7 +1202,7 @@ function census() {
   });
   const mx = Math.sqrt(Math.max(...rows.map((r) => r.n)));
   $('#census').innerHTML = rows.map((r) => {
-    const w = (v) => (Math.sqrt(v) / mx * 85).toFixed(1) + '%';
+    const w = (v) => (Math.sqrt(v) / mx * 78).toFixed(1) + "%";
     return `<button type="button" class="nm${st.preset === 'fam-' + r.fi ? ' on' : ''}" data-f="${r.fi}" title="${esc(r.fm.blurb)}">${esc(r.fm.label)}</button>
       <div class="bar"><span class="tot" style="width:${w(r.n)};background:${gcol[famGroup[r.fi]]}"></span><span class="n" style="left:calc(${w(r.n)} + 8px)">${fmtN(r.n)}</span>
       <span class="ov" style="top:13px;width:${w(r.lc)}"></span><span class="ov" style="top:15.5px;width:${w(r.di)};opacity:.55"></span><span class="ov" style="top:18px;width:${w(r.pe)};opacity:.3"></span></div>`;

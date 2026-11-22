@@ -1,4 +1,4 @@
-import { $, esc, ns, shell, setUrl, initTheme, applyTheme, sketchify, panelControls, fullscreenPanel, exitFs } from './kit.js';
+import { $, esc, ns, shell, setUrl, initTheme, applyTheme, panelControls, fullscreenPanel, exitFs } from './kit.js';
 import { activate as activateData } from './datapanel.js';
 
 const sIn = $('#search'), sBox = $('#searchbox'), sList = $('#sugg'), sClear = $('#clear');
@@ -53,7 +53,6 @@ sClear.addEventListener('click', () => { sIn.value = ''; sClear.hidden = true; s
 shell.setSearch = (p, placeholder) => { provider = p; sIn.placeholder = placeholder; };
 
 initTheme();
-sketchify();
 panelControls();
 
 const params = new URLSearchParams(location.search);

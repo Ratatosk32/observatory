@@ -721,7 +721,6 @@ function buildUi() {
       <div id="slotRib"></div>
     </div>
   </div>`);
-  K.sketchify($('#storyView'));
   K.panelControls($('#storyView'));
   $('#chapters').querySelectorAll('[data-c]').forEach((b) => b.addEventListener('click', () => (b.dataset.c === 'free' ? exitStory() : openChapter(b.dataset.c))));
   $('#bNext').addEventListener('click', () => go(beat + 1));

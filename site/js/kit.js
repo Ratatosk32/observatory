@@ -30,7 +30,7 @@ function tokensFrom(cs) {
   const g = (n) => cs.getPropertyValue(n).trim();
   const t = {
     bg: g('--paper'), paper: g('--paper'), line: g('--line'), grid: g('--grid'), ink: g('--ink'), ink2: g('--ink2'), ink3: g('--ink3'),
-    graphite: g('--graphite'), gold: g('--gold'), goldSoft: g('--gold-soft'), frame: g('--frame'), accent: g('--accent'), accentSoft: g('--accent-soft'), hi: g('--hi'), sun: g('--sun'), sunrays: g('--sunrays'),
+    graphite: g('--graphite'), gold: g('--gold'), goldSoft: g('--gold-soft'), accent: g('--accent'), accentSoft: g('--accent-soft'), hi: g('--hi'), sun: g('--sun'), sunrays: g('--sunrays'),
     earth: g('--earth'), planet: g('--planet'),
     orbit: g('--orbit'), porbit: g('--porbit'), bar: g('--bar'), bar2: g('--bar2'), det: g('--det'),
     cls: {}, band: {},
@@ -124,57 +124,6 @@ export function sketchBar(g, x, y, w, h, color, { fill = true } = {}) {
   if (fill) { g.fillStyle = hatch(g, color, 3.2, 52, 1.2); g.fillRect(x, y, w, h); }
   g.strokeStyle = color; g.lineWidth = 1;
   g.beginPath(); g.moveTo(x, y + h); g.lineTo(x + 0.3, y); g.lineTo(x + w - 0.2, y + 0.4); g.lineTo(x + w, y + h); g.stroke();
-}
-
-function roughRectPath(w, h, r, o) {
-  const j = () => (r() - 0.5) * 2 * o;
-  const side = (x1, y1, x2, y2) => {
-    const len = Math.hypot(x2 - x1, y2 - y1) || 1, over = Math.min(5, len * 0.012);
-    const ex = (x2 - x1) / len * over + j() * 0.4, ey = (y2 - y1) / len * over + j() * 0.4;
-    const mx = (x1 + x2) / 2 + j(), my = (y1 + y2) / 2 + j();
-    return `M${(x1 - ex + j()).toFixed(1)} ${(y1 - ey + j()).toFixed(1)} Q${mx.toFixed(1)} ${my.toFixed(1)} ${(x2 + ex + j()).toFixed(1)} ${(y2 + ey + j()).toFixed(1)}`;
-  };
-  return [side(0, 0, w, 0), side(w, 0, w, h), side(w, h, 0, h), side(0, h, 0, 0)].join(' ');
-}
-function frameSvg(w, h, seed, kind) {
-  const r = rng(seed);
-  const inset = 2.5, W = w - 2 * inset, H = h - 2 * inset;
-  const amp = kind === 'panel' ? 1.6 : 1.1;
-  const p1 = roughRectPath(W, H, r, amp), p2 = roughRectPath(W, H, r, amp);
-  const backing = kind === 'panel' ? '' : `<rect x="3" y="3" width="${w - 6}" height="${h - 6}" fill="var(--paper-deep)" opacity="0.7"/>`;
-  let lit = '';
-  if (kind !== 'panel') {
-    const lines = [];
-    for (let x = -H; x < W; x += 5) lines.push(`M${Math.max(0, x).toFixed(1)} ${(x < 0 ? -x : 0).toFixed(1)} L${Math.min(W, x + H).toFixed(1)} ${(x + H > W ? H - (x + H - W) : H).toFixed(1)}`);
-    lit = `<g class="lit"><clipPath id="c${seed}"><rect x="1" y="1" width="${W - 2}" height="${H - 2}"/></clipPath><path clip-path="url(#c${seed})" d="${lines.join(' ')}" stroke="var(--gold)" stroke-width="1.1" opacity="0.4" fill="none"/></g>`;
-  }
-  const sw = kind === 'panel' ? 1.2 : kind === 'accent' ? 1.5 : 1.1;
-  const stroke = kind === 'accent' ? 'var(--gold)' : 'var(--frame)';
-  return `${backing}<g transform="translate(${inset} ${inset})">${lit}<path class="stroke" d="${p1}" stroke="${stroke}" stroke-width="${sw}" fill="none" stroke-linecap="round"/><path class="stroke" d="${p2}" stroke="${stroke}" stroke-width="${sw * 0.7}" fill="none" opacity="0.45" stroke-linecap="round"/></g>`;
-}
-let frameSeed = 11;
-const frameRO = new ResizeObserver((entries) => {
-  for (const en of entries) {
-    const el = en.target, svg = el.__frame;
-    const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
-    if (!svg || (w === el.__fw && h === el.__fh) || !w || !h) continue;
-    el.__fw = w; el.__fh = h;
-    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-    svg.innerHTML = frameSvg(w, h, el.__seed, el.__kind);
-  }
-});
-export function sketchify(root = document) {
-  root.querySelectorAll('.panel').forEach((el) => {
-    if (el.__frame) return;
-    el.classList.add('sk');
-    for (const n of [...el.childNodes]) if (n.nodeType === 3 && n.textContent.trim()) { const sp = document.createElement('span'); n.replaceWith(sp); sp.appendChild(n); }
-    el.__seed = frameSeed++ * 7919;
-    el.__kind = el.classList.contains('panel') ? 'panel' : el.classList.contains('play') ? 'accent' : 'btn';
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'frame'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('preserveAspectRatio', 'none');
-    el.prepend(svg); el.__frame = svg;
-    frameRO.observe(el);
-  });
 }
 
 export function paperTile() {
