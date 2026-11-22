@@ -38,7 +38,8 @@ There are two modes on one page:
 - **Season ribbon:** Fink alerts per night by filter, as a scrubber.
 - **Distance ladder:** 1 pc to 10 Gpc, with the marker style showing how each distance was measured.
 - **Census:** objects per family, and how they were selected.
-- **HR diagram:** 1.34 M nearby Gaia stars behind the sample's stars that have a good parallax.
+- **HR diagram:** 1.34 M nearby Gaia stars as a density image tinted by colour, with approximate temperature and luminosity axes, the instability strip and the Sun, behind the sample's stars that have a good parallax. Zoom and pan like the sky.
+- **Live updates:** the same Data button checks the sample's objects for new alerts, can add new objects from the build script's Fink tag and class queries, and refreshes the nightly statistics. Stored in its own IndexedDB database; the bundled data is never changed.
 - **Stories:**
   1. a Type Ia supernova as a standard candle;
   2. a core sample through one deep field;
@@ -116,7 +117,9 @@ Refetching changes the numbers. Data versions are pinned with a `?v=` query in `
   - `kit.js`: tokens, the pencil drawing primitives, canvases, tooltips, panels, theme and URL helpers;
   - `main.js`: search, mode switching and start-up;
   - `asteroids.js`: the asteroid mode;
-  - `sync.js`: live updates from Fink into IndexedDB;
+  - `net.js`: the polite Fink client (retries, backoff, concurrency) and the IndexedDB wrapper;
+  - `sync.js` and `starsync.js`: live updates for each mode, kept in separate IndexedDB databases;
+  - `datapanel.js`: the shared Data dialog that both modes plug into;
   - `stars.js`: the sky, ladder, ribbon, census and HR diagram;
   - `story.js`: the stories and toys.
   
