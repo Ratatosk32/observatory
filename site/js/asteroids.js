@@ -79,7 +79,7 @@ function onSize(which) {
 }
 
 const spriteCache = new Map();
-const PLANET_R = { Mercury: 4.2, Venus: 6.2, Earth: 6.8, Mars: 5.2, Jupiter: 12, Saturn: 9.5 };
+const PLANET_R = { Mercury: 3.4, Venus: 5, Earth: 5.6, Mars: 4.4, Jupiter: 10, Saturn: 8 };
 const PLANET_LOOK = {
   Sun: ['--sun'], Mercury: ['#b8b2a7'], Venus: ['#e8d6a8'], Earth: ['#a8c8e0'], Mars: ['#e3a99a'], Jupiter: ['#e8c9a0'], Saturn: ['#ebddb0'],
 };
@@ -87,7 +87,7 @@ function planetSprite(name, rad, dpr) {
   const key = [name, rad, dpr, C.dark].join('|');
   let sp = spriteCache.get(key);
   if (sp) return sp;
-  const pad = name === 'Saturn' ? rad * 1.5 : name === 'Sun' ? rad * 1.6 : rad * 1.3 + 3;
+  const pad = name === 'Saturn' ? rad * 1.4 : name === 'Sun' ? rad * 2.4 : rad * 0.7 + 2;
   const size = Math.ceil((rad + pad) * 2 + 4);
   const c = document.createElement('canvas');
   c.width = c.height = Math.ceil(size * dpr);
@@ -97,15 +97,18 @@ function planetSprite(name, rad, dpr) {
   const col = name === 'Sun' ? '#f6d98b' : PLANET_LOOK[name][0];
   const ink = C.dark ? 'rgba(236, 230, 214, 0.85)' : '#4a4a4a';
   const glow = g.createRadialGradient(cx, cy, rad * 0.6, cx, cy, rad + pad);
-  glow.addColorStop(0, name === 'Sun' ? 'rgba(246, 217, 139, 0.55)' : col + (C.dark ? '66' : '33'));
-  glow.addColorStop(1, name === 'Sun' ? 'rgba(242, 184, 128, 0)' : col + '00');
+  glow.addColorStop(0, name === 'Sun' ? (C.dark ? 'rgba(246, 217, 139, 0.5)' : 'rgba(214, 160, 60, 0.35)') : col + (C.dark ? '3a' : '22'));
+  glow.addColorStop(name === 'Sun' ? 0.35 : 1, name === 'Sun' ? (C.dark ? 'rgba(246, 217, 139, 0.12)' : 'rgba(214, 160, 60, 0.08)') : col + '00');
+  if (name === 'Sun') glow.addColorStop(1, 'rgba(242, 184, 128, 0)');
   g.fillStyle = glow; g.beginPath(); g.arc(cx, cy, rad + pad, 0, 6.283); g.fill();
   if (name === 'Sun') {
     const r = rng(77);
-    for (let k = 0; k < 16; k++) {
-      const a = k / 16 * 6.283 + r() * 0.2, r1 = rad + 2, r2 = rad + 4 + r() * pad * 0.7;
-      g.strokeStyle = C.sunrays; g.lineWidth = 1.3; g.beginPath(); g.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); g.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2); g.stroke();
+    g.strokeStyle = C.sunrays; g.lineWidth = 0.7; g.lineCap = 'round';
+    for (let k = 0; k < 12; k++) {
+      const a = k / 12 * 6.283 + r() * 0.08, r1 = rad + 2.5, r2 = rad + 4 + (k % 2 ? 0.25 : 0.55) * pad;
+      g.globalAlpha = k % 2 ? 0.35 : 0.55; g.beginPath(); g.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); g.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2); g.stroke();
     }
+    g.globalAlpha = 1;
   }
   g.save(); g.beginPath(); g.arc(cx, cy, rad, 0, 6.283); g.clip();
   g.globalAlpha = 0.55; g.fillStyle = col; g.fillRect(0, 0, size, size); g.globalAlpha = 1;
@@ -120,7 +123,7 @@ function planetSprite(name, rad, dpr) {
     g.strokeStyle = ink; g.lineWidth = 0.9; g.beginPath(); g.arc(0, 0, rad * 2.1, 0, 6.283); g.stroke();
     g.restore();
   }
-  pencilCircle(g, cx, cy, rad, { color: ink, width: rad > 5 ? 1 : 0.8, wob: 0.05 });
+  g.strokeStyle = ink; g.lineWidth = 0.8; g.globalAlpha = name === 'Sun' ? 0.5 : 0.8; g.beginPath(); g.arc(cx, cy, rad, 0, 6.283); g.stroke(); g.globalAlpha = 1;
   sp = { c, size };
   spriteCache.set(key, sp);
   return sp;
@@ -310,7 +313,7 @@ function buildStatic(s) {
     ellipse((E) => {
       const xp = a * (Math.cos(E) - e), yp = b * Math.sin(E);
       return [(co * cO - so * sO * cI) * xp + (-so * cO - co * sO * cI) * yp, (co * sO + so * cO * cI) * xp + (-so * sO + co * cO * cI) * yp];
-    }, 160, seedOf(a, 3), 0.006, C.porbit, 1, 2);
+    }, 200, seedOf(a, 3), 0, C.porbit, 0.8, 1);
   }
   if (state.sel) {
     const o = state.sel;
@@ -332,6 +335,73 @@ function buildStatic(s) {
 }
 function niceAU(r) { return r < 2.5 ? 0.5 : r < 5 ? 1 : 2; }
 
+const litSet = new Set();
+let glowSprite = null;
+function glowFor() {
+  if (glowSprite && glowSprite.dark === C.dark) return glowSprite.c;
+  const c = document.createElement('canvas'); c.width = c.height = 48;
+  const x = c.getContext('2d'), gr = x.createRadialGradient(24, 24, 0, 24, 24, 24);
+  if (C.dark) { gr.addColorStop(0, 'rgba(255, 228, 190, 0.9)'); gr.addColorStop(0.25, 'rgba(242, 168, 120, 0.45)'); gr.addColorStop(1, 'rgba(242, 138, 118, 0)'); }
+  else { gr.addColorStop(0, 'rgba(176, 70, 24, 0.8)'); gr.addColorStop(0.3, 'rgba(194, 90, 40, 0.3)'); gr.addColorStop(1, 'rgba(194, 90, 40, 0)'); }
+  x.fillStyle = gr; x.fillRect(0, 0, 48, 48);
+  glowSprite = { c, dark: C.dark };
+  return c;
+}
+function drawLit(g, lit, sc) {
+  const sp = glowFor(), n = lit.size, a = clamp(60 / n, 0.12, 0.45), R = clamp(sc / 11, 4, 7), cr = clamp(sc / 48, 1, 1.5);
+  g.globalAlpha = a;
+  for (const k of lit) g.drawImage(sp, posX[k] - R, posY[k] - R, 2 * R, 2 * R);
+  g.globalAlpha = 1;
+  g.fillStyle = C.dark ? 'rgba(255, 238, 214, 0.95)' : 'rgba(120, 40, 10, 0.9)';
+  g.beginPath();
+  for (const k of lit) { g.moveTo(posX[k] + cr, posY[k]); g.arc(posX[k], posY[k], cr, 0, 6.2832); }
+  g.fill();
+}
+const FAN_BINS = 240;
+const fanCount = new Float32Array(FAN_BINS), fanDist = new Float32Array(FAN_BINS);
+function drawFan(g, ex, ey, i0, i1, sc, cx, cy) {
+  fanCount.fill(0); fanDist.fill(0);
+  for (let k = i0; k < i1; k++) {
+    const dx = cx + flat[k][1] * sc - ex, dy = cy - flat[k][2] * sc - ey;
+    const a = Math.atan2(dy, dx), bi = Math.floor((a + Math.PI) / (2 * Math.PI) * FAN_BINS) % FAN_BINS;
+    fanCount[bi]++; fanDist[bi] = Math.max(fanDist[bi], Math.hypot(dx, dy));
+  }
+  let mx = 0, md = 0;
+  for (let b = 0; b < FAN_BINS; b++) { mx = Math.max(mx, fanCount[b]); md = Math.max(md, fanDist[b]); }
+  if (!mx) return;
+  const gr = g.createRadialGradient(ex, ey, 0, ex, ey, md);
+  gr.addColorStop(0, C.dark ? 'rgba(242, 138, 118, 0.55)' : 'rgba(194, 65, 12, 0.4)');
+  gr.addColorStop(1, C.dark ? 'rgba(242, 138, 118, 0)' : 'rgba(194, 65, 12, 0)');
+  g.fillStyle = gr;
+  const w = 2 * Math.PI / FAN_BINS;
+  for (let b = 0; b < FAN_BINS; b++) {
+    if (!fanCount[b]) continue;
+    const a0 = -Math.PI + b * w;
+    g.globalAlpha = 0.03 + 0.55 * Math.sqrt(fanCount[b] / mx);
+    g.beginPath(); g.moveTo(ex, ey); g.arc(ex, ey, fanDist[b], a0, a0 + w); g.closePath(); g.fill();
+  }
+  g.globalAlpha = 1;
+}
+const ALWAYS_LABEL = new Set(['Earth', 'Mars', 'Jupiter', 'Saturn']);
+function planetLabels(g, s, discs) {
+  const placed = [];
+  const hit = (b) => placed.some((q) => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]) || discs.some(([x, y, r]) => b[0] < x + r && b[2] > x - r && b[1] < y + r && b[3] > y - r);
+  g.font = font(12.5, 500);
+  const crowd = state.viewR > 2.4;
+  for (const [x, y, r, p] of discs) {
+    if (!p) continue;
+    if (crowd && !ALWAYS_LABEL.has(p) && state.planetHover !== p) continue;
+    const w = g.measureText(p).width, gap = r + (p === 'Saturn' ? 10 : 4);
+    const cands = [[x + gap, y - 7, 'left', 0], [x - gap - w, y - 7, 'left', 0], [x - w / 2, y - r - 18, 'left', 0], [x - w / 2, y + r + 4, 'left', 0], [x + gap + 14, y - 26, 'left', 1], [x - gap - w - 14, y - 26, 'left', 1], [x + gap + 14, y + 14, 'left', 1]];
+    let pick = null;
+    for (const c of cands) { const b = [c[0] - 2, c[1] - 2, c[0] + w + 2, c[1] + 16]; if (b[0] < 2 || b[2] > s.w - 2 || b[1] < 2 || b[3] > s.h - 2) continue; if (!hit(b)) { pick = c; placed.push(b); break; } }
+    if (!pick) continue;
+    if (pick[3]) {
+      g.strokeStyle = C.ink3; g.lineWidth = 0.8; g.beginPath(); g.moveTo(x + Math.sign(pick[0] - x) * (r + 1), y); g.lineTo(pick[0] < x ? pick[0] + w : pick[0], pick[1] + 8); g.stroke();
+    }
+    text(g, p, pick[0], pick[1] + 11, { size: 12.5, weight: p === 'Earth' ? 600 : 500, color: p === 'Earth' ? C.ink : C.ink2, halo: true });
+  }
+}
 function drawMap(s) {
   if (!s.w) return;
   const t0 = performance.now();
@@ -347,10 +417,11 @@ function drawMap(s) {
 
   const win = 2;
   const i0 = lowerBound(flatT, state.t - win), i1 = lowerBound(flatT, state.t + win);
+  const lit = litSet;
+  lit.clear();
   if (i1 > i0) {
-    g.strokeStyle = C.det; g.globalAlpha = clamp(6 / (i1 - i0), 0.03, 0.25); g.lineWidth = 1; g.beginPath();
-    for (let k = i0; k < i1; k++) { g.moveTo(ex, ey); g.lineTo(cx + flat[k][1] * sc, cy - flat[k][2] * sc); }
-    g.stroke(); g.globalAlpha = 1;
+    for (let k = i0; k < i1; k++) lit.add(flat[k][3]);
+    drawFan(g, ex, ey, i0, i1, sc, cx, cy);
   }
 
   const filtered = !!state.filter;
@@ -377,24 +448,20 @@ function drawMap(s) {
     }
   }
   g.globalAlpha = 1;
-  if (i1 > i0) {
-    g.strokeStyle = C.det; g.lineWidth = 1.2; g.globalAlpha = 0.6; g.beginPath();
-    for (let k = i0; k < i1; k++) {
-      const x = cx + flat[k][1] * sc, y = cy - flat[k][2] * sc;
-      g.moveTo(x + 4, y); g.arc(x, y, 4, 0, 6.2832);
-    }
-    g.stroke(); g.globalAlpha = 1;
-  }
+  if (lit.size) drawLit(g, lit, sc);
 
-  drawSprite(g, 'Sun', cx, cy, 13);
+  const sunR = Math.round(clamp(sc * 0.04, 3.5, 7.5) * 2) / 2, pf = clamp(sc / 100, 0.7, 1);
+  drawSprite(g, 'Sun', cx, cy, sunR);
+  const discs = [[cx, cy, sunR + 2]];
   for (const p in PLANETS) {
     const P = planetNow[p];
     const x = cx + P[0] * sc, y = cy - P[1] * sc;
     if (x < -30 || y < -30 || x > s.w + 30 || y > s.h + 30) continue;
-    const r = PLANET_R[p];
-    drawSprite(g, p, x, y, r);
-    text(g, p, x + r + (p === 'Saturn' ? 12 : 5), y + 4, { size: 12.5, weight: p === 'Earth' ? 600 : 500, color: p === 'Earth' ? C.ink : C.ink2, halo: true });
+    const pr = Math.round(PLANET_R[p] * pf * 2) / 2;
+    drawSprite(g, p, x, y, pr);
+    discs.push([x, y, pr + 2, p]);
   }
+  planetLabels(g, s, discs);
 
   if (state.sel) {
     const k = state.sel.idx, x = posX[k], y = posY[k];
@@ -484,6 +551,8 @@ $('#map').addEventListener('pointermove', (e) => {
     return;
   }
   if (e.pointerType !== 'mouse') return;
+  const ph = pickPlanet(e);
+  if (ph !== state.planetHover) { state.planetHover = ph; mapS.draw(mapS); }
   const o = pickMap(e);
   setHover(o);
   if (o) showTip(tipFor(o), e.clientX, e.clientY); else hideTip();
@@ -495,7 +564,12 @@ $('#map').addEventListener('pointerup', (e) => {
   if (was === 1) { const o = pickMap(e); if (o) select(o); }
 });
 $('#map').addEventListener('pointercancel', endPtr);
-$('#map').addEventListener('pointerleave', () => { setHover(null); hideTip(); });
+$('#map').addEventListener('pointerleave', () => { setHover(null); hideTip(); if (state.planetHover) { state.planetHover = null; mapS.draw(mapS); } });
+function pickPlanet(e) {
+  const r = $('#map').getBoundingClientRect(), s = mapS, sc = mapScale(s), x = e.clientX - r.left, y = e.clientY - r.top;
+  for (const p in PLANETS) { const P = planetNow[p]; if (P && Math.hypot(s.w / 2 + P[0] * sc - x, s.h / 2 - P[1] * sc - y) < PLANET_R[p] + 6) return p; }
+  return null;
+}
 function pickMap(e) {
   const r = $('#map').getBoundingClientRect();
   const x = e.clientX - r.left, y = e.clientY - r.top;
