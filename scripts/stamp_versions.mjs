@@ -16,4 +16,5 @@ let changed = rewrite('index.html', /((?:src|href)=")((?:js\/[\w-]+\.js)|style\.
 for (const file of readdirSync(join(siteDir, 'js')).filter((f) => f.endsWith('.js'))) {
   changed += rewrite(join('js', file), /((?:from\s*|import\s*\(\s*)['"])(\.\/[\w-]+\.js)(['"])/g);
 }
-console.log(`stamped ${changed} files with v=${version}`);
+process.stdout.write(`stamped ${changed} files with v=${version}
+`);
