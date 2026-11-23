@@ -296,12 +296,12 @@ function galToEqVec(l, b) {
   return GALT.map((r) => r[0] * g[0] + r[1] * g[1] + r[2] * g[2]);
 }
 const LSTEP = 4;
-let lanGrid = null, lanCv = null, staticView = null, skyFade = null, fadeRaf = 0;
+let lanGrid = null, lanCv = null, staticView = null, skyFade = null, fadeRaf = 0, skyLabels = null;
 function buildSkyStatic(s) {
   const key = [s.w, s.h, s.dpr, C().dark, view.k.toFixed(4), view.px.toFixed(1), view.py.toFixed(1)].join('|');
   if (key === skyKey && skyStatic) return;
   skyKey = key;
-  if (skyStatic && staticView && !reduceMotion) skyFade = { cv: skyStatic, view: staticView, t0: performance.now() };
+  if (skyStatic && staticView && !reduceMotion) skyFade = { cv: skyStatic, lab: skyLabels, view: staticView, t0: performance.now() };
   staticView = { ...view };
   const cv = document.createElement('canvas');
   cv.width = Math.round(s.w * s.dpr); cv.height = Math.round(s.h * s.dpr);
@@ -378,19 +378,24 @@ function buildSkyStatic(s) {
   for (let b0 = -90 + bStep; b0 < 90; b0 += bStep) { const p = []; for (let l = -179.9; l <= 179.9; l += db) p.push([(l + 360) % 360, b0]); polyLB(g, f, p); g.stroke(); }
   for (let l0 = 0; l0 < 360; l0 += lStep) { if (l0 === 180) continue; const p = []; for (let b = -90; b <= 90; b += db) p.push([l0, b]); polyLB(g, f, p); g.stroke(); }
   g.globalAlpha = 1;
+  const lcv = document.createElement('canvas');
+  lcv.width = cv.width; lcv.height = cv.height;
+  const lg = lcv.getContext('2d');
+  lg.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
+  const placed = [];
   for (let b0 = -90 + bStep; b0 < 90; b0 += bStep) {
     const [u, v] = hammer(centre[0], b0), x = f.X(u), y = f.Y(v);
-    if (x > 0 && x < s.w && y > 10 && y < s.h - 10) text(g, (b0 > 0 ? '+' : b0 < 0 ? '−' : '') + Math.abs(b0) + '°', x + 4, y - 3, { size: 10.5, color: C().ink3, halo: true });
+    if (x > 0 && x < s.w && y > 10 && y < s.h - 10) text(lg, (b0 > 0 ? '+' : b0 < 0 ? '−' : '') + Math.abs(b0) + '°', x + 4, y - 3, { size: 10.5, color: C().ink3, halo: true });
   }
   if (k >= 2.5) for (let l0 = 0; l0 < 360; l0 += lStep) {
     const [u, v] = hammer(l0 === 180 ? 179.9 : l0, centre[1]), x = f.X(u), y = f.Y(v);
-    if (x > 10 && x < s.w - 30 && y > 10 && y < s.h - 10) text(g, `l ${l0}°`, x + 3, y + 12, { size: 10.5, color: C().ink3, halo: true });
+    if (x > 10 && x < s.w - 30 && y > 10 && y < s.h - 10) text(lg, `l ${l0}°`, x + 3, y + 12, { size: 10.5, color: C().ink3, halo: true });
   }
   g.setLineDash([3, 5]); g.strokeStyle = C().ink3; g.lineWidth = 1; polyLB(g, f, eqLine(0)); g.stroke();
   g.strokeStyle = gold; g.lineWidth = 1.3; polyLB(g, f, eqLine(30)); g.stroke();
   g.setLineDash([1, 4]); g.strokeStyle = C().ink2; polyLB(g, f, eclLine()); g.stroke(); g.setLineDash([]);
   const vis2 = (x, y) => x > -50 && x < s.w + 50 && y > -20 && y < s.h + 20;
-  const lab = (str, l, b, opts) => { const [u, v] = hammer(l, b), x = f.X(u), y = f.Y(v); if (vis2(x, y)) annotate(g, str, x, y, opts); };
+  const lab = (str, l, b, opts) => { const [u, v] = hammer(l, b), x = f.X(u), y = f.Y(v); if (vis2(x, y)) skyLabel(lg, str, x, y, opts, placed); };
   const sz = s.w < 600 ? 14 : 18;
   lab('Galactic centre', 0, -5 / Math.sqrt(k), { size: sz, color: C().ink2 });
   if (k < 4) lab('Galactic bulge', 0, 12, { size: sz - 2, color: C().ink3 });
@@ -399,24 +404,25 @@ function buildSkyStatic(s) {
   lab('Small Magellanic Cloud', 302.8, -44.3 - 4.5 / Math.sqrt(k), { size: sz - 2, color: C().ink2 });
   if (k < 4) lab('dust lanes', 330, -9, { size: sz - 4, color: C().ink3 });
   const [eu, ev] = hammer(...eq2gal(150, 33));
-  if (vis2(f.X(eu), f.Y(ev))) annotate(g, 'north of this line Rubin cannot see', f.X(eu), f.Y(ev) - 4, { size: sz - 2, color: gold });
+  if (vis2(f.X(eu), f.Y(ev))) skyLabel(lg, 'north of this line Rubin cannot see', f.X(eu), f.Y(ev) - 4, { size: sz - 2, color: gold }, placed);
   const ecl = eclLine(), ep = ecl[Math.floor(ecl.length * 0.62)], [xu, xv] = hammer(ep[0], ep[1]);
-  if (vis2(f.X(xu), f.Y(xv))) annotate(g, "the asteroids' plane (other mode) →", f.X(xu) + 6, f.Y(xv) - 6, { size: sz - 2, color: C().ink2, align: 'left' });
+  if (vis2(f.X(xu), f.Y(xv))) skyLabel(lg, "the asteroids' plane (other mode) →", f.X(xu) + 6, f.Y(xv) - 6, { size: sz - 2, color: C().ink2, align: 'left' }, placed);
   skyGeom = { eclLabel: [f.X(xu), f.Y(xv) - 20, 260, 26] };
   g.strokeStyle = C().ink; g.lineWidth = 1;
   DDF.forEach(([nm, ra, dec], i) => {
     polyLB(g, f, smallCircleEq(ra, dec, 1.75, 96)); g.closePath(); g.stroke();
     const [u, v] = hammer(...eq2gal(ra, dec)), x = f.X(u), y = f.Y(v), off = 1.75 * f.sc / 57 + 6;
-    if (nm && vis2(x, y)) annotate(g, nm, x + (i % 2 ? -off : off), y + (i % 2 ? off + 8 : -off), { size: sz - 2, color: C().ink, align: i % 2 ? 'right' : 'left' });
+    if (nm && vis2(x, y)) skyLabel(lg, nm, x + (i % 2 ? -off : off), y + (i % 2 ? off + 8 : -off), { size: sz - 2, color: C().ink, align: i % 2 ? 'right' : 'left' }, placed);
   });
-  if (s.w >= 600) text(g, k > 1.01 ? `zoom ×${k.toFixed(k < 10 ? 1 : 0)} · Gaia density cells are 0.5° wide${k > 12 ? ', so the wash is smooth but not sharper than that' : ''}` : '', 12, 18, { size: 11, color: C().ink3, halo: true });
-  if (TILES && k >= 1) namedStarLabels(g, f, s, k);
+  if (s.w >= 600) text(lg, k > 1.01 ? `zoom ×${k.toFixed(k < 10 ? 1 : 0)} · Gaia density cells are 0.5° wide${k > 12 ? ', so the wash is smooth but not sharper than that' : ''}` : '', 12, 18, { size: 11, color: C().ink3, halo: true });
+  if (TILES && k >= 1) namedStarLabels(lg, f, s, k);
   if (tl.length && tw > 0 && s.w >= 600) {
     const t = tl[0], cell = t.step;
-    text(g, `fine Gaia tile: ${t.name}, ${cell}° cells, ${fmtN(Math.round(t.countMin / cell / cell))}–${fmtN(Math.round(t.countMax / cell / cell))} stars per deg²${t.grainy ? ' (grain is real counting noise, drawn softened)' : ''}`, 12, 34, { size: 11, color: C().ink3, halo: true });
+    text(lg, `fine Gaia tile: ${t.name}, ${cell}° cells, ${fmtN(Math.round(t.countMin / cell / cell))}–${fmtN(Math.round(t.countMax / cell / cell))} stars per deg²${t.grainy ? ' (grain is real counting noise, drawn softened)' : ''}`, 12, 34, { size: 11, color: C().ink3, halo: true });
   }
   if (hooks.staticOverlay) hooks.staticOverlay(g, s, f);
   skyStatic = cv;
+  skyLabels = lcv;
 }
 let TILES = null, tilesLoading = null;
 function loadTiles() {
@@ -462,6 +468,20 @@ function tileAt(t, l, b) {
   const raw = t.d[bi * t.width + li];
   if (!raw) return { v: 0, w };
   return { v: 40 + raw * 0.84, w };
+}
+function skyLabel(g, str, x, y, { size = 18, color = C().ink, align = 'center' } = {}, placed) {
+  const px = Math.round(size * 0.7);
+  g.font = K.font(px, 600);
+  const w = g.measureText(str).width, x0 = align === 'left' ? x : align === 'right' ? x - w : x - w / 2;
+  let dy = 0;
+  for (const d of [0, -px - 3, px + 3, -2 * px - 6, 2 * px + 6]) {
+    const b = [x0 - 3, y + d - px, x0 + w + 3, y + d + 4];
+    if (!placed.some((q) => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1])) { dy = d; placed.push(b); break; }
+  }
+  g.textAlign = align; g.textBaseline = 'alphabetic'; g.lineJoin = 'round';
+  g.lineWidth = 5; g.strokeStyle = C().dark ? 'rgba(10, 13, 26, 0.88)' : 'rgba(236, 238, 242, 0.9)';
+  g.strokeText(str, x, y + dy);
+  g.fillStyle = color; g.fillText(str, x, y + dy);
 }
 function namedStarLabels(g, f, s, k) {
   const lim = k >= 10 ? 9 : k >= 4 ? 3 : 1.5;
@@ -700,6 +720,10 @@ function drawSky(s) {
     }
   }
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+  if (skyLabels) {
+    if (skyFade && skyFade.lab) { const [ox, oy, orr] = place(skyFade.view); g.globalAlpha = hooks.skyAlpha * (1 - fa); g.drawImage(skyFade.lab, ox, oy, s.w * orr, s.h * orr); }
+    g.globalAlpha = hooks.skyAlpha * fa; g.drawImage(skyLabels, dx, dy, s.w * r, s.h * r); g.globalAlpha = 1;
+  }
   const gp = inGap(st.t);
   if (gp) text(g, 'No observations in this stretch', s.w / 2, s.h / 2 + 40, { size: 14, weight: 600, color: C().ink, align: 'center', halo: true });
   text(g, fmtD(st.t), 16, s.h - 30, { size: 16, weight: 650, color: C().ink, halo: true });
