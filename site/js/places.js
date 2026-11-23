@@ -1,4 +1,4 @@
-const Z = (label, lat, lon) => ({ label, lat, lon });
+const Z = (label, lat, lon, tz) => (tz ? { label, lat, lon, tz } : { label, lat, lon });
 
 export const ZONES = {
   'Europe/London': Z('London', 51.5, -0.1), 'Europe/Dublin': Z('Dublin', 53.3, -6.3), 'Europe/Lisbon': Z('Lisbon', 38.7, -9.1),
@@ -34,22 +34,22 @@ export const ZONES = {
   'Australia/Darwin': Z('Darwin', -12.5, 130.8), 'Pacific/Auckland': Z('Auckland', -36.85, 174.8), 'Pacific/Fiji': Z('Suva', -18.1, 178.4),
 };
 
-export const RUBIN = { label: 'Rubin’s site in Chile', lat: -30.24, lon: -70.74 };
+export const RUBIN = { label: 'Rubin’s site in Chile', lat: -30.24, lon: -70.74, tz: 'America/Santiago' };
 
 export const PICK = [
-  Z('La Serena', -29.9, -71.25), Z('Santiago', -33.4, -70.7), Z('Sydney', -33.9, 151.2), Z('Cape Town', -33.9, 18.4),
-  Z('Johannesburg', -26.2, 28.0), Z('São Paulo', -23.6, -46.6), Z('Buenos Aires', -34.6, -58.4), Z('Perth', -31.95, 115.9),
-  Z('Auckland', -36.85, 174.8), Z('Honolulu', 21.3, -157.9), Z('Mexico City', 19.4, -99.1), Z('Austin', 30.3, -97.7),
-  Z('Tucson', 32.2, -110.9), Z('Miami', 25.8, -80.2), Z('Tenerife', 28.3, -16.5), Z('Cairo', 30.0, 31.2),
-  Z('Madrid', 40.4, -3.7), Z('Rome', 41.9, 12.5), Z('Paris', 48.9, 2.4), Z('London', 51.5, -0.1),
-  Z('Berlin', 52.5, 13.4), Z('Moscow', 55.8, 37.6), Z('Mumbai', 19.1, 72.9), Z('Tokyo', 35.7, 139.7),
-  Z('Beijing', 39.9, 116.4), Z('New York', 40.7, -74.0), Z('Toronto', 43.7, -79.4), Z('Denver', 39.7, -105.0),
-  Z('Edinburgh', 55.95, -3.2), Z('Helsinki', 60.2, 24.9),
+  Z('La Serena', -29.9, -71.25, 'America/Santiago'), Z('Santiago', -33.4, -70.7, 'America/Santiago'), Z('Sydney', -33.9, 151.2, 'Australia/Sydney'), Z('Cape Town', -33.9, 18.4, 'Africa/Johannesburg'),
+  Z('Johannesburg', -26.2, 28.0, 'Africa/Johannesburg'), Z('São Paulo', -23.6, -46.6, 'America/Sao_Paulo'), Z('Buenos Aires', -34.6, -58.4, 'America/Argentina/Buenos_Aires'), Z('Perth', -31.95, 115.9, 'Australia/Perth'),
+  Z('Auckland', -36.85, 174.8, 'Pacific/Auckland'), Z('Honolulu', 21.3, -157.9, 'Pacific/Honolulu'), Z('Mexico City', 19.4, -99.1, 'America/Mexico_City'), Z('Austin', 30.3, -97.7, 'America/Chicago'),
+  Z('Tucson', 32.2, -110.9, 'America/Phoenix'), Z('Miami', 25.8, -80.2, 'America/New_York'), Z('Tenerife', 28.3, -16.5, 'Atlantic/Canary'), Z('Cairo', 30.0, 31.2, 'Africa/Cairo'),
+  Z('Madrid', 40.4, -3.7, 'Europe/Madrid'), Z('Rome', 41.9, 12.5, 'Europe/Rome'), Z('Paris', 48.9, 2.4, 'Europe/Paris'), Z('London', 51.5, -0.1, 'Europe/London'),
+  Z('Berlin', 52.5, 13.4, 'Europe/Berlin'), Z('Moscow', 55.8, 37.6, 'Europe/Moscow'), Z('Mumbai', 19.1, 72.9, 'Asia/Kolkata'), Z('Tokyo', 35.7, 139.7, 'Asia/Tokyo'),
+  Z('Beijing', 39.9, 116.4, 'Asia/Shanghai'), Z('New York', 40.7, -74.0, 'America/New_York'), Z('Toronto', 43.7, -79.4, 'America/Toronto'), Z('Denver', 39.7, -105.0, 'America/Denver'),
+  Z('Edinburgh', 55.95, -3.2, 'Europe/London'), Z('Helsinki', 60.2, 24.9, 'Europe/Helsinki'),
 ];
 
 export function guessSite() {
   let zone = '';
   try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch {}
   const z = ZONES[zone];
-  return z ? { ...z, src: 'tz' } : { ...RUBIN, src: 'tz-unknown' };
+  return z ? { ...z, tz: zone, src: 'tz' } : { ...RUBIN, src: 'tz-unknown' };
 }

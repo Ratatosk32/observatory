@@ -23,7 +23,7 @@ export function altitude(ra, dec, lat, lonEast, mjd) {
 
 export function nightStart(nowMjd, lonEast) {
   const local = nowMjd + lonEast / 360;
-  const noon = Math.floor(local - 0.5) + 0.5;
+  const noon = Math.floor(local - 0.25) + 0.5;
   return noon - lonEast / 360;
 }
 

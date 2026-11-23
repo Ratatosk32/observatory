@@ -499,7 +499,7 @@ const sig = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(1)}σ`;
 function ctestNote() {
   const G = CT.dr5Ghost;
   if (!G) return `${CT.observed} alerts inside R500 of ${CT.clusters} clusters, ${CT.expected} expected from their surroundings: ${CT.sigma.toFixed(1)}σ. Forecast: ${esc(CT.forecast)}.`;
-  return `Inside R500 of ${fmtN(CT.clusters)} of ${fmtN(CT.south)} southern ACT DR6 clusters: ${fmtN(CT.observed)} alerts, ${CT.expected} expected from their surroundings, ${sig(CT.sigma)}. With DR5’s ${fmtN(G.of)} clusters the same test reads ${sig(G.sigma)} (dashed). Forecast: ${esc(CT.forecast)}.`;
+  return `${fmtN(CT.observed)} alerts inside R500 of ${fmtN(CT.clusters)} ACT DR6 clusters, ${CT.expected.toFixed(1)} expected from their surroundings: ${sig(CT.sigma)}${Math.abs(CT.sigma) < 3 ? ', no significant excess yet' : ''}. Dashed: the same test on DR5’s ${fmtN(G.of)} clusters, ${sig(G.sigma)}. Forecast: ${esc(CT.forecast)}.`;
 }
 function buildDom() {
   $('#dmRoot').innerHTML = `

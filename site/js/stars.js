@@ -585,6 +585,16 @@ function zenith(t) {
 const LAN_DEC = -30.2446;
 const lan = { ra: null, v: 0, last: 0, raf: 0 };
 const wrap180 = (d) => ((d + 540) % 360) - 180;
+function siteLabel(g, s, f) {
+  const a = lanAim(), [l, b] = eq2gal(a.ra, a.dec), [u, v] = hammer(l, b);
+  const A = 2 * Math.SQRT2, B = Math.SQRT2, len = Math.hypot(u / A, v / B) || 1, ru = u / len, rv = v / len;
+  const x = f.X(ru), y = f.Y(rv), cx = f.X(0), cy = f.Y(0), dx = x - cx, dy = y - cy, dl = Math.hypot(dx, dy) || 1;
+  const str = `Your sky from ${tn.site().label}`;
+  g.font = K.font(11, 500);
+  const tw = g.measureText(str).width, ox = x + dx / dl * 10, oy = y + dy / dl * 10;
+  const tx = clamp(dx >= 0 ? ox : ox - tw, 4, s.w - tw - 4), ty = clamp(oy + (dy > 0 ? 10 : 0), 12, s.h - 4);
+  text(g, str, tx, ty, { size: 11, weight: 500, color: C().gold, halo: true });
+}
 function lanAim() { return tonightOn() ? tn.lanternTarget() : { ra: zenith(st.t).ra, dec: LAN_DEC }; }
 function stepLantern(now) {
   const aim = lanAim(), target = aim.ra;
@@ -612,19 +622,25 @@ function lanternPts(ra) { return smallCircleEq(ra, lan.dec == null ? LAN_DEC : l
 let lanPainted = { ra: null, grid: null, dark: null };
 function paintLantern(ra) {
   if (!lanGrid) return;
-  if (lanPainted.ra === ra && lanPainted.dec === lan.dec && lanPainted.grid === lanGrid && lanPainted.dark === C().dark) return;
-  lanPainted = { ra, dec: lan.dec, grid: lanGrid, dark: C().dark };
+  if (lanPainted.ra === ra && lanPainted.dec === lan.dec && lanPainted.grid === lanGrid && lanPainted.dark === C().dark && lanPainted.dim === tonightOn()) return;
+  lanPainted = { ra, dec: lan.dec, grid: lanGrid, dark: C().dark, dim: tonightOn() };
   const { LW, LH, vec } = lanGrid, z = { ra, dec: lan.dec == null ? LAN_DEC : lan.dec }, a = z.ra * DEG, dd = z.dec * DEG;
   const zx = Math.cos(dd) * Math.cos(a), zy = Math.cos(dd) * Math.sin(a), zz = Math.sin(dd);
   const lg = lanCv.getContext('2d'), im = lg.createImageData(LW, LH), d = im.data;
   const gc = C().dark ? [240, 191, 79] : [74, 74, 74], c0 = Math.cos(56 * DEG), c1 = Math.cos(62 * DEG), amax = C().dark ? 34 : 26;
+  const dim = tonightOn(), pc = dim ? SC.rgbOf(C().paper) : null;
   for (let i = 0, n = LW * LH; i < n; i++) {
     const x = vec[i * 3];
     if (x !== x) continue;
     const dot = x * zx + vec[i * 3 + 1] * zy + vec[i * 3 + 2] * zz;
+    const p = i * 4;
+    if (dim) {
+      const w = dot >= c0 ? 1 : dot <= c1 ? 0 : (dot - c1) / (c0 - c1);
+      d[p] = pc[0]; d[p + 1] = pc[1]; d[p + 2] = pc[2]; d[p + 3] = Math.round(255 * 0.35 * (1 - w * w * (3 - 2 * w)));
+      continue;
+    }
     if (dot <= c1) continue;
     const w = dot >= c0 ? 1 : (dot - c1) / (c0 - c1);
-    const p = i * 4;
     d[p] = gc[0]; d[p + 1] = gc[1]; d[p + 2] = gc[2]; d[p + 3] = Math.round(amax * w * w * (3 - 2 * w));
   }
   lg.putImageData(im, 0, 0);
@@ -702,7 +718,8 @@ function drawSky(s) {
   g.drawImage(lanCv, dx, dy, lanGrid.LW * LSTEP * r, lanGrid.LH * LSTEP * r);
   lantern = lanternPts(lan.ra);
   polyLB(g, f, lantern);
-  g.strokeStyle = C().gold; g.lineWidth = 1; g.globalAlpha = 0.45; g.stroke(); g.globalAlpha = 1;
+  g.strokeStyle = C().gold; g.lineWidth = 1; g.globalAlpha = tonightOn() ? 0.6 : 0.45; g.stroke(); g.globalAlpha = 1;
+  if (tonightOn()) siteLabel(g, s, f);
   const nNow = lb(t0Sorted, st.t + 1e-9);
   const now = performance.now();
   runLod(s);
@@ -759,7 +776,7 @@ function drawSky(s) {
   }
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   if (tonightOn()) tn.drawSky(g, (ra, dec) => { const [l, b] = eq2gal(ra, dec), [u, v] = hammer(l, b); const x = f.X(u), y = f.Y(v); return x < -20 || y < -20 || x > s.w + 20 || y > s.h + 20 ? null : [x, y]; }, now / 1000, Math.min(2, Math.sqrt(view.k)));
-  if (tonightOn() && !reduceMotion && !st.playing && !weightRaf && !pulseRaf) weightRaf = requestAnimationFrame(() => { weightRaf = 0; drawSky(skyS); });
+  if (tonightOn() && tn.pulsing() && !reduceMotion && !st.playing && !weightRaf && !pulseRaf) weightRaf = requestAnimationFrame(() => { weightRaf = 0; drawSky(skyS); });
   if (skyLabels) {
     if (skyFade && skyFade.lab) { const [ox, oy, orr] = place(skyFade.view); g.globalAlpha = hooks.skyAlpha * (1 - fa); g.drawImage(skyFade.lab, ox, oy, s.w * orr, s.h * orr); }
     g.globalAlpha = hooks.skyAlpha * fa; g.drawImage(skyLabels, dx, dy, s.w * r, s.h * r); g.globalAlpha = 1;
@@ -1321,7 +1338,8 @@ const tn = TND ? TN.createTonight(TND, {
   atlas: () => atlas,
   selected: () => st.selT,
   pick: (k) => { st.selT = k; const r = k >= 0 ? TND.recent[k] : null; st.sel = r && r.inSample != null && r.inSample < N ? r.inSample : -1; lodKey = ''; renderCard(); redraw(); },
-  changed: () => { tonightChip(); lodKey = ''; renderCard(); redraw(); },
+  changed: () => { tonightChip(); lodKey = ''; lanPainted.ra = null; renderCard(); redraw(); },
+  toMap: () => { const m = $('#sky'); if (m) m.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' }); },
 }) : null;
 function tonightChip() { const b = document.querySelector('#sPresets [data-p="tonight"]'); if (b && tn) b.textContent = tn.chipLabel(); }
 function tonightSample() { return tn ? tn.targets().map((k) => TND.recent[k].inSample).filter((i) => i != null && i < N) : []; }
@@ -1337,7 +1355,8 @@ function runLod(s) {
     if (tgts.length) { const set = new Set(tgts.concat([st.sel, st.hover])); for (let i = 0; i < N; i++) if (!set.has(i) && W.tgt[i] > 0.35) W.tgt[i] = 0.35; }
   }
   if (lodFirst) { W.w.set(W.tgt); lodFirst = false; }
-  if (pill) {
+  if (pill && tonightOn()) pill.set(tn.pillLabel(), 'Back to the showcase', 'back');
+  else if (pill) {
     const [t, b, m] = SC.pillCopy({ phone: s.w < 600, all: st.showAll, guided: !scOn(), accepted, total: N, n0, zoomed: view.k > 1.05 });
     pill.set(t, b, m);
   }
@@ -1569,7 +1588,8 @@ function markPresets() { $('#sPresets').querySelectorAll('.btn').forEach((x) => 
 function runPreset(id) {
   stopTour();
   st.selT = -1;
-  if (id === 'tonight' || st.preset === 'tonight') { st.sel = -1; lodKey = ''; }
+  if (id === 'tonight' || st.preset === 'tonight') { st.sel = -1; lodKey = ''; lanPainted.ra = null; }
+  if (id === 'tonight') { setPlay(false); st.tween = null; st.t = T1 - 0.5; emberN = -1; }
   const p = PRESETS.find((x) => x.id === id);
   st.preset = id; st.groupsOn = new Set(GROUPS.map((_, i) => i));
   if (p.top) { const idx = Array.from({ length: N }, (_, i) => i).filter((i) => Ob.dist[i] != null && Ob.distMethod[i] >= 0).sort(p.top).slice(0, 20); const set = new Set(idx); st.pred = (i) => set.has(i); }
@@ -1926,7 +1946,12 @@ function build() {
     const b = document.createElement('button');
     b.className = 'btn' + (p.id === 'all' ? ' on' : ''); b.type = 'button'; b.textContent = p.label; b.dataset.p = p.id;
     if (p.id === 'tonight') b.style.minWidth = '112px';
-    b.addEventListener('click', () => runPreset(p.id));
+    b.addEventListener('click', () => {
+      runPreset(p.id);
+      if (p.id !== 'tonight') return;
+      const c = $('#sCard'), r = c && c.getBoundingClientRect();
+      if (r && (r.top > innerHeight - 80 || r.bottom < 80)) c.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    });
     pnav.appendChild(b);
   }
   applyFilter();

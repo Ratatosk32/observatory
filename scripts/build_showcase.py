@@ -182,6 +182,131 @@ def stars_part(S, n_top=120):
     }
 
 
+AST_W = {'rare': 1.0, 'orbit': 0.9, 'approach': 1.0, 'extreme': 0.8}
+AST_RARE = {'NEO': 1.0, 'MC': 0.6, 'HUN': 0.6, 'MBA': 0.0, 'CYB': 0.6, 'HIL': 0.7, 'TRO': 0.9, 'OTH': 0.7}
+AST_NORM = 1.875
+GK = 0.01720209895
+EARTH = [1.00000261, 0.00000562, 0.01671123, -0.00004392, 102.93768193, 0.32327364, 100.46457166, 35999.37244981]
+
+
+def kepler(M, e):
+    E = np.where(e < 0.8, M, np.pi)
+    for _ in range(30):
+        E = E - (E - e * np.sin(E) - M) / (1 - e * np.cos(E))
+    return E
+
+
+def frame(node, peri, inc):
+    w, W, i = np.radians(peri), np.radians(node), np.radians(inc)
+    P = np.stack([np.cos(w) * np.cos(W) - np.sin(w) * np.sin(W) * np.cos(i), np.cos(w) * np.sin(W) + np.sin(w) * np.cos(W) * np.cos(i), np.sin(w) * np.sin(i)])
+    Q = np.stack([-np.sin(w) * np.cos(W) - np.cos(w) * np.sin(W) * np.cos(i), -np.sin(w) * np.sin(W) + np.cos(w) * np.cos(W) * np.cos(i), np.cos(w) * np.sin(i)])
+    return P, Q
+
+
+def earth_at(t):
+    T = (t - 51544.5) / 36525
+    a, e = EARTH[0] + EARTH[1] * T, EARTH[2] + EARTH[3] * T
+    wb, L = EARTH[4] + EARTH[5] * T, EARTH[6] + EARTH[7] * T
+    E = kepler(np.radians(((L - wb) % 360 + 540) % 360 - 180), e)
+    xp, yp = a * (np.cos(E) - e), a * np.sqrt(1 - e * e) * np.sin(E)
+    c, s = np.cos(np.radians(wb)), np.sin(np.radians(wb))
+    return np.array([c * xp - s * yp, s * xp + c * yp, 0.0])
+
+
+def ellipse_points(a, e, P, Q, E):
+    return np.outer(P, a * (np.cos(E) - e)) + np.outer(Q, a * np.sqrt(1 - e * e) * np.sin(E))
+
+
+def moid(a, e, P, Q, ae, ee, Pe, Qe, n=360):
+    E1 = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    d = np.linalg.norm(ellipse_points(a, e, P, Q, E1)[:, :, None] - ellipse_points(ae, ee, Pe, Qe, E1)[:, None, :], axis=0)
+    i, j = np.unravel_index(np.argmin(d), d.shape)
+    best, ca, cb = d[i, j], E1[i], E1[j]
+    for step in (2 * np.pi / n, 2 * np.pi / n / 20):
+        Ea, Eb = ca + np.linspace(-step, step, 41), cb + np.linspace(-step, step, 41)
+        dd = np.linalg.norm(ellipse_points(a, e, P, Q, Ea)[:, :, None] - ellipse_points(ae, ee, Pe, Qe, Eb)[:, None, :], axis=0)
+        p, q = np.unravel_index(np.argmin(dd), dd.shape)
+        if dd[p, q] < best:
+            best, ca, cb = dd[p, q], Ea[p], Eb[q]
+    return float(best)
+
+
+def h_of(o):
+    H = o.get('H') or {}
+    if 'r' in H:
+        return H['r']
+    v = sorted(H.values())
+    return v[len(v) // 2] if v else None
+
+
+def asteroid_part(A, n_top=100):
+    objs = A['objs']
+    N = len(objs)
+    a, e, inc, node, peri, M0, ep = np.array([o['el'] for o in objs], float).T
+    P, Q = frame(node, peri, inc)
+    ref = A['meta']['tmax']
+    best_d, best_t = np.full(N, np.inf), np.zeros(N)
+    nmean = GK / a ** 1.5
+    for t in np.arange(math.floor(ref) - 7, math.floor(ref) + 90.01, 0.5):
+        E = kepler((M0 + nmean * (t - ep)) % (2 * np.pi), e)
+        r = P * (a * (np.cos(E) - e)) + Q * (a * np.sqrt(1 - e * e) * np.sin(E))
+        d = np.linalg.norm(r - earth_at(t)[:, None], axis=0)
+        closer = d < best_d
+        best_d[closer], best_t[closer] = d[closer], t
+    T = (ref - 51544.5) / 36525
+    ee = EARTH[2] + EARTH[3] * T
+    Pe, Qe = frame(0.0, EARTH[4] + EARTH[5] * T, 0.0)
+    cls = [o['c'] for o in objs]
+    Hs = [h_of(o) for o in objs]
+    moids, pha = {}, set()
+    for k in range(N):
+        if cls[k] in ('NEO', 'MC'):
+            moids[k] = moid(a[k], e[k], P[:, k], Q[:, k], EARTH[0], ee, Pe, Qe)
+            if cls[k] == 'NEO' and Hs[k] is not None and Hs[k] <= 22 and moids[k] <= 0.05:
+                pha.add(k)
+    comp = {c: [0.0] * N for c in list(AST_W) + ['fresh']}
+    last = [max(d[0] for d in o['det']) + 60000 for o in objs]
+    nights = sorted({math.floor(d[0] + 60000 - 0.5) for o in objs for d in o['det']})
+    fresh_from = nights[-FRESH_NIGHTS] + 0.5 if len(nights) >= FRESH_NIGHTS else ref - FRESH_NIGHTS
+    for k in range(N):
+        comp['rare'][k] = 1.0 if k in pha else AST_RARE.get(cls[k], 0.7)
+        comp['orbit'][k] = max(min(1.0, max(0.0, (e[k] - 0.25) / 0.25)), min(1.0, max(0.0, (inc[k] - 18) / 17)), 1.0 if inc[k] > 90 else 0.0)
+        comp['approach'][k] = min(1.0, max(0.0, math.log10(0.5 / best_d[k]))) if best_d[k] > 0 else 1.0
+        comp['fresh'][k] = math.exp(-max(0.0, ref - last[k]) / 7.0)
+
+    def rank_of(values, K, reverse):
+        idx = [k for k in range(N) if values[k] is not None]
+        idx.sort(key=lambda k: (-values[k] if reverse else values[k], k))
+        return {k: (max(0.0, 1.0 - r / K), r + 1) for r, k in enumerate(idx[:K])}
+
+    big, small, seen = rank_of(Hs, 10, False), rank_of(Hs, 10, True), rank_of([o['nn'] for o in objs], 10, True)
+    ext = {}
+    for k in range(N):
+        best = max((big.get(k, (0, 0)) + ('biggest',), small.get(k, (0, 0)) + ('smallest',), seen.get(k, (0, 0)) + ('mostSeen',)), key=lambda x: x[0])
+        comp['extreme'][k] = best[0]
+        if best[0] > 0:
+            ext[k] = best
+    score = [combine({c: comp[c][k] for c in AST_W}, AST_W, comp['fresh'][k]) * NORM / AST_NORM for k in range(N)]
+    order = sorted(range(N), key=lambda k: (-round(score[k], 6), -objs[k]['nn'], k))
+    fresh_ok = [last[k] >= fresh_from for k in range(N)]
+    rank = select_rank(order, ['MBA' if c == 'MBA' else c for c in cls], fresh_ok, n_top)
+    keys = list(AST_W) + ['fresh']
+    facts = {}
+    for k in sorted(rank[:3 * n_top]):
+        f = {'c': [int(round(255 * comp[c][k])) for c in keys], 'last': round(last[k], 3)}
+        if best_d[k] < 0.5:
+            f['approachAU'], f['approachT'] = round(float(best_d[k]), 3), round(float(best_t[k]), 1)
+        if k in moids:
+            f['moid'] = round(moids[k], 4)
+        if k in pha:
+            f['pha'] = 1
+        if k in ext:
+            f['extreme'], f['extremeRank'] = ext[k][2], ext[k][1]
+        facts[str(k)] = f
+    return {'refNight': round(ref, 3), 'n': N, 'top': {'desktop': n_top, 'phone': n_top // 2, 'freshLane': int(round(FRESH_LANE * n_top))},
+            'components': keys, 'rank': rank, 'score': [int(round(x)) for x in score], 'facts': facts}
+
+
 DM_W = {'mass': 1.0, 'busy': 1.0, 'covered': 0.5}
 DM_NORM = 1.775
 DM_BUSY_SHARE = 0.3
@@ -250,6 +375,9 @@ def main():
     modes = {}
     stars = json.load(open(os.path.join(a.data, 'stars.json'), encoding='utf-8'))
     modes['stars'] = stars_part(stars)
+    ast_path = os.path.join(a.data, 'asteroids.json')
+    if os.path.exists(ast_path):
+        modes['asteroids'] = asteroid_part(json.load(open(ast_path, encoding='utf-8')))
     cmb_path = os.path.join(a.data, 'cmb.json')
     if os.path.exists(cmb_path):
         cmb = json.load(open(cmb_path, encoding='utf-8'))
@@ -262,7 +390,9 @@ def main():
         fh.write(body)
     s = modes['stars']
     d = modes.get('dm')
-    dm_note = f"; dm top {d['top']['desktop']} cut score {d['score'][d['rank'][d['top']['desktop'] - 1]]}" if d else ''
+    ast = modes.get('asteroids')
+    ast_note = f"; asteroids top {ast['top']['desktop']} cut score {ast['score'][ast['rank'][ast['top']['desktop'] - 1]]}" if ast else ''
+    dm_note = ast_note + f"; dm top {d['top']['desktop']} cut score {d['score'][d['rank'][d['top']['desktop'] - 1]]}" if d else ''
     print(f"showcase: stars top {s['top']['desktop']} cut score {s['score'][s['rank'][s['top']['desktop'] - 1]]}{dm_note}, {len(body)} bytes")
 
 

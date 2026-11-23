@@ -714,6 +714,7 @@ button.link { font: inherit; color: var(--gold); background: none; border: 0; pa
 button.link:hover { text-decoration: underline; }
 #sCardBody canvas.altc { width: 100%; height: 130px; display: block; }
 #sCardBody canvas.lcc { width: 100%; height: 150px; display: block; }
+#sCardBody canvas.lcc.few { height: 90px; }
 #sCardBody canvas.finder { width: min(100%, 380px); aspect-ratio: 1 / 1; height: auto; display: block; }
 #sCardBody .links { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 @media (max-width: 600px) { ul.tonight li > button { grid-template-columns: 10px minmax(0, 1fr) 60px minmax(40px, auto); } ul.tonight canvas { width: 60px !important; } }
