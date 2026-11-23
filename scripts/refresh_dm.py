@@ -155,10 +155,11 @@ def main():
     all_star = np.concatenate([(flags & 2).astype(bool), n_star])
     all_t = np.concatenate([mjd, n_t])
 
+    sn_clean = all_ms & ~all_star
     lens = lensing_meter(kappa, mask, nside, all_ra, all_dec, all_star, float(inp['unit_bias']))
     cmb = json.load(open(a.cmb, encoding='ascii'))
     cl = cmb['clusters']
-    ctest = cluster_meter(np.array(cl['ra'], float), np.array(cl['dec'], float), np.array(cl['theta500'], float), all_ra[all_ms], all_dec[all_ms])
+    ctest = cluster_meter(np.array(cl['ra'], float), np.array(cl['dec'], float), np.array(cl['theta500'], float), all_ra[sn_clean], all_dec[sn_clean])
 
     meta = cmb['meta']
     base = float(meta['mjdBase'])
