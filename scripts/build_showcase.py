@@ -80,11 +80,10 @@ def stars_part(S, n_top=120):
     fine = [fine_class(cats[O['catType'][i]], fam[i]) for i in range(N)]
     freq = Counter(fine)
     al = S['alerts']
-    peak = [None] * N
-    peak_band = [None] * N
+    peak_gr = [None] * N
     for o, b, m in zip(al['o'], al['b'], al['m']):
-        if m is not None and (peak[o] is None or m < peak[o]):
-            peak[o], peak_band[o] = m, b
+        if m is not None and b in (1, 2) and (peak_gr[o] is None or m < peak_gr[o][0]):
+            peak_gr[o] = (m, b)
     keys = list(STAR_W) + ['fresh']
     comp = {k: [0.0] * N for k in keys}
     facts = [dict() for _ in range(N)]
@@ -124,11 +123,11 @@ def stars_part(S, n_top=120):
         facts[i]['jumpDays'] = jump_days
         comp['outburst'][i] = min(1.0, max(amp / 3.0, jump / 2.0))
         mm = O['meanMag'][i]
-        if fam[i] in STELLAR and any(m is not None for m in mm):
-            k = min((m, b) for b, m in enumerate(mm) if m is not None)
-            reach, rband = k
+        if fam[i] in STELLAR:
+            gr = [(m, b) for b, m in enumerate(mm) if m is not None and b in (1, 2)]
+            reach, rband = min(gr) if gr else (None, None)
         else:
-            reach, rband = peak[i], peak_band[i]
+            reach, rband = peak_gr[i] if peak_gr[i] else (None, None)
         facts[i]['reach'] = None if reach is None else round(reach, 1)
         facts[i]['reachBand'] = None if rband is None else BANDS[rband]
         comp['bright'][i] = 0.0 if reach is None else max(0.0, min(1.0, (20.0 - reach) / 3.0))

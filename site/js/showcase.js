@@ -57,11 +57,11 @@ export function lodPass(W, o) {
   return accepted;
 }
 
-export function ripple(W, rankPos, total, on, now) {
+export function ripple(W, rankPos, total, on, now, flat = false) {
   W.rip0 = now;
   for (let i = 0; i < W.n; i++) {
     const p = rankPos[i] / Math.max(1, total);
-    W.delay[i] = K.reduceMotion ? 0 : 400 * (on ? p : 1 - p);
+    W.delay[i] = K.reduceMotion || flat ? 0 : 400 * (on ? p : 1 - p);
   }
 }
 

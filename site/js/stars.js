@@ -91,7 +91,7 @@ function derive() {
 }
 derive();
 const scS = SCD && SCD.modes && SCD.modes.stars && SCD.modes.stars.n <= N ? SCD.modes.stars : null;
-let rank = null, rankPos = null, W = SC.makeWeights(N), lodKey = '', lodFirst = true, accepted = 0, hazeKey = '', hazeAt = 0, hazeSmall = null, hazeBlur = null, hazeCv = null, weightRaf = 0;
+let rank = null, rankPos = null, W = SC.makeWeights(N), lodKey = '', lodFirst = true, accepted = 0, hazeKey = '', hazeAt = 0, hazeSmall = null, hazeBlur = null, hazeCv = null, hazePrev = null, hazeFade = -1e9, weightRaf = 0;
 function buildRank() {
   let r;
   if (scS) {
@@ -490,11 +490,13 @@ function skyLabel(g, str, x, y, { size = 18, color = C().ink, align = 'center' }
   const px = Math.round(size * 0.7);
   g.font = K.font(px, 600);
   const w = g.measureText(str).width, x0 = align === 'left' ? x : align === 'right' ? x - w : x - w / 2;
-  let dy = 0;
-  for (const d of [0, -px - 3, px + 3, -2 * px - 6, 2 * px + 6]) {
+  let dy = null;
+  const tries = view.k <= 1.001 ? [0] : [0, -px - 3, px + 3, -2 * px - 6, 2 * px + 6];
+  for (const d of tries) {
     const b = [x0 - 3, y + d - px, x0 + w + 3, y + d + 4];
-    if (!placed.some((q) => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1])) { dy = d; placed.push(b); break; }
+    if (!placed.some((q) => b[0] < q[2] + 4 && b[2] > q[0] - 4 && b[1] < q[3] + 4 && b[3] > q[1] - 4)) { dy = d; placed.push(b); break; }
   }
+  if (dy == null) return;
   g.textAlign = align; g.textBaseline = 'alphabetic'; g.lineJoin = 'round';
   g.lineWidth = 5; g.strokeStyle = C().dark ? 'rgba(10, 13, 26, 0.88)' : 'rgba(236, 238, 242, 0.9)';
   g.strokeText(str, x, y + dy);
@@ -700,11 +702,19 @@ function drawSky(s) {
   const nNow = lb(t0Sorted, st.t + 1e-9);
   const now = performance.now();
   runLod(s);
-  const moving = SC.stepWeights(W, now);
-  const hk = [s.w, s.h, s.dpr, view.k.toFixed(3), Math.round(view.px), Math.round(view.py), Math.floor(st.t), st.preset, [...st.groupsOn].join(''), C().dark, emberN].join('|');
-  if (hk !== hazeKey || (moving && now - hazeAt >= (s.w < 600 ? 200 : 100)) || !hazeCv) { hazeKey = hk; hazeAt = now; const h0 = performance.now(); buildHaze(s); K.pushPerf(perf.haze || (perf.haze = []), performance.now() - h0); emberN = 0; }
+  let moving = SC.stepWeights(W, now);
+  const hk = [s.w, s.h, s.dpr, view.k.toFixed(3), Math.round(view.px), Math.round(view.py), Math.floor(st.t), st.preset, [...st.groupsOn].join(''), C().dark, emberN, lodKey].join('|');
+  if (hk !== hazeKey || !hazeCv) {
+    const crossfade = hazeCv && hazeKey && hazeKey.split('|').slice(0, 9).join('|') === hk.split('|').slice(0, 9).join('|') && !reduceMotion;
+    hazeKey = hk;
+    if (crossfade) { const t = hazePrev; hazePrev = hazeCv; hazeCv = t; hazeFade = now; } else hazeFade = -1e9;
+    const h0 = performance.now(); buildHaze(s); K.pushPerf(perf.haze || (perf.haze = []), performance.now() - h0); emberN = 0;
+  }
+  const hf = Math.min(1, (now - hazeFade) / 600);
+  if (hf < 1) moving = true;
   if (moving && !st.playing && !weightRaf && !pulseRaf) weightRaf = requestAnimationFrame(() => { weightRaf = 0; drawSky(skyS); });
-  g.globalAlpha = hooks.emberAlpha * wrapAlpha;
+  if (hf < 1 && hazePrev) { g.globalAlpha = hooks.emberAlpha * wrapAlpha * (1 - hf); g.drawImage(hazePrev, 0, 0, s.w, s.h); }
+  g.globalAlpha = hooks.emberAlpha * wrapAlpha * hf;
   g.drawImage(hazeCv, 0, 0, s.w, s.h);
   g.globalAlpha = 1;
   drawStarsOnSky(g, s, Math.min(2, Math.sqrt(view.k)));
@@ -748,8 +758,8 @@ function drawSky(s) {
     if (skyFade && skyFade.lab) { const [ox, oy, orr] = place(skyFade.view); g.globalAlpha = hooks.skyAlpha * (1 - fa); g.drawImage(skyFade.lab, ox, oy, s.w * orr, s.h * orr); }
     g.globalAlpha = hooks.skyAlpha * fa; g.drawImage(skyLabels, dx, dy, s.w * r, s.h * r); g.globalAlpha = 1;
   }
-  text(g, fmtD(st.t), 16, s.h - 30, { size: 16, weight: 650, color: C().ink, halo: true });
-  if (s.w >= 500) text(g, `${fmtN(i1 - i0)} sample alerts in the last ${reduceMotion ? 'night' : '4 nights'} · ${fmtN(Math.min(nNow, N))} objects seen so far`, 16, s.h - 12, { size: 12, color: C().ink2, halo: true });
+  if (s.w >= 600) text(g, fmtD(st.t), 16, s.h - 30, { size: 16, weight: 650, color: C().ink, halo: true });
+  if (s.w >= 600) text(g, `${fmtN(i1 - i0)} sample alerts in the last ${reduceMotion ? 'night' : '4 nights'} · ${fmtN(Math.min(nNow, N))} objects seen so far`, 16, s.h - 12, { size: 12, color: C().ink2, halo: true });
   for (const [i, col, w] of [[st.hover, C().ink, 1.5], [st.sel, C().hi, 2]]) {
     if (i < 0) continue;
     const x = qx[i], y = qy[i];
@@ -1328,7 +1338,7 @@ function buildHaze(s) {
     if (!seen(i)) continue;
     const x = qx[i], y = qy[i];
     if (x < -8 || y < -8 || x > s.w + 8 || y > s.h + 8) continue;
-    const wi = W.w[i], gi = grp[i];
+    const wi = W.tgt[i], gi = grp[i];
     if (wi < 0.98) hz[gi][Math.min(LV - 1, Math.floor((1 - wi) * LV))].push(x / 2, y / 2);
     if (wi >= 0.02) em[gi][Math.min(LV - 1, Math.floor(wi * LV))].push(x, y);
   }
@@ -1369,7 +1379,7 @@ function toggleShowAll() {
   st.showAll = !st.showAll;
   lodKey = '';
   runLod(skyS);
-  SC.ripple(W, rankPos, N, st.showAll, performance.now());
+  SC.ripple(W, rankPos, N, st.showAll, performance.now(), skyS.w < 600);
   redraw();
 }
 function drawStarsOnSky(g, s, sk) {
@@ -1616,7 +1626,7 @@ function chipsFor(i) {
     out.push([c.rare * SC_W.rare, f.rareOf > 1 && f.rareOf <= 9 ? `Rare: 1 of ${f.rareOf} ${label} here` : `Rare: ${label}`]);
   }
   if (c.outburst >= 0.5) out.push([c.outburst * SC_W.outburst, (f.jump || 0) / 2 >= (f.amp || 0) / 3 && f.jumpDays ? `+${f.jump.toFixed(1)} mag in ${f.jumpDays} night${f.jumpDays > 1 ? 's' : ''}` : `Swings ${(f.amp || 0).toFixed(1)} mag`]);
-  if (f.reach != null && f.reach <= 19) out.push([c.bright * SC_W.bright, `${f.reachBand || ''} ${f.reach.toFixed(1)} · ${f.reach <= 17.5 ? '20' : '30'} cm scope`.trim()]);
+  if (f.reach != null && f.reach <= 19 && (f.reachBand === 'g' || f.reachBand === 'r')) out.push([c.bright * SC_W.bright, `${f.reachBand} ${f.reach.toFixed(1)} · ${f.reach <= 17.5 ? '20' : '30'} cm scope`]);
   if (c.extreme >= 0.5 && f.extreme) out.push([c.extreme * SC_W.extreme, f.extreme === 'farthest' ? (Ob.lookbackGyr[i] ? `Farthest 1%: ${Ob.lookbackGyr[i].toFixed(1)} Gyr light` : 'Farthest 1%') : f.extreme === 'nearest' ? 'Nearest 20' : 'Fastest 1%']);
   if (c.spectrum >= 0.5) out.push([c.spectrum * SC_W.spectrum, cat.startsWith('TNS ') ? `TNS spectrum: ${cat.slice(4)}` : 'On TNS']);
   if (c.odd >= 0.5) out.push([c.odd * SC_W.odd, f.odd === 'qso' ? 'Doesn’t fit: QSO spectrum' : f.odd === 'star' ? 'Doesn’t fit: star spectrum' : 'Doesn’t fit: mixed tags']);
@@ -1635,10 +1645,16 @@ function renderCard() {
   const i = st.sel;
   if (i < 0 && scS && !st.cardStories) {
     const top = [];
-    for (let q = 0; q < rank.length && top.length < 8; q++) { const o = rank[q]; if (W.tgt[o] >= 0.5 && vis[o]) top.push(o); }
+    const bestCount = new Map();
+    for (let q = 0; q < rank.length && top.length < 8; q++) {
+      const o = rank[q]; if (W.tgt[o] < 0.5 || !vis[o]) continue;
+      const b = chipsFor(o)[0] || '';
+      if ((bestCount.get(b) || 0) >= 2) continue;
+      bestCount.set(b, (bestCount.get(b) || 0) + 1); top.push(o);
+    }
     body.innerHTML = `<h3 class="ph">Most unusual right now</h3>
       <p class="cap">Chosen tonight from ${fmtN(N)} objects by rarity, outbursts, brightness, extremes and freshness.</p>
-      <ul class="hooks">${top.map((o) => `<li><button type="button" data-pick="${o}"><span class="sw" style="background:${gcol[grp[o]]}"></span><b>${esc(humanName(o))}</b>${SC.chipsHtml(chipsFor(o))}</button></li>`).join('')}
+      <ul class="hooks">${top.map((o) => `<li><button type="button" data-pick="${o}"><span class="sw" style="background:${gcol[grp[o]]}"></span><b>${esc(humanName(o))}</b>${SC.chipsHtml(chipsFor(o).slice(0, 2))}</button></li>`).join('')}
       <li><button type="button" data-stories="1"><b>Objects from the stories →</b></button></li></ul>`;
     body.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => select(+b.dataset.pick)));
     body.querySelector('[data-stories]').addEventListener('click', () => { st.cardStories = true; renderCard(); });
