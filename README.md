@@ -56,9 +56,10 @@ Each step drives the map, the stage and the timeline, and ends on one number wit
 
 - **The oldest light:** the Planck SMICA map of the cosmic microwave background, in Galactic coordinates, drawn as a muted warm and cool weave in a WebGL shader.
 - **The lens:** under a movable gold lens the CMB is shifted by the lensing deflection reconstructed by Planck PR4, d = ∇φ with φ_ℓm = 2 κ_ℓm / ℓ(ℓ+1), amplified from ×1 to ×300. At ×1 the shift is the true one, a few arcminutes, and invisible. "Show the shadow" fades into the convergence κ itself, the projected mass.
-- **Clusters:** the 4,195 ACT DR5 SZ clusters as thin gold rings, scaled up from their θ500; the card shows redshift, M500 and the SN-like alerts inside R500.
+- **Clusters:** the 10,040 ACT DR6 SZ clusters, scaled up from their θ500. All of them form a faint static lace; the 120 heaviest and busiest (60 on a phone) are breathing gold rings in front, doubled when unusually many SN-like alerts sit inside. Inside the lens every ring in view shows (at most 150). The card shows redshift, M500c, the SN-like alerts inside R500 and how many the 3–6 R500 ring predicts.
+- **Confident supernovae:** up to 40 SN-like objects stay marked after their spark: TNS-classified supernovae first, then `most_likely_sn` and `extragalactic_new_candidate` objects that do not look like stars, by number of tags, then by recency.
 - **Explosions:** 146,350 Fink `most_likely_sn` objects appear as sparks on the night they were first seen. The Data button can fetch newer ones.
-- **Meters:** κ stacked at 76,640 SN-like alerts gives −0.2σ against 300 rotated skies (b = −0.8 ± 3.5); ACT clusters through the same pipeline give +7.1σ. SN-like alerts inside clusters: 144 seen against 125.5 expected over 227 clusters, 1.1σ (before 23 Nov 2026 the meter counted starlike objects too and read 201 against 179.4, 0.9σ). One definition for the cluster meter: `most_likely_sn` objects that are not starlike (Legacy Survey p_star ≤ 0.5), |b| > 20°, counted inside R500 = θ500 against a 3–6 R500 annulus, over clusters with any object within 6 R500, with a 2,000-draw bootstrap over those clusters (seed 7). Forecasts: 3σ around late 2027 for the lensing test and mid-2028 for the cluster test.
+- **Meters:** κ stacked at 76,640 SN-like alerts gives −0.2σ against 300 rotated skies (b = −0.8 ± 3.5); ACT clusters through the same pipeline give +7.1σ. SN-like alerts inside ACT DR6 clusters: 324 seen against 295.0 expected over 527 of the 7,801 southern clusters, +0.9σ. A dashed needle keeps the DR5 value under the same definition, 144 against 125.5 over 228 of 4,195 clusters, +1.1σ (before 23 Nov 2026 the DR5 meter counted starlike objects too and read 201 against 179.4, 0.9σ). One definition for the cluster meter: `most_likely_sn` objects that are not starlike (Legacy Survey p_star ≤ 0.5), |b| > 20°, counted inside R500 = θ500 against a 3–6 R500 annulus, over clusters with any object within 6 R500, with a 2,000-draw bootstrap over those clusters (seed 7). Forecasts: 3σ around late 2027 for both tests (about 0.8 years of full southern coverage for DR6).
 - Without WebGL the map is drawn once on a 2D canvas, without the lens.
 
 ### Honesty notes
@@ -79,7 +80,8 @@ Each step drives the map, the stage and the timeline, and ends on one number wit
 | **IAU Catalog of Star Names** (WGSN, compiled by E. Mamajek) | star names at high zoom | CC BY |
 | **JPL approximate Keplerian elements** (E. M. Standish) | planet positions | public JPL documentation |
 | **Planck** (ESA), SMICA CMB map PR2 and PR4 lensing reconstruction | CMB temperature, lensing deflection and κ | Planck Legacy Archive terms of use. "Based on observations obtained with Planck (http://www.esa.int/Planck), an ESA science mission with instruments and contributions directly funded by ESA Member States, NASA, and Canada." Lensing: Carron, Mirmelstein and Lewis 2022, JCAP 09, 039. |
-| **ACT DR5 SZ cluster catalogue** v1.1 via NASA LAMBDA | cluster positions, redshifts, masses | Hilton et al. 2021, ApJS 253, 3. Public via LAMBDA. |
+| **ACT DR6 SZ cluster catalogue** v1.0 via NASA LAMBDA | cluster positions, redshifts, masses | ACT Collaboration 2025, arXiv:2507.21459. Public via LAMBDA. |
+| **ACT DR5 SZ cluster catalogue** v1.1 via NASA LAMBDA | the dashed DR5 comparison needle | Hilton et al. 2021, ApJS 253, 3. Public via LAMBDA. |
 | **IBM Plex Sans** | typeface | SIL Open Font License 1.1 |
 
 - **Code:** MIT; see [LICENSE](LICENSE).
@@ -113,6 +115,7 @@ python scripts/fetch_stars.py
 python scripts/build_stars.py
 python scripts/build_stars.py --tiles
 python -I scripts/build_cmb.py --smica <COM_CMB_IQU-smica_1024_R2.02_full.fits> --klm <PR42018like_klm_dat_MV.fits> --mask <mask.fits.gz> --act <DR5_cluster-catalog_v1.1.fits> --objects <objects_most_likely_sn.npz> --lensing <lensing_transients_none.json> --control <lensing_positive_control_act_clusters.json> --cluster-test <clusters_most_likely_sn.json> --cluster-forecast <cluster_forecast.json>
+python -I scripts/build_dm_clusters.py --act5 <DR5_cluster-catalog_v1.1.fits> --act6 <DR6_cluster-catalog_v1.0.fits> --objects <objects.npz>
 node scripts/check_site.mjs
 ```
 
@@ -121,6 +124,7 @@ node scripts/check_site.mjs
 - `fetch_stars.py` fetches the Fink and Gaia data for the stars mode into `data/stars-<date>/`.
 - `build_stars.py` writes `site/data/stars.json`; with `--tiles` it writes `site/data/stars-tiles.json`.
 - `build_cmb.py` writes `site/data/cmb-sky.png`, `cmb-lens.png` and `cmb.json` (about 4.3 MB in all). It needs `ducc0`, `astropy` and `Pillow`. The SMICA map comes from IRSA (Planck release 2, 168 MB); the PR4 lensing alm and mask, the ACT catalogue, the SN-like object table and the test results come from the crossmatch analysis (Fink tag pulls, the κ stack with 300 rotated-sky nulls, and the cluster aperture test).
+- `build_dm_clusters.py` adds the ACT DR5 and DR6 catalogues (positions, θ500 from M500c with Planck 2018 cosmology, redshifts, masses, names) and the TNS and tag flags to `scripts/ci-data/dm_inputs.npz`, so the nightly refresh can recompute both cluster meters and the confident supernovae with numpy only.
 - `check_site.mjs` scans the repository: no Cyrillic text, no unfinished-work markers, no console logging, and every file the page references exists.
 
 Refetching changes the numbers. Data versions are pinned with a `?v=` query in `site/js`.
@@ -145,7 +149,7 @@ Refetching changes the numbers. Data versions are pinned with a `?v=` query in `
 - **Deploy and nightly refresh:** `.github/workflows/deploy.yml` runs on every push, on demand and every day at 11:23 UTC, after the Chilean night has been processed by Fink. Each run:
   1. restores the raw-data cache from earlier runs (`actions/cache`, a fresh key per run, restored by prefix), so fetching is incremental;
   2. refreshes the asteroids and stars data with `scripts/refresh_site.mjs`, which runs the site's own update code (`sync.js`, `starsync.js`) in Node against the Fink API (one mode at a time, retries with backoff, a time limit per mode);
-  3. refreshes the dark-matter alerts with `scripts/refresh_dm.py` (numpy only) and recomputes both meters: κ stacked at the SN-like objects against 300 rotated skies, and the cluster SN excess. It uses the compact inputs in `scripts/ci-data/dm_inputs.npz` (the matched-filtered PR4 κ map at HEALPix nside 256, the lensing mask and the SN-like object table), built once with `scripts/build_dm_ci.py`;
+  3. refreshes the dark-matter alerts with `scripts/refresh_dm.py` (numpy only) and recomputes both meters: κ stacked at the SN-like objects against 300 rotated skies, and the cluster SN excess. It uses the compact inputs in `scripts/ci-data/dm_inputs.npz` (the matched-filtered PR4 κ map at HEALPix nside 256, the lensing mask, the SN-like object table and the ACT clusters), built once with `scripts/build_dm_ci.py` and `scripts/build_dm_clusters.py`;
   4. if a mode fails or times out, deploys the last good refresh or the committed file for that mode, with a warning;
   5. checks the site, stamps every `data/` URL with a hash of the file's content (so the year-long cache never serves stale data), and deploys.
 

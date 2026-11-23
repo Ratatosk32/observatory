@@ -1,13 +1,36 @@
 import * as K from './kit.js';
 import { register as registerData, fmtBytes } from './datapanel.js';
 import { openStore, post, pool, storageUsage } from './net.js';
+import * as SC from './showcase.js';
 
-const D = await K.loadJson('data/cmb.json');
+const [D, SCD] = await Promise.all([K.loadJson('data/cmb.json'), SC.loadShowcase()]);
 const { $, fmtN, MON, clamp, esc, text, annotate } = K;
 const C = () => K.C;
 const reduceMotion = K.reduceMotion;
 const DEG = Math.PI / 180;
-const M = D.meta, CL = D.clusters, NC = CL.name.length, LT = D.lensing, CT = D.clusterTest;
+const GAL = [[-0.0548755604, 0.4941094279, -0.867666149], [-0.8734370902, -0.44482963, -0.1980763734], [-0.4838350155, 0.7469822445, 0.4559837762]];
+function gal2eq(l, b) {
+  const g = [Math.cos(b * DEG) * Math.cos(l * DEG), Math.cos(b * DEG) * Math.sin(l * DEG), Math.sin(b * DEG)];
+  const e = [0, 1, 2].map((i) => GAL[0][i] * g[0] + GAL[1][i] * g[1] + GAL[2][i] * g[2]);
+  return [((Math.atan2(e[1], e[0]) / DEG) + 360) % 360, Math.asin(Math.max(-1, Math.min(1, e[2]))) / DEG];
+}
+function decodeClusters(c) {
+  if (!c.data) return { ...c, expect: c.inside.map(() => 0), catalogue: 'ACT DR5' };
+  const raw = Uint8Array.from(atob(c.data), (ch) => ch.charCodeAt(0)), u = new Uint16Array(raw.buffer), F = c.fields.length, n = c.n;
+  const out = { name: c.names.split('|').map((x) => 'ACT-CL ' + x), catalogue: c.catalogue };
+  c.fields.forEach((f, k) => { const a = new Float32Array(n); for (let i = 0; i < n; i++) a[i] = u[i * F + k] / c.scale[k] - c.offset[k]; out[f] = a; });
+  out.ra = new Float32Array(n); out.dec = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const [r, d] = gal2eq(out.l[i], out.b[i]); out.ra[i] = r; out.dec[i] = d; }
+  return out;
+}
+const M = D.meta, CL = decodeClusters(D.clusters), NC = CL.name.length, LT = D.lensing, CT = D.clusterTest;
+const SNE = (D.sne && D.sne.rows) || [];
+const scDm = SCD && SCD.modes && SCD.modes.dm && SCD.modes.dm.n === NC ? SCD.modes.dm : null;
+const RANK = scDm ? scDm.rank : [...Array(NC).keys()].sort((a, b) => CL.m500[b] - CL.m500[a]);
+const massOrder = [...Array(NC).keys()].sort((a, b) => CL.m500[b] - CL.m500[a]);
+const massTop = new Float32Array(NC); massOrder.forEach((i, r) => { massTop[i] = 100 * (r + 1) / NC; });
+const busyZ = (i) => (CL.inside[i] - CL.expect[i]) / Math.sqrt(CL.expect[i] + 1);
+const nFront = () => (skyBox.w && skyBox.w < 600 ? (scDm ? scDm.top.phone : 60) : (scDm ? scDm.top.desktop : 120));
 const BASE = M.mjdBase;
 const TITLE = 'The dark-matter shadow';
 
@@ -27,11 +50,11 @@ function hammer(l, b) {
 }
 const frameOf = (s) => { const sc = Math.min(s.w / (4 * Math.SQRT2), s.h / (2 * Math.SQRT2)) * 0.97; return { sc, cx: s.w / 2, cy: s.h / 2 }; };
 
-const st = { t: T1, playing: false, speed: 2, amp: 1, shadow: 0, shadowTarget: 0, sel: -1, hover: -1, lan: null, lanR: 0.2 };
+const st = { t: T1, playing: false, speed: 2, amp: 1, shadow: 0, shadowTarget: 0, sel: -1, hover: -1, lan: null, lanR: 0.2, showAll: false };
 let built = false, entered = false;
 let sky = null, ov = null, gl = null, glFail = '', imgs = null, meterS = null, ctestS = null;
 let cx = new Float32Array(NC), cy = new Float32Array(NC), ax = new Float32Array(0), ay = new Float32Array(0);
-let ringCv = [null, null], emberCv = null, emberN = 0;
+let laceCv = null, allCv = null, emberCv = null, emberN = 0, pill = null, sx = new Float32Array(0), sy = new Float32Array(0);
 const WRAP_MS = 1600;
 let wrapAt = 0, wrapAlpha = 1;
 const lb = (arr, x, n = arr.length) => { let lo = 0, hi = n; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < x) lo = m + 1; else hi = m; } return lo; };
@@ -160,7 +183,7 @@ function sizeSky() {
   drawOverlay();
 }
 function defaultLantern() { const f = frameOf(skyBox), [u, v] = hammer(240, -35); return [f.cx + u * f.sc, f.cy - v * f.sc]; }
-const LENS_ZOOM = 3, BREATH_S = 7;
+const LENS_ZOOM = 3, BREATH_S = 7, LENS_RINGS = 150;
 const breathing = () => !reduceMotion && st.amp > 1 && st.shadowTarget === 0;
 function ampNow() { return breathing() ? 1 + (st.amp - 1) * (0.5 - 0.5 * Math.cos(performance.now() / 1000 * 2 * Math.PI / BREATH_S)) : st.amp; }
 function lanRadius() { return Math.max(56, Math.min(skyBox.w, skyBox.h) * st.lanR); }
@@ -212,22 +235,52 @@ function project() {
   for (let i = 0; i < NC; i++) { const [u, v] = hammer(CL.l[i], CL.b[i]); cx[i] = f.cx + u * f.sc; cy[i] = f.cy - v * f.sc; }
   ax = new Float32Array(NA); ay = new Float32Array(NA);
   for (let k = 0; k < NA; k++) { const [u, v] = hammer(aL[k], aB[k]); ax[k] = f.cx + u * f.sc; ay[k] = f.cy - v * f.sc; }
+  sx = new Float32Array(SNE.length); sy = new Float32Array(SNE.length);
+  SNE.forEach((r, k) => { const [u, v] = hammer(r[0], r[1]); sx[k] = f.cx + u * f.sc; sy[k] = f.cy - v * f.sc; });
 }
 const RING_PX_PER_ARCMIN = 0.45;
 const ringScale = () => frameOf(skyBox).sc / 135;
 const ringR = (i) => Math.max(0.7, CL.theta500[i] * RING_PX_PER_ARCMIN * ringScale());
 function buildRings() {
   const d = skyBox.dpr;
-  ringCv = [1, 1.18].map((sc) => {
+  const thin = clamp(skyBox.w / 1100, 0.35, 1);
+  [laceCv, allCv] = [[0.5, (C().dark ? 0.12 : 0.18) * thin], [1, 0.5 * Math.sqrt(thin)]].map(([lw, al]) => {
     const c = document.createElement('canvas'); c.width = Math.round(skyBox.w * d); c.height = Math.round(skyBox.h * d);
     const g = c.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0);
-    g.strokeStyle = C().gold; g.lineWidth = 0.7; g.globalAlpha = sc > 1 ? 0.18 : 0.42;
+    g.strokeStyle = C().gold; g.lineWidth = lw; g.globalAlpha = al;
     g.beginPath();
-    for (let i = 0; i < NC; i++) { const r = ringR(i) * sc; g.moveTo(cx[i] + r, cy[i]); g.arc(cx[i], cy[i], r, 0, 6.283); }
+    for (let i = 0; i < NC; i++) { const r = lw < 1 ? ringR(i) : Math.max(2.5, ringR(i)); g.moveTo(cx[i] + r, cy[i]); g.arc(cx[i], cy[i], r, 0, 6.283); }
     g.stroke();
     return c;
   });
 }
+const isBusy = (i) => busyZ(i) / 3 >= 0.5;
+function drawFront(g, now) {
+  const n = nFront(), a = reduceMotion ? 0.75 : 0.725 + 0.175 * Math.sin(now * 1.1);
+  g.strokeStyle = C().gold; g.lineWidth = 1;
+  g.globalAlpha = a * wrapAlpha; g.beginPath();
+  for (let q = 0; q < n; q++) { const i = RANK[q], r = Math.max(2.5, ringR(i)); g.moveTo(cx[i] + r, cy[i]); g.arc(cx[i], cy[i], r, 0, 6.283); }
+  g.stroke();
+  g.globalAlpha = 0.45 * wrapAlpha; g.beginPath();
+  for (let q = 0; q < n; q++) { const i = RANK[q]; if (!isBusy(i)) continue; const r = 1.35 * Math.max(2.5, ringR(i)); g.moveTo(cx[i] + r, cy[i]); g.arc(cx[i], cy[i], r, 0, 6.283); }
+  g.stroke();
+  g.globalAlpha = 1;
+}
+function drawSne(g) {
+  for (let k = 0; k < SNE.length; k++) {
+    if (SNE[k][2] > st.t) continue;
+    g.fillStyle = C().gold; g.globalAlpha = 0.9 * wrapAlpha; g.beginPath(); g.arc(sx[k], sy[k], 1.6, 0, 6.283); g.fill();
+    g.strokeStyle = C().gold; g.lineWidth = 1; g.globalAlpha = 0.35 * wrapAlpha; g.beginPath(); g.arc(sx[k], sy[k], 4.5, 0, 6.283); g.stroke();
+  }
+  g.globalAlpha = 1;
+}
+function pillText() {
+  if (!pill) return;
+  const phone = skyBox.w < 600, N = fmtN(NC), n = nFront();
+  if (st.showAll) pill.set(`All ${N} shown`, phone ? 'Fewer' : 'Heaviest and busiest only', 'all');
+  else pill.set(phone ? `${n} of ${N}` : `Showing ${n} heaviest and busiest of ${N}`, 'Show all', 'show');
+}
+function toggleShowAll() { st.showAll = !st.showAll; pillText(); drawOverlay(); }
 
 function lensWindow(g, R) {
   const [lx, ly] = st.lan, inner = R * 0.82;
@@ -239,12 +292,23 @@ function lensWindow(g, R) {
   g.restore();
   g.save();
   g.beginPath(); g.arc(lx, ly, inner, 0, 6.283); g.clip();
-  g.strokeStyle = C().gold; g.lineWidth = 1;
+  g.strokeStyle = C().gold; g.lineWidth = 1; g.globalAlpha = 0.6;
+  const reach = (inner + 40) / LENS_ZOOM, inLens = [];
   for (let i = 0; i < NC; i++) {
     const dx = cx[i] - lx, dy = cy[i] - ly;
-    if (i !== st.sel || Math.hypot(dx, dy) * LENS_ZOOM > inner + 40) continue;
-    g.globalAlpha = 1; g.lineWidth = 2;
-    g.beginPath(); g.arc(lx + dx * LENS_ZOOM, ly + dy * LENS_ZOOM, ringR(i) * LENS_ZOOM, 0, 6.283); g.stroke();
+    if (i === st.sel || Math.abs(dx) > reach || Math.abs(dy) > reach || Math.hypot(dx, dy) > reach) continue;
+    inLens.push(i);
+  }
+  if (inLens.length > LENS_RINGS) inLens.sort((a, b) => CL.m500[b] - CL.m500[a]).length = LENS_RINGS;
+  g.beginPath();
+  for (const i of inLens) {
+    const r = ringR(i) * LENS_ZOOM, x = lx + (cx[i] - lx) * LENS_ZOOM, y = ly + (cy[i] - ly) * LENS_ZOOM;
+    g.moveTo(x + r, y); g.arc(x, y, r, 0, 6.283);
+  }
+  g.stroke();
+  if (st.sel >= 0) {
+    const dx = cx[st.sel] - lx, dy = cy[st.sel] - ly;
+    if (Math.hypot(dx, dy) * LENS_ZOOM <= inner + 40) { g.globalAlpha = 1; g.lineWidth = 2; g.beginPath(); g.arc(lx + dx * LENS_ZOOM, ly + dy * LENS_ZOOM, ringR(st.sel) * LENS_ZOOM, 0, 6.283); g.stroke(); }
   }
   g.restore();
   g.globalAlpha = 1;
@@ -269,10 +333,7 @@ function drawOverlay() {
     eg.fill(); eg.globalAlpha = 1; emberN = nNow;
   }
   g.globalAlpha = wrapAlpha; g.drawImage(emberCv, 0, 0, s.w, s.h); g.globalAlpha = 1;
-  const breathe = reduceMotion ? 0.3 : 0.5 + 0.5 * Math.sin(now * 1.1);
-  g.globalAlpha = 1 - breathe * 0.55; g.drawImage(ringCv[0], 0, 0, s.w, s.h);
-  g.globalAlpha = breathe * 0.8; g.drawImage(ringCv[1], 0, 0, s.w, s.h);
-  g.globalAlpha = 1;
+  if (st.showAll) { g.globalAlpha = wrapAlpha; g.drawImage(allCv, 0, 0, s.w, s.h); g.globalAlpha = 1; } else { g.drawImage(laceCv, 0, 0, s.w, s.h); drawFront(g, now); }
   const i0 = lb(aT, st.t - 3, NA);
   g.fillStyle = C().gold;
   for (let k = Math.max(i0, nNow - 2500); k < nNow; k++) {
@@ -281,6 +342,7 @@ function drawOverlay() {
     g.beginPath(); g.arc(ax[k], ay[k], r, 0, 6.283); g.fill();
   }
   g.globalAlpha = 1;
+  drawSne(g);
   const R = lanRadius();
   lensWindow(g, R);
   g.strokeStyle = C().gold; g.lineWidth = 1.2; g.globalAlpha = 0.9;
@@ -292,8 +354,8 @@ function drawOverlay() {
     g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.arc(cx[i], cy[i], ringR(i) + 5, 0, 6.283); g.stroke();
     if (i === st.sel) annotate(g, CL.name[i], cx[i] + 12, cy[i] - 12, { size: 17, color: C().ink, align: 'left' });
   }
-  text(g, fmtD(st.t), 16, s.h - 30, { size: 16, weight: 650, color: C().ink, halo: true });
-  if (s.w >= 500) text(g, `${fmtN(nNow)} SN-like alerts so far · ${fmtN(NC)} ACT clusters (rings drawn ${Math.round(RING_PX_PER_ARCMIN * ringScale() * 60 / (frameOf(s).sc * DEG))}× their R500)`, 16, s.h - 12, { size: 12, color: C().ink2, halo: true });
+  if (s.w >= 600) text(g, fmtD(st.t), 16, s.h - 30, { size: 16, weight: 650, color: C().ink, halo: true });
+  if (s.w >= 600) text(g, `${fmtN(nNow)} SN-like alerts so far · ${fmtN(NC)} ${CL.catalogue} clusters, ${st.showAll ? 'all' : nFront()} in front (rings ${Math.round(RING_PX_PER_ARCMIN * ringScale() * 60 / (frameOf(s).sc * DEG))}× their R500)`, 16, s.h - 12, { size: 12, color: C().ink2, halo: true });
   if (glFail) text(g, glFail, 16, 18, { size: 12, color: C().ink2, halo: true });
 }
 
@@ -344,31 +406,44 @@ function nearestCluster(x, y, r) {
   for (let i = 0; i < NC; i++) { const d = (cx[i] - x) ** 2 + (cy[i] - y) ** 2; if (d < bd) { bd = d; best = i; } }
   return best;
 }
-function tipFor(i) { return `<b>${esc(CL.name[i])}</b><br>z = ${CL.z[i].toFixed(2)} · M500 = ${CL.m500[i].toFixed(1)}×10¹⁴ M☉<br>${CL.inside[i]} SN-like alerts inside R500`; }
+function tipFor(i) { return `<b>${esc(CL.name[i])}</b><br>z = ${CL.z[i].toFixed(2)} · M500c = ${CL.m500[i].toFixed(1)}×10¹⁴ M☉<br>${CL.inside[i]} SN-like alerts inside R500`; }
+function chipsFor(i) {
+  const out = [], f = scDm && scDm.facts[String(i)];
+  if (f && f.freshT) out.push([1.2, `New alert inside, ${K.fmtShort(f.freshT)}`]);
+  if (massTop[i] <= 10) out.push([1 - massTop[i] / 10, `Top ${Math.max(1, Math.ceil(massTop[i]))}% by mass: ${CL.m500[i].toFixed(1)}×10¹⁴ M☉`]);
+  if (CL.inside[i] > 0) out.push([Math.min(1, Math.max(0.05, busyZ(i) / 3)), `${CL.inside[i]} SN-like alert${CL.inside[i] === 1 ? '' : 's'} inside`]);
+  if (CL.inside[i] + CL.expect[i] > 0) out.push([0.25, 'Rubin is watching it']);
+  return out.sort((a, b) => b[0] - a[0]).map((c) => c[1]);
+}
 function select(i) { st.sel = i; K.setUrl({ obj: i >= 0 ? CL.name[i] : null }); renderCard(); }
 
 function renderCard() {
   const body = $('#dCardBody');
   const i = st.sel;
   if (i < 0) {
-    const rich = [...Array(NC).keys()].filter((k) => CL.inside[k] > 0).sort((a, b) => CL.inside[b] - CL.inside[a]).slice(0, 6);
-    const heavy = [...Array(NC).keys()].sort((a, b) => CL.m500[b] - CL.m500[a]).slice(0, 2);
-    body.innerHTML = `<h3 class="ph">Pick a cluster</h3>
-      <p class="cap">Each gold ring is a galaxy cluster found by the Atacama Cosmology Telescope through the shadow its hot gas casts on the CMB. Tap a ring, or meet these:</p>
-      <ul class="hooks">${[...rich, ...heavy].map((k) => `<li><button type="button" data-pick="${k}"><span class="sw" style="background:var(--gold)"></span><b>${esc(CL.name[k])}</b><span>${CL.inside[k] ? `${CL.inside[k]} SN-like alerts inside R500` : `one of the most massive: ${CL.m500[k].toFixed(1)}×10¹⁴ M☉`}</span></button></li>`).join('')}</ul>`;
+    const top = [], seen = new Map();
+    for (let q = 0; q < RANK.length && top.length < 8; q++) {
+      const k = RANK[q], lead = (chipsFor(k)[0] || '').replace(/[0-9.,]+/g, '#');
+      if ((seen.get(lead) || 0) >= 2 && q < nFront()) continue;
+      seen.set(lead, (seen.get(lead) || 0) + 1); top.push(k);
+    }
+    body.innerHTML = `<h3 class="ph">Clusters worth a look</h3>
+      <p class="cap">The heaviest clusters, and those with the most supernova-like alerts inside. Each ring is a galaxy cluster the Atacama Cosmology Telescope found by the shadow its hot gas casts on the CMB; the faint lace is all ${fmtN(NC)}.</p>
+      <ul class="hooks">${top.map((k) => `<li><button type="button" data-pick="${k}"><span class="sw" style="background:var(--gold)"></span><b>${esc(CL.name[k])}</b>${SC.chipsHtml(chipsFor(k).slice(0, 2))}</button></li>`).join('')}</ul>`;
     body.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => select(+b.dataset.pick)));
     return;
   }
   const facts = [
     ['Redshift', CL.z[i].toFixed(3)],
-    ['Mass M500', `${CL.m500[i].toFixed(2)}×10¹⁴ M☉ <small>(calibrated SZ mass)</small>`],
+    ['Mass M500c', `${CL.m500[i].toFixed(2)}×10¹⁴ M☉ <small>(calibrated SZ mass)</small>`],
     ['Radius θ500', `${CL.theta500[i].toFixed(2)}′ <small>on the sky</small>`],
-    ['SN-like alerts inside R500', `${CL.inside[i]} <small>(counted for the ${CT.clusters} clusters with Rubin coverage)</small>`],
+    ['SN-like alerts inside R500', `${CL.inside[i]} <small>(${CL.expect[i].toFixed(1)} expected from the 3–6 R500 ring)</small>`],
     ['RA, Dec', `${CL.ra[i].toFixed(3)}°, ${CL.dec[i].toFixed(3)}°`],
     ['Galactic l, b', `${CL.l[i].toFixed(1)}°, ${CL.b[i].toFixed(1)}°`],
   ];
   body.innerHTML = `<h3>${esc(CL.name[i])}</h3>
-    <div class="cls"><span class="sw" style="background:var(--gold)"></span>ACT DR5 SZ galaxy cluster</div>
+    <div class="cls"><span class="sw" style="background:var(--gold)"></span>${CL.catalogue} SZ galaxy cluster</div>
+    ${SC.chipsHtml(chipsFor(i))}
     <p class="cap">Its hot gas scatters CMB photons (the Sunyaev–Zel’dovich effect); its mass, mostly dark matter, bends the CMB around it by a fraction of an arcminute.</p>
     <dl>${facts.map(([k, v]) => `<div style="grid-column:span ${v.length > 40 ? 3 : 1}"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
     <p class="note">R500 is the radius inside which the mean density is 500 times the critical density of the universe; here it spans ${CL.theta500[i].toFixed(1)} arcminutes.</p>`;
@@ -396,6 +471,12 @@ function drawMeter(s, opts) {
   }
   const [t0x, t0y] = pt(3, R * 0.5), [t1x, t1y] = pt(3, R * 1.0);
   g.setLineDash([3, 3]); g.strokeStyle = C().gold; g.globalAlpha = 0.6; g.beginPath(); g.moveTo(t0x, t0y); g.lineTo(t1x, t1y); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+  if (opts.ghost != null) {
+    const [gx, gy] = pt(opts.ghost, R * 0.85);
+    g.setLineDash([3, 3]); g.strokeStyle = C().ink3; g.lineWidth = 1.5; g.beginPath(); g.moveTo(cxm, cym); g.lineTo(gx, gy); g.stroke(); g.setLineDash([]);
+    const [lx, ly] = pt(opts.ghost, R * 0.85 + 12);
+    text(g, opts.ghostLabel, lx, ly + 4, { size: 11, color: C().ink3, align: 'center', halo: true });
+  }
   if (opts.ref != null) {
     const [r0x, r0y] = pt(opts.ref, R * 0.62), [r1x, r1y] = pt(opts.ref, R * 1.0);
     g.strokeStyle = C().ink2; g.lineWidth = 2; g.beginPath(); g.moveTo(r0x, r0y); g.lineTo(r1x, r1y); g.stroke();
@@ -414,6 +495,12 @@ function updatedLine() {
   const up = isoMjd(M.updated || M.built), to = isoMjd(M.dataTo);
   return `Updated ${up ? fmtD(up) : M.built}: both meters recomputed from ${fmtN(M.objectsAllTags || LT.nObjects)} SN-like objects${to ? `, with Rubin data to ${fmtD(to)}` : ''}. The needles move as Rubin fills the southern sky.`;
 }
+const sig = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(1)}σ`;
+function ctestNote() {
+  const G = CT.dr5Ghost;
+  if (!G) return `${CT.observed} alerts inside R500 of ${CT.clusters} clusters, ${CT.expected} expected from their surroundings: ${CT.sigma.toFixed(1)}σ. Forecast: ${esc(CT.forecast)}.`;
+  return `Inside R500 of ${fmtN(CT.clusters)} of ${fmtN(CT.south)} southern ACT DR6 clusters: ${fmtN(CT.observed)} alerts, ${CT.expected} expected from their surroundings, ${sig(CT.sigma)}. With DR5’s ${fmtN(G.of)} clusters the same test reads ${sig(G.sigma)} (dashed). Forecast: ${esc(CT.forecast)}.`;
+}
 function buildDom() {
   $('#dmRoot').innerHTML = `
 <main class="smain dmain">
@@ -431,14 +518,14 @@ function buildDom() {
         <output id="dDate" class="date"></output>
         <label class="speed"><span>Speed</span><select id="dSpeed" aria-label="Days per second"><option value="1">1 day/s</option><option value="2" selected>2 days/s</option><option value="5">5 days/s</option><option value="15">15 days/s</option></select></label>
       </div>
-      <details class="about"><summary>About this view</summary><p>Temperature: Planck SMICA, smoothed to 12′, shown as a muted warm–cool weave rather than the usual rainbow; the dimmer band is where Planck trusts the map less. Bending: the lensing potential from Planck PR4 (ℓ ≤ 400), turned into a deflection field. The true deflection is about ${M.deflectionRmsArcmin.toFixed(1)}′ rms in this reconstruction, smaller than one pixel here, so at ×1 the lens shows nothing: the bending is real but invisible. “Show the shadow” fades into the convergence κ, the projected mass itself, smoothed to 1.5°. Clusters: ACT DR5, 4,195 clusters, rings drawn far larger than life so they can be seen. Alerts: ${fmtN(NA)} Fink “most likely SN” objects, at the time each was first seen. Cluster meter: “most likely SN” objects that do not look like stars (Legacy Survey p_star ≤ 0.5) at |b| > 20°, counted inside R500 against a 3–6 R500 ring, over clusters with any object within 6 R500; the error is a 2,000-draw bootstrap over those clusters.</p></details>
+      <details class="about"><summary>About this view</summary><p>Temperature: Planck SMICA, smoothed to 12′, shown as a muted warm–cool weave rather than the usual rainbow; the dimmer band is where Planck trusts the map less. Bending: the lensing potential from Planck PR4 (ℓ ≤ 400), turned into a deflection field. The true deflection is about ${M.deflectionRmsArcmin.toFixed(1)}′ rms in this reconstruction, smaller than one pixel here, so at ×1 the lens shows nothing: the bending is real but invisible. “Show the shadow” fades into the convergence κ, the projected mass itself, smoothed to 1.5°. Clusters: ${CL.catalogue}, ${fmtN(NC)} clusters as a faint lace, the ${nFront()} heaviest and busiest in front (doubled when unusually many SN-like alerts sit inside), rings drawn far larger than life so they can be seen. Alerts: ${fmtN(NA)} Fink “most likely SN” objects, at the time each was first seen. Cluster meter: “most likely SN” objects that do not look like stars (Legacy Survey p_star ≤ 0.5) at |b| > 20°, counted inside R500 against a 3–6 R500 ring, over clusters with any object within 6 R500; the error is a 2,000-draw bootstrap over those clusters.</p></details>
       <div class="legend" id="dLegend"></div>
     </section>
     <section class="panel d-meter" aria-labelledby="h-dmeter">
       <div class="phead"><div class="pbar"><h2 id="h-dmeter">Do Rubin’s explosions follow the dark matter?</h2></div>
       <p class="cap">Left: the Planck κ averaged at ${fmtN(LT.nObjects)} supernova-like alerts, against 300 copies of the same pattern rotated around the sky (faint ticks). Right: supernova-like alerts inside ACT clusters against the surroundings. The dashed line is 3σ.</p></div>
       <div class="meters"><div><canvas id="dMeter" aria-label="Lensing significance meter"></canvas><p class="note">b = ${LT.bias.toFixed(1).replace('-', '−')} ± ${LT.biasSigma.toFixed(1)} over about ${fmtN(LT.areaDeg2)} deg². What a detection looks like: ACT clusters through the same pipeline give +${LT.controlSigma.toFixed(1)}σ. Forecast: ${esc(LT.forecast)}.</p></div>
-      <div><canvas id="dCtest" aria-label="Cluster supernova excess meter"></canvas><p class="note">${CT.observed} alerts inside R500 of ${CT.clusters} clusters, ${CT.expected} expected from their surroundings: ${CT.sigma.toFixed(1)}σ. Forecast: ${esc(CT.forecast)}.</p></div></div>
+      <div><canvas id="dCtest" aria-label="Cluster supernova excess meter"></canvas><p class="note">${ctestNote()}</p></div></div>
       <p class="note dupd">${updatedLine()}</p>
     </section>
     <section class="panel d-story" aria-labelledby="h-dstory">
@@ -448,7 +535,7 @@ function buildDom() {
         <li><b>Bent on the way.</b> Every clump of matter between us and that light, mostly dark matter, bends it by a couple of arcminutes. Planck turned those tiny bends back into a map of the mass: the shadow.</li>
         <li><b>Rubin’s explosions.</b> Supernovae go off in galaxies, and galaxies sit where the dark matter is. If Rubin’s explosions trace the same mass, they should crowd where the shadow is darkest.</li>
         <li><b>Not yet.</b> Today the needle sits at ${LT.sigma.toFixed(1).replace('-', '−')}σ, inside the cloud of rotated skies: no signal, because Rubin has so far looked hard at a few patches only.</li>
-        <li><b>How the needle should move.</b> As the wide survey fills the southern sky, the noise shrinks; if explosions follow dark matter like ordinary galaxies, the needle should cross 3σ around late 2027. The cluster test should follow around mid-2028.</li>
+        <li><b>How the needle should move.</b> As the wide survey fills the southern sky, the noise shrinks; if explosions follow dark matter like ordinary galaxies, the needle should cross 3σ around late 2027. ${CT.catalogue === 'ACT DR6' ? 'The cluster test, now on ten thousand ACT DR6 clusters, should get there about as soon.' : 'The cluster test should follow around mid-2028.'}</li>
       </ol>
     </section>
   </div>
@@ -487,7 +574,7 @@ function presets() {
   }
 }
 function legend() {
-  $('#dLegend').innerHTML = `<span class="k"><span class="sw" style="background:${C().gold}"></span>SN-like alert (spark, then ember)</span><span class="k"><span class="sw ring" style="border-color:${C().gold}"></span>ACT cluster</span><span class="k"><span class="sw" style="background:linear-gradient(90deg,rgb(${PALETTE.dark.cool.map((x) => Math.round(x * 255)).join(',')}),rgb(${PALETTE.dark.warm.map((x) => Math.round(x * 255)).join(',')}))"></span>CMB cooler · warmer (about ±250 μK)</span>`;
+  $('#dLegend').innerHTML = `<span class="k"><span class="sw" style="background:${C().gold}"></span>SN-like alert (spark, then ember)</span><span class="k"><span class="sw ring" style="border-color:${C().gold}"></span>${CL.catalogue} cluster: faint lace; in front ◯ heaviest · ◎ most SN-like alerts inside</span><span class="k"><span class="sw" style="background:${C().gold};box-shadow:0 0 0 2px var(--paper),0 0 0 3px ${C().gold}"></span>a confident supernova</span><span class="k"><span class="sw" style="background:linear-gradient(90deg,rgb(${PALETTE.dark.cool.map((x) => Math.round(x * 255)).join(',')}),rgb(${PALETTE.dark.warm.map((x) => Math.round(x * 255)).join(',')}))"></span>CMB cooler · warmer (about ±250 μK)</span>`;
 }
 
 function wire() {
@@ -547,7 +634,9 @@ async function build() {
   gl = initGl($('#dmGl'));
   if (gl) uploadTextures();
   meterS = K.setupCanvas($('#dMeter'), (s) => drawMeter(s, { range: [-4, 8], every: 2, nulls: LT.nulls, value: LT.sigma, ref: LT.controlSigma, refLabel: `ACT clusters +${LT.controlSigma.toFixed(1)}σ`, big: `${LT.sigma > 0 ? '+' : '−'}${Math.abs(LT.sigma).toFixed(1)}σ`, small: 'κ at SN-like alerts vs 300 rotated skies' }));
-  ctestS = K.setupCanvas($('#dCtest'), (s) => drawMeter(s, { range: [-2, 5], every: 1, value: CT.sigma, big: `+${CT.sigma.toFixed(1)}σ`, small: `${CT.observed} seen vs ${CT.expected} expected in clusters` }));
+  ctestS = K.setupCanvas($('#dCtest'), (s) => drawMeter(s, { range: [-2, 5], every: 1, value: CT.sigma, ghost: CT.dr5Ghost ? CT.dr5Ghost.sigma : null, ghostLabel: 'DR5', big: sig(CT.sigma), small: `${CT.observed} seen vs ${CT.expected} expected in ${fmtN(CT.clusters)} clusters` }));
+  const tools = document.createElement('div'); tools.className = 'maptools dm-tools'; $('.dm-wrap').appendChild(tools);
+  pill = SC.makePill(tools, { onToggle: toggleShowAll, onBack: toggleShowAll });
   wire();
   presets();
   legend();
@@ -573,7 +662,7 @@ async function enter(objId) {
   K.shell.setSearch({ items: searchItems, empty: 'No ACT cluster matches. Try ACT-CL J0102.' }, `Search ${fmtN(NC)} ACT clusters, e.g. ACT-CL J0102`);
   if (objId) { const i = CL.name.indexOf(objId); if (i >= 0) st.sel = i; }
   renderCard();
-  requestAnimationFrame(() => { sizeSky(); syncTime(); [meterS, ctestS].forEach((s) => s.resize()); });
+  requestAnimationFrame(() => { sizeSky(); syncTime(); pillText(); [meterS, ctestS].forEach((s) => s.resize()); });
   const params = new URLSearchParams(location.search);
   if (!reduceMotion && !params.has('still')) { st.t = T0; emberN = 0; emberCv = null; setPlay(true); } else syncTime();
   loop();

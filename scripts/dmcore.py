@@ -111,4 +111,5 @@ def cluster_meter(c_ra, c_dec, c_theta, o_ra, o_dec, inner=1.0, ann_in=3.0, ann_
     boot = np.array([inner_counts[d].sum() - ann_counts[d].sum() * ratio for d in (rng.choice(idx, idx.size) for _ in range(bootstrap))]) if idx.size else np.zeros(1)
     sd = float(boot.std()) or 1.0
     return {'observed': observed, 'expected': expected, 'excess': observed - expected, 'excessSigma': sd,
-            'sigma': (observed - expected) / sd, 'clusters': int(covered.sum()), 'inside': inner_counts.tolist()}
+            'sigma': (observed - expected) / sd, 'clusters': int(covered.sum()), 'inside': inner_counts.tolist(),
+            'expect': (ann_counts * ratio).tolist(), 'covered': covered.tolist()}

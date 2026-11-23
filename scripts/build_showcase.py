@@ -1,9 +1,12 @@
 import argparse
+import base64
 import datetime
 import json
 import math
 import os
 from collections import Counter
+
+import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -179,6 +182,65 @@ def stars_part(S, n_top=120):
     }
 
 
+DM_W = {'mass': 1.0, 'busy': 1.0, 'covered': 0.5}
+DM_NORM = 1.775
+DM_BUSY_SHARE = 0.3
+
+
+def dm_part(D, n_top=120):
+    cl = D['clusters']
+    n = cl['n']
+    raw = np.frombuffer(base64.b64decode(cl['data']), dtype='<u2').reshape(n, len(cl['fields'])).astype(float)
+    col = {f: raw[:, k] / cl['scale'][k] - cl['offset'][k] for k, f in enumerate(cl['fields'])}
+    tri = np.frombuffer(base64.b64decode(D['alerts']['data']), dtype='<u2').reshape(-1, 3).astype(float)
+    a_t = D['meta']['mjdBase'] + tri[:, 2] / 100
+    nights = np.unique(np.floor(a_t - 0.5))
+    recent = nights[-FRESH_NIGHTS:]
+    fresh_from = recent[0] + 0.5 if recent.size else a_t.max()
+    sel = a_t >= fresh_from
+    al, ab = np.radians(tri[sel, 0] / 65535 * 360), np.radians(tri[sel, 1] / 65535 * 180 - 90)
+    av = np.stack([np.cos(ab) * np.cos(al), np.cos(ab) * np.sin(al), np.sin(ab)])
+    cl_l, cl_b = np.radians(col['l']), np.radians(col['b'])
+    cv = np.stack([np.cos(cl_b) * np.cos(cl_l), np.cos(cl_b) * np.sin(cl_l), np.sin(cl_b)], axis=1)
+    fresh_t = np.zeros(n)
+    if av.shape[1]:
+        for s in range(0, n, 2000):
+            sep = np.degrees(np.arccos(np.clip(cv[s:s + 2000] @ av, -1, 1))) * 60 / np.maximum(col['theta500'][s:s + 2000, None], 0.01)
+            hit = sep < 1
+            fresh_t[s:s + 2000] = np.where(hit.any(1), np.where(hit, a_t[sel][None, :], 0).max(1), 0)
+    pct = np.argsort(np.argsort(col['m500'], kind='stable'), kind='stable') / max(1, n - 1)
+    comp = {
+        'mass': np.clip((pct - 0.9) / 0.1, 0, 1),
+        'busy': np.clip((col['inside'] - col['expect']) / np.sqrt(col['expect'] + 1) / 3, 0, 1),
+        'covered': ((col['inside'] + col['expect']) > 0).astype(float),
+        'fresh': (fresh_t > 0).astype(float),
+    }
+    score = [combine({k: comp[k][i] for k in DM_W}, DM_W, comp['fresh'][i]) * NORM / DM_NORM for i in range(n)]
+    order = sorted(range(n), key=lambda i: (-round(score[i], 6), -col['m500'][i], i))
+    busy = [i for i in order if comp['busy'][i] > 0]
+    need = min(len(busy), int(DM_BUSY_SHARE * n_top))
+    top = busy[:need]
+    taken = set(top)
+    for i in order:
+        if len(top) >= n_top:
+            break
+        if i not in taken:
+            top.append(i)
+            taken.add(i)
+    pos = {i: k for k, i in enumerate(order)}
+    top.sort(key=pos.get)
+    rank = top + [i for i in order if i not in taken]
+    keys = list(DM_W) + ['fresh']
+    facts = {}
+    for i in sorted(rank[:3 * n_top]):
+        f = {'massPct': round(100 * (1 - pct[i]), 2), 'c': [int(round(255 * comp[k][i])) for k in keys]}
+        if fresh_t[i]:
+            f['freshT'] = round(float(fresh_t[i]), 3)
+        facts[str(i)] = f
+    return {'n': n, 'top': {'desktop': n_top, 'phone': n_top // 2}, 'components': keys, 'rank': rank,
+            'score': [int(round(x)) for x in score], 'facts': facts}
+
+
 def main():
     ap = argparse.ArgumentParser(description='Score every object for the showcase and write site/data/showcase.json.')
     ap.add_argument('--data', default=os.path.join(ROOT, 'site', 'data'))
@@ -188,13 +250,20 @@ def main():
     modes = {}
     stars = json.load(open(os.path.join(a.data, 'stars.json'), encoding='utf-8'))
     modes['stars'] = stars_part(stars)
+    cmb_path = os.path.join(a.data, 'cmb.json')
+    if os.path.exists(cmb_path):
+        cmb = json.load(open(cmb_path, encoding='utf-8'))
+        if 'data' in cmb.get('clusters', {}):
+            modes['dm'] = dm_part(cmb)
     built = stars['meta'].get('updated') or stars['meta'].get('built') or datetime.date.today().isoformat()
     out = {'version': 1, 'built': built, 'modes': modes}
     body = json.dumps(out, separators=(',', ':'), ensure_ascii=True, sort_keys=False)
     with open(out_path, 'w', encoding='ascii') as fh:
         fh.write(body)
     s = modes['stars']
-    print(f"showcase: stars top {s['top']['desktop']} cut score {s['score'][s['rank'][s['top']['desktop'] - 1]]}, {len(body)} bytes")
+    d = modes.get('dm')
+    dm_note = f"; dm top {d['top']['desktop']} cut score {d['score'][d['rank'][d['top']['desktop'] - 1]]}" if d else ''
+    print(f"showcase: stars top {s['top']['desktop']} cut score {s['score'][s['rank'][s['top']['desktop'] - 1]]}{dm_note}, {len(body)} bytes")
 
 
 if __name__ == '__main__':

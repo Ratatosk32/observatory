@@ -688,8 +688,9 @@ ul.hooks .why { grid-column: 2; margin: 4px 0 0; }
 .scoreline summary { display: inline; cursor: pointer; color: var(--gold); }
 .scoreline details[open] p { margin: 6px 0 0; }
 @media (max-width: 600px) {
-  .map-wrap:has(> .maptools) { display: flex; flex-direction: column; }
-  .maptools { position: static; order: -1; margin: 0 0 8px; padding: 0; }
+  .map-wrap:has(> .maptools:not(.dm-tools)) { display: flex; flex-direction: column; }
+  .maptools:not(.dm-tools) { position: static; order: -1; margin: 0 0 8px; padding: 0; }
+  .dm-tools .showcase { height: 28px; font-size: 12px; padding: 0 8px; }
 }
 
 .sitebtns { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
