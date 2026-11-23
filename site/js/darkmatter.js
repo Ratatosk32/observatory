@@ -33,6 +33,8 @@ let built = false, entered = false;
 let sky = null, ov = null, gl = null, glFail = '', imgs = null, meterS = null, ctestS = null;
 let cx = new Float32Array(NC), cy = new Float32Array(NC), ax = new Float32Array(0), ay = new Float32Array(0);
 let ringCv = [null, null], emberCv = null, emberN = 0;
+const WRAP_MS = 1600;
+let wrapAt = 0, wrapAlpha = 1;
 const lb = (arr, x, n = arr.length) => { let lo = 0, hi = n; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < x) lo = m + 1; else hi = m; } return lo; };
 const dateOf = (t) => new Date((t - 40587) * 864e5);
 const fmtD = (t) => { const d = dateOf(t); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
@@ -218,7 +220,7 @@ function drawOverlay() {
     for (let k = emberN; k < nNow; k++) eg.rect(ax[k] - 0.5, ay[k] - 0.5, 1, 1);
     eg.fill(); eg.globalAlpha = 1; emberN = nNow;
   }
-  g.drawImage(emberCv, 0, 0, s.w, s.h);
+  g.globalAlpha = wrapAlpha; g.drawImage(emberCv, 0, 0, s.w, s.h); g.globalAlpha = 1;
   const breathe = reduceMotion ? 0.3 : 0.5 + 0.5 * Math.sin(now * 1.1);
   g.globalAlpha = 1 - breathe * 0.55; g.drawImage(ringCv[0], 0, 0, s.w, s.h);
   g.globalAlpha = breathe * 0.8; g.drawImage(ringCv[1], 0, 0, s.w, s.h);
@@ -227,7 +229,7 @@ function drawOverlay() {
   g.fillStyle = C().gold;
   for (let k = Math.max(i0, nNow - 2500); k < nNow; k++) {
     const age = st.t - aT[k], a = reduceMotion ? 0.8 : Math.exp(-age / 1.2), r = 1 + 2.2 * a;
-    g.globalAlpha = 0.15 + 0.6 * a;
+    g.globalAlpha = (0.15 + 0.6 * a) * wrapAlpha;
     g.beginPath(); g.arc(ax[k], ay[k], r, 0, 6.283); g.fill();
   }
   g.globalAlpha = 1;
@@ -256,8 +258,14 @@ function frame(ts) {
   const c0 = performance.now();
   let glDirty = false;
   if (st.playing) {
-    st.t += dt * st.speed;
-    if (st.t > T1) { st.t = T0; emberN = 0; emberCv = null; }
+    if (wrapAt) {
+      const p = Math.min(1, (ts - wrapAt) / WRAP_MS);
+      wrapAlpha = 1 - p * p * (3 - 2 * p);
+      if (p >= 1) { wrapAt = 0; wrapAlpha = 1; st.t = T0; emberN = 0; emberCv = null; }
+    } else {
+      st.t += dt * st.speed;
+      if (st.t > T1) { st.t = T1; wrapAt = ts; }
+    }
     syncTime();
   }
   if (Math.abs(st.shadow - st.shadowTarget) > 0.001) { st.shadow += clamp(st.shadowTarget - st.shadow, -dt * 2.5, dt * 2.5); glDirty = true; }
@@ -274,6 +282,7 @@ function syncTime() {
 }
 function setPlay(p) {
   st.playing = p;
+  if (!p) { wrapAt = 0; wrapAlpha = 1; }
   const b = $('#dPlay');
   b.querySelector('span').textContent = p ? 'Pause' : 'Play';
   b.querySelector('path.pl').setAttribute('d', p ? 'M8 5.5v13M16 5.5v13' : 'M8 5.5v13l10.5-6.5z');
@@ -454,7 +463,7 @@ function wire() {
   cv.addEventListener('dblclick', () => { st.pinned = !st.pinned; });
   $('#dPlay').addEventListener('click', () => setPlay(!st.playing));
   $('#dSpeed').addEventListener('change', (e) => { st.speed = +e.target.value; });
-  $('#dSlider').addEventListener('input', (e) => { st.t = T0 + +e.target.value / 1000 * (T1 - T0); syncTime(); });
+  $('#dSlider').addEventListener('input', (e) => { wrapAt = 0; wrapAlpha = 1; st.t = T0 + +e.target.value / 1000 * (T1 - T0); syncTime(); });
   const amp = $('#dAmp'), ampV = $('#dAmpV');
   const setAmp = () => { const x = +amp.value; st.amp = Math.round(Math.pow(300, x / 1000)); ampV.textContent = `×${st.amp}`; $('#dAmpNote').textContent = st.amp === 1 ? `At ×1 the bending is real but about ${M.deflectionRmsArcmin.toFixed(1)}′, too small to see.` : `Bending exaggerated ${st.amp} times: ${(M.deflectionRmsArcmin * st.amp / 60).toFixed(1)}° typical shift.`; st.glDirty = true; };
   amp.addEventListener('input', setAmp); setAmp();

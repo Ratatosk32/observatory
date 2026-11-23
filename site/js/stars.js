@@ -55,6 +55,7 @@ const MW = S.milkyWay, mwD = decode(MW.density);
 const HR = S.hrDiagram, hrC = decode(HR.counts);
 
 let grp, pU, pV, nights, T0, T1, gaps, byT0, t0Sorted, vis, sx, sy, qx, qy, jit, lx, ly, bucket, magOf, pl, agnList, flick, trList, trT0;
+let wrapAt = 0, wrapAlpha = 1;
 const tracks = new Map();
 function derive() {
   N = Ob.id.length; NA = AL.t.length;
@@ -695,7 +696,7 @@ function drawSky(s) {
     }
     eg.globalAlpha = 1; emberN = nNow;
   }
-  g.globalAlpha = hooks.emberAlpha * (C().dark ? 0.75 : 0.85);
+  g.globalAlpha = hooks.emberAlpha * wrapAlpha * (C().dark ? 0.75 : 0.85);
   g.drawImage(emberCv, 0, 0, s.w, s.h);
   g.globalAlpha = 1;
   drawStarsOnSky(g, s, Math.min(2, Math.sqrt(view.k)));
@@ -709,7 +710,7 @@ function drawSky(s) {
     if (!vis[o]) continue;
     const x = qx[o], y = qy[o];
     if (x < -20 || y < -20 || x > s.w + 20 || y > s.h + 20) continue;
-    const age = st.t - AL.t[k], a = reduceMotion ? 1 : Math.exp(-age / 1.5);
+    const age = st.t - AL.t[k], a = (reduceMotion ? 1 : Math.exp(-age / 1.5)) * wrapAlpha;
     const rad = clamp(10 - (AL.m[k] - 16) * 7.5 / 8, 2.5, 10) * sk;
     if (AL.sgn[k] < 0) {
       g.globalCompositeOperation = 'source-over'; g.globalAlpha = a * 0.9; g.strokeStyle = gcol[grp[o]]; g.lineWidth = 1.3;
@@ -724,8 +725,6 @@ function drawSky(s) {
     if (skyFade && skyFade.lab) { const [ox, oy, orr] = place(skyFade.view); g.globalAlpha = hooks.skyAlpha * (1 - fa); g.drawImage(skyFade.lab, ox, oy, s.w * orr, s.h * orr); }
     g.globalAlpha = hooks.skyAlpha * fa; g.drawImage(skyLabels, dx, dy, s.w * r, s.h * r); g.globalAlpha = 1;
   }
-  const gp = inGap(st.t);
-  if (gp) text(g, 'No observations in this stretch', s.w / 2, s.h / 2 + 40, { size: 14, weight: 600, color: C().ink, align: 'center', halo: true });
   text(g, fmtD(st.t), 16, s.h - 30, { size: 16, weight: 650, color: C().ink, halo: true });
   if (s.w >= 500) text(g, `${fmtN(i1 - i0)} sample alerts in the last ${reduceMotion ? 'night' : '4 nights'} · ${fmtN(Math.min(nNow, N))} objects seen so far`, 16, s.h - 12, { size: 12, color: C().ink2, halo: true });
   for (const [i, col, w] of [[st.hover, C().ink, 1.5], [st.sel, C().hi, 2]]) {
@@ -1277,7 +1276,7 @@ function flickerOf(i, now) {
   return 1 - amp * 0.5 * (1 + n);
 }
 function drawStarsOnSky(g, s, sk) {
-  const on = pulsesOn(), tau = on ? tauNow() : 0, dark = C().dark, now = performance.now() / 1000, ea = hooks.emberAlpha;
+  const on = pulsesOn(), tau = on ? tauNow() : 0, dark = C().dark, now = performance.now() / 1000, ea = hooks.emberAlpha * wrapAlpha;
   const out = (x, y) => x < -24 || y < -24 || x > s.w + 24 || y > s.h + 24;
   g.globalCompositeOperation = dark ? 'lighter' : 'source-over';
   const fast = [];
@@ -1633,13 +1632,19 @@ function wireCanvas(cv, get) {
 }
 
 let raf = 0, lastTs = 0, frameN = 0;
+const WRAP_MS = 1600;
+function endWrap() { wrapAt = 0; wrapAlpha = 1; }
 function frame(ts) {
   raf = 0;
   if (!st.playing || !entered) return;
   const dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 0;
   if (lastTs) { perf.frame.push(ts - lastTs); if (perf.frame.length > 600) perf.frame.shift(); }
   lastTs = ts;
-  if (st.tween) {
+  if (wrapAt) {
+    const p = Math.min(1, (ts - wrapAt) / WRAP_MS);
+    wrapAlpha = 1 - p * p * (3 - 2 * p);
+    if (p >= 1) { endWrap(); st.t = T0; st.tween = null; emberN = -1; }
+  } else if (st.tween) {
     const p = Math.min(1, (ts - st.tween.t0) / st.tween.ms), e = p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2;
     st.t = st.tween.from + (st.tween.to - st.tween.from) * e;
     if (p >= 1) st.tween = null;
@@ -1649,7 +1654,7 @@ function frame(ts) {
     else st.t = next;
   }
   if (st.stopAt != null && st.t >= st.stopAt) { st.t = st.stopAt; st.stopAt = null; drawSky(skyS); drawLadder(ladS); drawRibbon(ribS); setPlay(false); if (hooks.onStop) { const cb = hooks.onStop; hooks.onStop = null; cb(); } return; }
-  if (st.t > T1) { st.t = T0; st.tween = null; emberN = -1; }
+  if (st.t > T1 && !wrapAt) { st.t = T1; st.tween = null; wrapAt = ts; }
   const c0 = performance.now();
   drawSky(skyS); drawLadder(ladS); drawRibbon(ribS);
   perf.draw.push(performance.now() - c0);
@@ -1659,7 +1664,7 @@ function frame(ts) {
 }
 function setPlay(p) {
   st.playing = p;
-  if (!p) st.tween = null;
+  if (!p) { st.tween = null; endWrap(); }
   const b = $('#sPlay');
   b.querySelector('span').textContent = p ? 'Pause' : 'Play';
   b.querySelector('path.pl').setAttribute('d', p ? 'M8 5.5v13M16 5.5v13' : 'M8 5.5v13l10.5-6.5z');
@@ -1669,7 +1674,7 @@ function setPlay(p) {
   if (!p) $('#sDate').textContent = fmtD(st.t);
 }
 function syncSlider() { const sl = $('#sSlider'); if (sl) sl.value = ((st.t - T0) / (T1 - T0) * 1000).toFixed(2); }
-function setT(t) { st.tween = null; st.t = clamp(t, T0, T1); $('#sDate').textContent = fmtD(st.t); syncSlider(); redraw(); }
+function setT(t) { st.tween = null; endWrap(); st.t = clamp(t, T0, T1); $('#sDate').textContent = fmtD(st.t); syncSlider(); redraw(); }
 function redraw() {
   if (!entered) return;
   drawSky(skyS); drawLadder(ladS); drawRibbon(ribS); drawHr(hrS);
