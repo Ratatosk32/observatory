@@ -43,37 +43,60 @@ const VERT = 'attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }
 const FRAG = `precision highp float;
 uniform sampler2D uSky; uniform sampler2D uLens;
 uniform vec2 uRes; uniform vec3 uFrame; uniform vec3 uLan; uniform float uAmp; uniform float uShadow;
-uniform vec3 uCool; uniform vec3 uWarm; uniform vec3 uKLo; uniform vec3 uKHi; uniform vec3 uNeutral;
-uniform float uDefl; uniform float uDark;
+uniform vec3 uCool; uniform vec3 uWarm; uniform vec3 uKLo; uniform vec3 uKHi; uniform vec3 uNeutral; uniform vec3 uGold;
+uniform float uDefl; uniform float uDark; uniform float uZoom; uniform float uGrid; uniform float uDegPx;
 const float PI = 3.14159265;
 vec2 lonlatToUv(float l, float b) { return vec2(fract(l / 360.0), clamp((90.0 - b) / 180.0, 0.0005, 0.9995)); }
-void main() {
-  vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+vec3 skyAt(vec2 px) {
   float u = (px.x - uFrame.y) / uFrame.x, v = (uFrame.z - px.y) / uFrame.x;
   float q = 1.0 - (u / 4.0) * (u / 4.0) - (v / 2.0) * (v / 2.0);
-  if (q < 0.5) { gl_FragColor = vec4(0.0); return; }
-  float z = sqrt(q);
+  float z = sqrt(max(q, 0.0));
   float lam = 2.0 * atan(z * u, 2.0 * (2.0 * z * z - 1.0));
-  float b = asin(clamp(z * v, -1.0, 1.0)) * 180.0 / PI;
-  float l = mod(-lam * 180.0 / PI + 360.0, 360.0);
-  float edge = smoothstep(0.5, 0.503, q);
-  vec4 lens = texture2D(uLens, lonlatToUv(l, b));
+  return vec3(mod(-lam * 180.0 / PI + 360.0, 360.0), asin(clamp(z * v, -1.0, 1.0)) * 180.0 / PI, q);
+}
+vec2 deflAt(float l, float b) {
+  vec2 acc = vec2(0.0); float wsum = 0.0;
+  float cb = max(cos(b * PI / 180.0), 0.1);
+  for (int i = -2; i <= 2; i++) for (int j = -2; j <= 2; j++) {
+    float wt = exp(-0.5 * float(i * i + j * j) / 1.6);
+    vec4 t = texture2D(uLens, lonlatToUv(l + float(i) * 0.7 / cb, b + float(j) * 0.7));
+    acc += wt * vec2(t.r * 255.0 - 128.0, t.g * 255.0 - 128.0); wsum += wt;
+  }
+  return acc / wsum * uDefl;
+}
+float gridLine(float d, float spacingPx) { return 1.0 - smoothstep(0.2, 0.95, d * spacingPx); }
+void main() {
+  vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  float q0 = skyAt(px).z;
+  if (q0 < 0.5) { gl_FragColor = vec4(0.0); return; }
+  float edge = smoothstep(0.5, 0.503, q0);
   float dist = length(px - uLan.xy);
   float w = 1.0 - smoothstep(uLan.z * 0.82, uLan.z, dist);
+  vec2 src = uLan.xy + (px - uLan.xy) * mix(1.0, 1.0 / uZoom, w);
+  vec3 sp = skyAt(src);
+  float l = sp.x, b = sp.y;
+  if (sp.z < 0.5) w = 0.0;
+  vec4 lens = texture2D(uLens, lonlatToUv(l, b));
   float a = uAmp * w;
-  float dth = (lens.r * 255.0 - 128.0) * uDefl, dph = (lens.g * 255.0 - 128.0) * uDefl;
+  vec2 dd = a > 0.0 ? deflAt(l, b) : vec2(0.0);
+  float dth = dd.x, dph = dd.y;
   float b2 = b - a * dth / 60.0;
   float l2 = l + a * dph / 60.0 / max(cos(b * PI / 180.0), 0.05);
   if (b2 > 90.0) { b2 = 180.0 - b2; l2 += 180.0; } else if (b2 < -90.0) { b2 = -180.0 - b2; l2 += 180.0; }
   vec4 s0 = texture2D(uSky, lonlatToUv(l, b));
   vec4 s1 = texture2D(uSky, lonlatToUv(l2, b2));
-  float t = clamp((s1.r * 255.0 - 128.0) / 110.0, -1.0, 1.0);
-  vec3 cmb = mix(uCool, uWarm, 0.5 + 0.5 * t) * (0.86 + 0.14 * abs(t));
+  float t = clamp((s1.r * 255.0 - 128.0) / 110.0 * mix(1.0, 1.7, w), -1.0, 1.0);
+  vec3 cmb = mix(uCool, uWarm, 0.5 + 0.5 * t) * mix(0.86 + 0.14 * abs(t), 0.72 + 0.5 * abs(t), w);
   cmb *= mix(0.72, 1.0, s0.g);
   float k = clamp((lens.b * 255.0 - 128.0) / 110.0, -1.0, 1.0);
   vec3 kap = mix(uKLo, uKHi, smoothstep(-0.9, 0.9, k));
   kap = mix(uNeutral, kap, s0.b * step(0.5 / 255.0, lens.b));
-  vec3 col = mix(cmb, kap, uShadow);
+  vec3 col = mix(cmb, kap, max(uShadow, 0.22 * w));
+  float pxPerDeg = uZoom / uDegPx;
+  float gb = abs(b2 - uGrid * floor(b2 / uGrid + 0.5));
+  float gl = abs(l2 - uGrid * floor(l2 / uGrid + 0.5)) * cos(b2 * PI / 180.0);
+  float line = max(gridLine(gb, pxPerDeg), gridLine(gl, pxPerDeg)) * w;
+  col = mix(col, uGold, line * mix(0.55, 0.7, uDark));
   gl_FragColor = vec4(col * edge, edge);
 }`;
 
@@ -103,7 +126,7 @@ function initGl(cv) {
     g.bufferData(g.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), g.STATIC_DRAW);
     const loc = g.getAttribLocation(pr, 'p'); g.enableVertexAttribArray(loc); g.vertexAttribPointer(loc, 2, g.FLOAT, false, 0, 0);
     const U = {};
-    for (const n of ['uSky', 'uLens', 'uRes', 'uFrame', 'uLan', 'uAmp', 'uShadow', 'uCool', 'uWarm', 'uKLo', 'uKHi', 'uNeutral', 'uDefl', 'uDark']) U[n] = g.getUniformLocation(pr, n);
+    for (const n of ['uSky', 'uLens', 'uRes', 'uFrame', 'uLan', 'uAmp', 'uShadow', 'uCool', 'uWarm', 'uKLo', 'uKHi', 'uNeutral', 'uGold', 'uDefl', 'uDark', 'uZoom', 'uGrid', 'uDegPx']) U[n] = g.getUniformLocation(pr, n);
     return { g, pr, U, tex: [] };
   } catch (e) { glFail = 'WebGL could not start here, so the map is drawn once without the bending lens.'; return null; }
 }
@@ -138,6 +161,9 @@ function sizeSky() {
   drawOverlay();
 }
 function defaultLantern() { const f = frameOf(skyBox), [u, v] = hammer(240, -35); return [f.cx + u * f.sc, f.cy - v * f.sc]; }
+const LENS_ZOOM = 3, BREATH_S = 7;
+const breathing = () => !reduceMotion && st.amp > 1 && st.shadowTarget === 0;
+function ampNow() { return breathing() ? 1 + (st.amp - 1) * (0.5 - 0.5 * Math.cos(performance.now() / 1000 * 2 * Math.PI / BREATH_S)) : st.amp; }
 function lanRadius() { return Math.max(56, Math.min(skyBox.w, skyBox.h) * st.lanR); }
 
 let fallbackCv = null;
@@ -151,7 +177,10 @@ function drawGl() {
   g.uniform2f(U.uRes, g.canvas.width, g.canvas.height);
   g.uniform3f(U.uFrame, f.sc * d, f.cx * d, f.cy * d);
   g.uniform3f(U.uLan, st.lan[0] * d, st.lan[1] * d, lanRadius() * d);
-  g.uniform1f(U.uAmp, st.amp); g.uniform1f(U.uShadow, st.shadow);
+  g.uniform1f(U.uAmp, ampNow()); g.uniform1f(U.uShadow, st.shadow);
+  const degPx = 40.5 / (f.sc * d), lensDeg = lanRadius() * d * degPx / LENS_ZOOM;
+  g.uniform1f(U.uZoom, LENS_ZOOM); g.uniform1f(U.uDegPx, degPx); g.uniform1f(U.uGrid, [0.5, 1, 2, 5, 10].find((x) => x >= lensDeg / 3.5) || 10);
+  g.uniform3fv(U.uGold, hexRgb(C().gold));
   g.uniform3fv(U.uCool, P.cool); g.uniform3fv(U.uWarm, P.warm); g.uniform3fv(U.uKLo, P.klo); g.uniform3fv(U.uKHi, P.khi); g.uniform3fv(U.uNeutral, P.neutral);
   g.uniform1f(U.uDefl, M.deflectionScaleArcmin); g.uniform1f(U.uDark, dk ? 1 : 0);
   g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
@@ -201,6 +230,26 @@ function buildRings() {
   });
 }
 
+function lensWindow(g, R) {
+  const [lx, ly] = st.lan, inner = R * 0.82;
+  g.save();
+  g.globalCompositeOperation = 'destination-out';
+  const gr = g.createRadialGradient(lx, ly, inner, lx, ly, R);
+  gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(lx, ly, R, 0, 6.283); g.fill();
+  g.restore();
+  g.save();
+  g.beginPath(); g.arc(lx, ly, inner, 0, 6.283); g.clip();
+  g.strokeStyle = C().gold; g.lineWidth = 1;
+  for (let i = 0; i < NC; i++) {
+    const dx = cx[i] - lx, dy = cy[i] - ly;
+    if (i !== st.sel || Math.hypot(dx, dy) * LENS_ZOOM > inner + 40) continue;
+    g.globalAlpha = 1; g.lineWidth = 2;
+    g.beginPath(); g.arc(lx + dx * LENS_ZOOM, ly + dy * LENS_ZOOM, ringR(i) * LENS_ZOOM, 0, 6.283); g.stroke();
+  }
+  g.restore();
+  g.globalAlpha = 1;
+}
 function drawOverlay() {
   if (!skyBox.w || !entered) return;
   const g = ov, s = skyBox, f = frameOf(s), now = performance.now() / 1000;
@@ -234,10 +283,11 @@ function drawOverlay() {
   }
   g.globalAlpha = 1;
   const R = lanRadius();
+  lensWindow(g, R);
   g.strokeStyle = C().gold; g.lineWidth = 1.2; g.globalAlpha = 0.9;
   g.beginPath(); g.arc(st.lan[0], st.lan[1], R, 0, 6.283); g.stroke();
   g.globalAlpha = 1;
-  text(g, st.amp > 1 ? `lens ×${Math.round(st.amp)}` : 'lens ×1 (true bending)', st.lan[0], st.lan[1] - R - 8, { size: 12, weight: 600, color: C().gold, align: 'center', halo: true });
+  text(g, st.amp > 1 ? `magnified ${LENS_ZOOM}× · bending ×${Math.round(ampNow())}` : `magnified ${LENS_ZOOM}× · true bending`, st.lan[0], st.lan[1] - R - 8, { size: 12, weight: 600, color: C().gold, align: 'center', halo: true });
   for (const [i, col, w] of [[st.hover, C().ink, 1.5], [st.sel, C().hi, 2]]) {
     if (i < 0) continue;
     g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.arc(cx[i], cy[i], ringR(i) + 5, 0, 6.283); g.stroke();
@@ -269,6 +319,7 @@ function frame(ts) {
     syncTime();
   }
   if (Math.abs(st.shadow - st.shadowTarget) > 0.001) { st.shadow += clamp(st.shadowTarget - st.shadow, -dt * 2.5, dt * 2.5); glDirty = true; }
+  if (breathing()) glDirty = true;
   if (glDirty || st.glDirty) { st.glDirty = false; drawGl(); }
   drawOverlay();
   K.pushPerf(K.perf.draw, performance.now() - c0);
@@ -365,7 +416,7 @@ function buildDom() {
   <div class="stack">
     <section class="panel map-panel s-sky d-sky" aria-labelledby="h-dsky">
       <div class="phead"><div class="pbar"><h2 id="h-dsky">The oldest light, bent by everything in between</h2></div>
-      <p class="cap">The cosmic microwave background from Planck, in Galactic coordinates. Inside the gold lens the CMB is shifted by the lensing deflection Planck measured, amplified by the slider above. Gold sparks: Rubin’s supernova-like alerts, night by night. Rings: ACT galaxy clusters.</p></div>
+      <p class="cap">The cosmic microwave background from Planck, in Galactic coordinates. The gold lens magnifies the sky 3× and bends it, and a gold grid, by the lensing deflection Planck measured, amplified by the slider above; the projected mass glows faintly underneath. Gold sparks: Rubin’s supernova-like alerts, night by night. Rings: ACT galaxy clusters.</p></div>
       <div class="map-wrap dm-wrap"><canvas id="dmGl" aria-label="CMB sky with a lensing magnifier. Drag to move the lens."></canvas><canvas id="dmOv" aria-hidden="true"></canvas></div>
       <div class="time">
         <button id="dPlay" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
@@ -465,7 +516,7 @@ function wire() {
   $('#dSpeed').addEventListener('change', (e) => { st.speed = +e.target.value; });
   $('#dSlider').addEventListener('input', (e) => { wrapAt = 0; wrapAlpha = 1; st.t = T0 + +e.target.value / 1000 * (T1 - T0); syncTime(); });
   const amp = $('#dAmp'), ampV = $('#dAmpV');
-  const setAmp = () => { const x = +amp.value; st.amp = Math.round(Math.pow(300, x / 1000)); ampV.textContent = `×${st.amp}`; $('#dAmpNote').textContent = st.amp === 1 ? `At ×1 the bending is real but about ${M.deflectionRmsArcmin.toFixed(1)}′, too small to see.` : `Bending exaggerated ${st.amp} times: ${(M.deflectionRmsArcmin * st.amp / 60).toFixed(1)}° typical shift.`; st.glDirty = true; };
+  const setAmp = () => { const x = +amp.value; st.amp = Math.round(Math.pow(300, x / 1000)); ampV.textContent = `×${st.amp}`; $('#dAmpNote').textContent = st.amp === 1 ? `At ×1 the bending is real but about ${M.deflectionRmsArcmin.toFixed(1)}′, too small to see.` : `Bending breathes up to ×${st.amp}: ${(M.deflectionRmsArcmin * st.amp / 60).toFixed(1)}° typical shift. The gold grid bends with it.`; st.glDirty = true; };
   amp.addEventListener('input', setAmp); setAmp();
   $('#dShadow').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); e.currentTarget.classList.toggle('on', on); st.shadowTarget = on ? 1 : 0; if (reduceMotion) { st.shadow = st.shadowTarget; st.glDirty = true; } });
   new ResizeObserver(() => { if (entered) sizeSky(); }).observe(cv);
