@@ -403,13 +403,24 @@ function planetLabels(g, s, discs) {
     text(g, p, pick[0], pick[1] + 11, { size: 12.5, weight: p === 'Earth' ? 600 : 500, color: p === 'Earth' ? C.ink : C.ink2, halo: true });
   }
 }
+const WRAP_MS = 1600;
+let wrapAt = 0, wrapAlpha = 1, wrapCv = null;
+function wrapLayer(s) {
+  const w = Math.round(s.w * s.dpr), h = Math.round(s.h * s.dpr);
+  if (!wrapCv || wrapCv.width !== w || wrapCv.height !== h) { wrapCv = document.createElement('canvas'); wrapCv.width = w; wrapCv.height = h; }
+  const g = wrapCv.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
+  return g;
+}
+function endWrap() { wrapAt = 0; wrapAlpha = 1; wrapCv = null; }
 function drawMap(s) {
   if (!s.w) return;
   const t0 = performance.now();
   buildStatic(s);
-  const g = s.ctx, sc = mapScale(s), cx = s.w / 2, cy = s.h / 2;
-  g.clearRect(0, 0, s.w, s.h);
-  g.drawImage(staticLayer, 0, 0, s.w, s.h);
+  const sc = mapScale(s), cx = s.w / 2, cy = s.h / 2;
+  s.ctx.clearRect(0, 0, s.w, s.h);
+  s.ctx.drawImage(staticLayer, 0, 0, s.w, s.h);
+  const g = wrapAlpha < 1 ? wrapLayer(s) : s.ctx;
   const tmp = [0, 0];
   for (let k = 0; k < N; k++) { posAt(O[k], state.t, tmp); posX[k] = cx + tmp[0] * sc; posY[k] = cy - tmp[1] * sc; }
   for (const p in PLANETS) planetNow[p] = planetAt(p, state.t);
@@ -477,10 +488,11 @@ function drawMap(s) {
     const k = state.hover.idx;
     g.strokeStyle = C.ink; g.lineWidth = 1.5; g.beginPath(); g.arc(posX[k], posY[k], 6, 0, 7); g.stroke();
   }
+  if (g !== s.ctx) { s.ctx.globalAlpha = wrapAlpha; s.ctx.drawImage(g.canvas, 0, 0, s.w, s.h); s.ctx.globalAlpha = 1; }
 
   const inData = state.t >= META.tmin - 1 && state.t <= META.tmax + 1;
-  text(g, fmtDate(state.t), 16, s.h - 50, { size: 17, weight: 650, color: C.ink, halo: true });
-  text(g, i1 > i0 ? `${i1 - i0} detections within ±${win} days` : inData ? 'no detections in this sample within ±2 days' : 'outside the data window: positions are extrapolated',
+  text(s.ctx, fmtDate(state.t), 16, s.h - 50, { size: 17, weight: 650, color: C.ink, halo: true });
+  text(s.ctx, i1 > i0 ? `${i1 - i0} detections within ±${win} days` : inData ? 'no detections in this sample within ±2 days' : 'outside the data window: positions are extrapolated',
     16, s.h - 32, { size: 12.5, color: C.ink2, halo: true });
   perf.draw.push(performance.now() - t0);
   if (perf.draw.length > 600) perf.draw.shift();
@@ -495,7 +507,7 @@ function syncTime() {
   $('#date').textContent = fmtDate(state.t);
   cadS.draw(cadS);
 }
-slider.addEventListener('input', () => { state.t = sToT(+slider.value); $('#date').textContent = fmtDate(state.t); mapS.draw(mapS); cadS.draw(cadS); });
+slider.addEventListener('input', () => { endWrap(); state.t = sToT(+slider.value); $('#date').textContent = fmtDate(state.t); mapS.draw(mapS); cadS.draw(cadS); });
 $('#speed').addEventListener('change', (e) => { state.speed = +e.target.value; });
 
 let lastTs = 0, raf = 0;
@@ -506,8 +518,15 @@ function frame(ts) {
   if (lastTs) perf.frame.push(ts - lastTs);
   if (perf.frame.length > 600) perf.frame.shift();
   lastTs = ts;
-  state.t += dt * state.speed;
-  if (state.t > T1) state.t = T0;
+  if (wrapAt) {
+    const p = Math.min(1, (ts - wrapAt) / WRAP_MS), q = p < 0.5 ? 1 - p * 2 : p * 2 - 1;
+    if (p >= 0.5 && state.t > T0) state.t = T0;
+    wrapAlpha = q * q * (3 - 2 * q);
+    if (p >= 1) endWrap();
+  } else {
+    state.t += dt * state.speed;
+    if (state.t > T1) { state.t = T1; wrapAt = ts; }
+  }
   drawMap(mapS);
   slider.value = tToS(state.t);
   $('#date').textContent = fmtDate(state.t);
@@ -517,6 +536,7 @@ function frame(ts) {
 let frameCount = 0;
 function setPlaying(p) {
   state.playing = p;
+  if (!p) endWrap();
   const pl = $('#play');
   pl.querySelector('span').textContent = p ? 'Pause' : 'Play';
   pl.querySelector('path.pl').setAttribute('d', p ? 'M8 5.5v13M16 5.5v13' : 'M8 5.5v13l10.5-6.5z');
