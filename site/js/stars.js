@@ -373,7 +373,6 @@ function buildSkyStatic(s) {
     g.beginPath(); g.arc(x, y, r, 0, 6.283); g.fill();
   }
   const bStep = k < 2.5 ? 30 : k < 6 ? 10 : k < 15 ? 5 : 2, lStep = k < 2.5 ? 60 : k < 6 ? 15 : k < 15 ? 5 : 2;
-  const centre = invHammer(...f.inv(s.w / 2, s.h / 2)) || [0, 0];
   g.strokeStyle = C().line; g.lineWidth = 0.8; g.globalAlpha = 0.5;
   const db = Math.max(0.25, Math.min(2, 2 / k));
   for (let b0 = -90 + bStep; b0 < 90; b0 += bStep) { const p = []; for (let l = -179.9; l <= 179.9; l += db) p.push([(l + 360) % 360, b0]); polyLB(g, f, p); g.stroke(); }
@@ -384,13 +383,20 @@ function buildSkyStatic(s) {
   const lg = lcv.getContext('2d');
   lg.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
   const placed = [];
+  const edgePoint = (pts, score, ok) => {
+    let best = null, bs = Infinity;
+    for (const [l, b] of pts) { const [u, v] = hammer(l, b), x = f.X(u), y = f.Y(v); if (ok(x, y) && score(x, y) < bs) { bs = score(x, y); best = [x, y]; } }
+    return best;
+  };
   for (let b0 = -90 + bStep; b0 < 90; b0 += bStep) {
-    const [u, v] = hammer(centre[0], b0), x = f.X(u), y = f.Y(v);
-    if (x > 0 && x < s.w && y > 10 && y < s.h - 10) text(lg, (b0 > 0 ? '+' : b0 < 0 ? '−' : '') + Math.abs(b0) + '°', x + 4, y - 3, { size: 10.5, color: C().ink3, halo: true });
+    const pts = []; for (let l = -179.9; l <= 179.9; l += db) pts.push([(l + 360) % 360, b0]);
+    const p = edgePoint(pts, (x) => x, (x, y) => x > 6 && x < s.w - 40 && y > 34 && y < s.h - 48);
+    if (p) text(lg, (b0 > 0 ? '+' : b0 < 0 ? '−' : '') + Math.abs(b0) + '°', p[0] + 5, p[1] - 3, { size: 10.5, color: C().ink3, halo: true });
   }
   if (k >= 2.5) for (let l0 = 0; l0 < 360; l0 += lStep) {
-    const [u, v] = hammer(l0 === 180 ? 179.9 : l0, centre[1]), x = f.X(u), y = f.Y(v);
-    if (x > 10 && x < s.w - 30 && y > 10 && y < s.h - 10) text(lg, `l ${l0}°`, x + 3, y + 12, { size: 10.5, color: C().ink3, halo: true });
+    const pts = []; for (let b = -90; b <= 90; b += db) pts.push([l0 === 180 ? 179.9 : l0, b]);
+    const p = edgePoint(pts, (x, y) => -y, (x, y) => x > 40 && x < s.w - 40 && y > 12 && y < s.h - 48);
+    if (p) text(lg, `l ${l0}°`, p[0] + 3, p[1] - 4, { size: 10.5, color: C().ink3, halo: true });
   }
   g.setLineDash([3, 5]); g.strokeStyle = C().ink3; g.lineWidth = 1; polyLB(g, f, eqLine(0)); g.stroke();
   g.strokeStyle = gold; g.lineWidth = 1.3; polyLB(g, f, eqLine(30)); g.stroke();
