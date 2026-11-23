@@ -396,14 +396,7 @@ function buildSkyStatic(s) {
   g.strokeStyle = gold; g.lineWidth = 1.3; polyLB(g, f, eqLine(30)); g.stroke();
   g.setLineDash([1, 4]); g.strokeStyle = C().ink2; polyLB(g, f, eclLine()); g.stroke(); g.setLineDash([]);
   const vis2 = (x, y) => x > -50 && x < s.w + 50 && y > -20 && y < s.h + 20;
-  const lab = (str, l, b, opts) => { const [u, v] = hammer(l, b), x = f.X(u), y = f.Y(v); if (vis2(x, y)) skyLabel(lg, str, x, y, opts, placed); };
   const sz = s.w < 600 ? 14 : 18;
-  lab('Galactic centre', 0, -5 / Math.sqrt(k), { size: sz, color: C().ink2 });
-  if (k < 4) lab('Galactic bulge', 0, 12, { size: sz - 2, color: C().ink3 });
-  lab('anticentre', 183, 4, { size: sz - 2, color: C().ink3, align: 'right' });
-  lab(k > 3 ? 'Large Magellanic Cloud' : 'Large Magellanic Cloud', 280.5, -32.9 - 5 / Math.sqrt(k), { size: sz - 2, color: C().ink2 });
-  lab('Small Magellanic Cloud', 302.8, -44.3 - 4.5 / Math.sqrt(k), { size: sz - 2, color: C().ink2 });
-  if (k < 4) lab('dust lanes', 330, -9, { size: sz - 4, color: C().ink3 });
   const [eu, ev] = hammer(...eq2gal(150, 33));
   if (vis2(f.X(eu), f.Y(ev))) skyLabel(lg, 'north of this line Rubin cannot see', f.X(eu), f.Y(ev) - 4, { size: sz - 2, color: gold }, placed);
   const ecl = eclLine(), ep = ecl[Math.floor(ecl.length * 0.62)], [xu, xv] = hammer(ep[0], ep[1]);
