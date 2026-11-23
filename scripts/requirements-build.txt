@@ -1,0 +1,4 @@
+numpy==2.4.6
+ducc0==0.42.0
+astropy==8.0.3
+Pillow==12.3.0

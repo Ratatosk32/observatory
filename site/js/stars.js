@@ -3,7 +3,7 @@ import * as SL from './starlight.js';
 import { createStarSync, QUERIES } from './starsync.js';
 import { register as registerData, refresh as refreshData, fmtBytes } from './datapanel.js';
 
-const S = await K.loadJson('data/stars.json?v=2026-11-22');
+const S = await K.loadJson('data/stars.json');
 const sync = createStarSync(S);
 let lastInfo = (await sync.loadStored()).info;
 const { $, pencilLine, pencilCircle, hatch, text, annotate, setupCanvas, fmtN, MON, clamp, esc } = K;
@@ -263,7 +263,7 @@ function loadMilkyWay() {
       mwF = out; skyKey = ''; if (entered) drawSky(skyS); res(true);
     };
     im.onerror = () => res(false);
-    im.src = 'data/milkyway.png?v=2026-11-22';
+    im.src = 'data/milkyway.png';
   });
   return mwLoading;
 }
@@ -428,7 +428,7 @@ function buildSkyStatic(s) {
 let TILES = null, tilesLoading = null;
 function loadTiles() {
   if (TILES || tilesLoading) return tilesLoading || Promise.resolve();
-  tilesLoading = K.loadJson('data/stars-tiles.json?v=2026-11-22').then(prepTiles, () => null);
+  tilesLoading = K.loadJson('data/stars-tiles.json').then(prepTiles, () => null);
   return tilesLoading;
 }
 function prepTiles(T) {
@@ -1832,7 +1832,7 @@ export const api = (K.ns.stars = { enter, leave, zoomTo, zoomAnim, resetView, hr
 
 const dataProvider = {
   title: 'Stars & beyond data', short: 'stars', noun: 'objects', unit: 'sample alerts', bundled: sync.BUNDLED,
-  counts: () => ({ nobj: N, nunit: NA, tmax: S.meta.mjdRange[1] }),
+  counts: () => ({ nobj: N, nunit: NA, tmax: Math.max(S.meta.mjdRange[1], S.nights.length ? S.nights[S.nights.length - 1].mjd : 0) }),
   info: () => lastInfo,
   refreshText: 'Check the objects already here for new alerts',
   refreshHint: () => `(${fmtN(N)}, about ${Math.ceil(N / 100)} requests, then one per 20 changed objects)`,

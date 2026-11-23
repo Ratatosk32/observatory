@@ -2,8 +2,7 @@ import * as K from './kit.js';
 import { register as registerData, fmtBytes } from './datapanel.js';
 import { openStore, post, pool, storageUsage } from './net.js';
 
-const V = '?v=2026-11-22';
-const D = await K.loadJson('data/cmb.json' + V);
+const D = await K.loadJson('data/cmb.json');
 const { $, fmtN, MON, clamp, esc, text, annotate } = K;
 const C = () => K.C;
 const reduceMotion = K.reduceMotion;
@@ -410,6 +409,11 @@ function drawMeter(s, opts) {
   text(g, opts.small, cxm, cym + 20, { size: 12, color: C().ink2, align: 'center' });
 }
 
+const isoMjd = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 864e5 + 40587 : null; };
+function updatedLine() {
+  const up = isoMjd(M.updated || M.built), to = isoMjd(M.dataTo);
+  return `Updated ${up ? fmtD(up) : M.built}: both meters recomputed from ${fmtN(M.objectsAllTags || LT.nObjects)} SN-like objects${to ? `, with Rubin data to ${fmtD(to)}` : ''}. The needles move as Rubin fills the southern sky.`;
+}
 function buildDom() {
   $('#dmRoot').innerHTML = `
 <main class="smain dmain">
@@ -435,6 +439,7 @@ function buildDom() {
       <p class="cap">Left: the Planck κ averaged at ${fmtN(LT.nObjects)} supernova-like alerts, against 300 copies of the same pattern rotated around the sky (faint ticks). Right: supernova-like alerts inside ACT clusters against the surroundings. The dashed line is 3σ.</p></div>
       <div class="meters"><div><canvas id="dMeter" aria-label="Lensing significance meter"></canvas><p class="note">b = ${LT.bias.toFixed(1).replace('-', '−')} ± ${LT.biasSigma.toFixed(1)} over about ${fmtN(LT.areaDeg2)} deg². What a detection looks like: ACT clusters through the same pipeline give +${LT.controlSigma.toFixed(1)}σ. Forecast: ${esc(LT.forecast)}.</p></div>
       <div><canvas id="dCtest" aria-label="Cluster supernova excess meter"></canvas><p class="note">${CT.observed} alerts inside R500 of ${CT.clusters} clusters, ${CT.expected} expected from their surroundings: ${CT.sigma.toFixed(1)}σ. Forecast: ${esc(CT.forecast)}.</p></div></div>
+      <p class="note dupd">${updatedLine()}</p>
     </section>
     <section class="panel d-story" aria-labelledby="h-dstory">
       <div class="phead"><div class="pbar"><h2 id="h-dstory">The story so far</h2></div></div>
@@ -531,7 +536,7 @@ function wire() {
 
 async function loadImages() {
   const load = (src) => new Promise((res, rej) => { const im = new Image(); im.decoding = 'async'; im.onload = () => res(im); im.onerror = () => rej(new Error('could not load ' + src)); im.src = src; });
-  const [skyIm, lensIm] = await Promise.all([load('data/cmb-sky.png' + V), load('data/cmb-lens.png' + V)]);
+  const [skyIm, lensIm] = await Promise.all([load('data/cmb-sky.png'), load('data/cmb-lens.png')]);
   return { sky: skyIm, lens: lensIm };
 }
 
@@ -631,7 +636,7 @@ async function update({ onProgress = () => {}, signal }) {
 }
 const dataProvider = {
   title: 'Dark-matter data', short: 'dark matter', noun: 'clusters', unit: 'SN-like alerts', bundled: BUNDLED,
-  counts: () => ({ nobj: NC, nunit: NA, tmax: aT[NA - 1] }),
+  counts: () => ({ nobj: NC, nunit: NA, tmax: Math.max(aT[NA - 1], isoMjd(M.dataTo) || 0) }),
   info: () => lastInfo,
   refreshText: 'Fetch new SN-like alerts since the last one',
   refreshHint: () => `(Fink tag most_likely_sn, one request per night since ${fmtD(aT[NA - 1])})`,

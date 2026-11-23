@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: '23 11 * * *'
 
 concurrency:
   group: deploy
@@ -12,6 +14,7 @@ concurrency:
 jobs:
   pages:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       deployments: write
@@ -23,12 +26,49 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+      - name: Install Python dependencies
+        run: pip install -r scripts/requirements.txt
+      - name: Restore raw data from earlier runs
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: raw-data-${{ github.run_id }}
+          restore-keys: raw-data-
+      - name: Refresh asteroids and stars from Fink
+        timeout-minutes: 15
+        continue-on-error: true
+        run: node scripts/refresh_site.mjs --minutes 6
+      - name: Refresh dark-matter alerts and meters
+        timeout-minutes: 8
+        continue-on-error: true
+        run: python -I scripts/refresh_dm.py --minutes 6
+      - name: Keep the committed file for any mode whose refresh broke it
+        if: always()
+        run: |
+          for f in site/data/*.json; do
+            if ! node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$f"; then
+              echo "::warning::$f did not parse after the refresh; deploying the committed version"
+              git checkout -- "$f"
+            fi
+          done
+          git diff --stat -- site/data
+      - name: Save raw data for the next run
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: raw-data-${{ github.run_id }}
       - name: Site checks
         run: node scripts/check_site.mjs
       - name: Say why nothing was deployed
         if: ${{ env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == '' }}
         run: echo "::warning::Checked, but not deployed. Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets to deploy."
-      - name: Stamp asset URLs with the commit
+      - name: Stamp asset URLs with the commit and data URLs with content hashes
         run: node scripts/stamp_versions.mjs site "${GITHUB_SHA::8}"
       - name: Create the Pages project on first run
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
@@ -40,3 +80,22 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy site --project-name=observatory --branch=main
+
+  keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keep the schedule alive with an empty commit after 50 quiet days
+        run: |
+          age=$(( ($(date +%s) - $(git log -1 --format=%ct)) / 86400 ))
+          echo "last commit is $age days old"
+          if [ "$age" -ge 50 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "Keep the nightly data refresh enabled"
+            git push
+          fi

@@ -142,7 +142,14 @@ Refetching changes the numbers. Data versions are pinned with a `?v=` query in `
   
   The stars and dark-matter modules and their data load only on the first switch.
 - **`site/data/`** holds the JSON built by `scripts/`.
-- **Deploy:** `.github/workflows/deploy.yml` runs the checks and publishes `site/` to Cloudflare Pages when the Cloudflare secrets are set.
+- **Deploy and nightly refresh:** `.github/workflows/deploy.yml` runs on every push, on demand and every day at 11:23 UTC, after the Chilean night has been processed by Fink. Each run:
+  1. restores the raw-data cache from earlier runs (`actions/cache`, a fresh key per run, restored by prefix), so fetching is incremental;
+  2. refreshes the asteroids and stars data with `scripts/refresh_site.mjs`, which runs the site's own update code (`sync.js`, `starsync.js`) in Node against the Fink API (one mode at a time, retries with backoff, a time limit per mode);
+  3. refreshes the dark-matter alerts with `scripts/refresh_dm.py` (numpy only) and recomputes both meters: κ stacked at the SN-like objects against 300 rotated skies, and the cluster SN excess. It uses the compact inputs in `scripts/ci-data/dm_inputs.npz` (the matched-filtered PR4 κ map at HEALPix nside 256, the lensing mask and the SN-like object table), built once with `scripts/build_dm_ci.py`;
+  4. if a mode fails or times out, deploys the last good refresh or the committed file for that mode, with a warning;
+  5. checks the site, stamps every `data/` URL with a hash of the file's content (so the year-long cache never serves stale data), and deploys.
+
+  Refreshed data is never committed, so the history does not grow. A second job pushes an empty commit if the repository has been quiet for 50 days, because GitHub pauses schedules after 60. Python dependencies are pinned in `scripts/requirements.txt` (CI) and `scripts/requirements-build.txt` (the one-off builders).
 - **Globals:** only `window.Observatory` exists (performance counters and test hooks).
 
 ## Performance

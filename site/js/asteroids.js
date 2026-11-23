@@ -6,7 +6,7 @@ import {
 import { createSync } from './sync.js';
 import { register as registerData, refresh as refreshData, fmtBytes } from './datapanel.js';
 
-const R = await loadJson('data/asteroids.json?v=2026-11-22');
+const R = await loadJson('data/asteroids.json');
 const sync = createSync(R);
 const MJD_OFF = 60000;
 const K = 0.01720209895;
@@ -1177,7 +1177,7 @@ const STAMP_CAP = $('#stampCap').innerHTML, STAMP_BODY = $('#stampBody').innerHT
 let lastInfo = null;
 const dataProvider = {
   title: 'Asteroid data', short: 'asteroids', noun: 'asteroids', unit: 'detections', bundled: { nobj: sync.BUNDLED.nobj, nunit: sync.BUNDLED.ndet, tmax: sync.BUNDLED.tmax },
-  counts: () => ({ nobj: META.nobj, nunit: META.ndet, tmax: META.tmax }),
+  counts: () => ({ nobj: META.nobj, nunit: META.ndet, tmax: Math.max(META.tmax, R.nights.length ? nightMjd(R.nights[R.nights.length - 1][0]) : 0) }),
   info: () => lastInfo,
   refreshText: 'Refresh the asteroids already here',
   refreshHint: () => `(${fmtN(META.nobj)}, about ${Math.ceil(META.nobj / 50)} requests)`,
