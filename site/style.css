@@ -477,7 +477,7 @@ body:not([data-mode="dm"]) .dm-only { display: none !important; }
 .modeseg button.on { background: var(--gold-tint); color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold-soft); }
 .modeseg button:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 .loading { text-align: center; color: var(--ink2); font-size: 18px; font-weight: 500; padding: 80px 0; }
-.top { grid-template-columns: minmax(0, 1fr) minmax(300px, 560px) auto auto; grid-template-areas: "brand search mode right"; }
+.top { grid-template-columns: minmax(310px, 1fr) minmax(260px, 560px) auto auto; grid-template-areas: "brand search mode right"; }
 .top .brand { grid-area: brand; } .top .searchbox { grid-area: search; } .top .modeseg { grid-area: mode; } .top .right { grid-area: right; }
 @media (max-width: 1100px) {
   .top { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "brand right" "search mode"; }
@@ -650,3 +650,22 @@ ul.hooks span:last-child { font-size: 12.5px; color: var(--ink3); }
 .panel.fs.s-sky .time, .panel.fs.d-sky .time { margin-top: 8px; }
 .panel.fs.s-sky .sky-tools { margin-top: 8px; }
 .panel.fs.s-sky .legend, .panel.fs.d-sky .legend { margin-top: 8px; }
+
+.subbar .presets, .subbar .chapters, .toolrow .lensbar, .toolrow .sizebar { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; justify-content: flex-start; }
+.subbar .presets::-webkit-scrollbar, .subbar .chapters::-webkit-scrollbar, .toolrow .lensbar::-webkit-scrollbar, .toolrow .sizebar::-webkit-scrollbar { display: none; }
+.subbar .presets, .subbar .chapters { height: 36px; min-height: 36px; }
+.subbar .presets > *, .subbar .chapters > *, .toolrow .lensbar > *, .toolrow .sizebar > * { flex: none; }
+.subbar .presets > :first-child, .subbar .chapters > :first-child, .toolrow .lensbar > :first-child, .toolrow .sizebar > :first-child { margin-left: auto; }
+.subbar .presets > :last-child, .subbar .chapters > :last-child, .toolrow .lensbar > :last-child, .toolrow .sizebar > :last-child { margin-right: auto; }
+.toolrow, .toolrow .sizebar, .toolrow .lensbar { height: 36px; min-height: 36px; }
+.toolrow > * { max-width: 100%; }
+.toolrow .lensbar .scnt { flex: 0 1 auto; }
+.subbar .lead { box-sizing: border-box; line-height: 1.5; height: calc(1.5em + 24px); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+.top .brand h1, .top .brand .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1100px) {
+  .subbar .lead { height: calc(3em + 24px); -webkit-line-clamp: 2; }
+}
+@media (max-width: 600px) {
+  .toolrow { height: auto; min-height: 0; }
+  .subbar .lead { height: calc(4.5em + 24px); -webkit-line-clamp: 3; }
+}
