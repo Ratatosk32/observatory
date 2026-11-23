@@ -81,6 +81,17 @@ The stars mode has a "Tonight" view for anyone with a 20–50 cm telescope.
 - **Meters:** κ stacked at 76,726 SN-like alerts gives −0.2σ against 300 rotated skies (b = −0.8 ± 3.5) over about 1,319 deg², the number of HEALPix nside-64 cells (0.84 deg² each) that hold a used object. The first build quoted 2,351 deg² from the analysis script, which grouped RING-ordered pixels into strips rather than cells and so overstated the area; the meter itself never used that number, and the cluster catalogue does not touch the lensing test; ACT clusters through the same pipeline give +7.1σ. SN-like alerts inside ACT DR6 clusters: 324 seen against 295.0 expected over 527 of the 7,801 southern clusters, +0.9σ. A dashed needle keeps the DR5 value under the same definition, 144 against 125.5 over 228 of 4,195 clusters, +1.1σ (before 23 Nov 2026 the DR5 meter counted starlike objects too and read 201 against 179.4, 0.9σ). The design prototype read 0.0σ on DR6 (227 against 226.6 over 363 clusters) because it used a different selection, an older 64,473-object snapshot; the live meter uses every SN-like object Fink has tagged since. One definition for the cluster meter: `most_likely_sn` objects that are not starlike (Legacy Survey p_star ≤ 0.5), |b| > 20°, counted inside R500 = θ500 against a 3–6 R500 annulus, over clusters with any object within 6 R500, with a 2,000-draw bootstrap over those clusters (seed 7). Forecasts: 3σ around late 2027 for both tests (about 0.8 years of full southern coverage for DR6).
 - Without WebGL the map is drawn once on a 2D canvas, without the lens.
 
+### Data health
+
+The Data panel opens with a health check that the nightly refresh writes to `site/data/health.json` (`scripts/build_health.py`). It tells apart four situations that otherwise all look like "no new data":
+
+- **Rubin silent.** Neither Fink (its nightly `statistics` endpoint) nor ANTARES (an independent broker, queried for its newest Rubin alert) has alerts after the same night. The pause is upstream: weather or a technical stop at the telescope. The panel links to Rubin's live status page for the reason; that page reads a private API, so the site does not scrape it.
+- **Broker lag.** ANTARES has Rubin alerts at least two nights newer than Fink. Rubin is observing, and this site, which reads Fink, waits.
+- **Pipeline failure.** A refresh step failed, or its output did not parse and the committed file was deployed instead. The affected parts show the previous run's data.
+- **Behind.** Fink has newer nights than a mode on this page, without a failure; the refresh ran out of its time budget and catches up next run.
+
+The sparkline shows Rubin alerts per night over the last 60 nights as counted by Fink (log scale). A dot on the Data button carries the level: green when all is in step, gold for a quiet or lagging stream, red for a failed refresh. If the check itself is more than 36 hours old the panel says so.
+
 ### Honesty notes
 
 - These are samples of the alert stream, not the survey. Proportions reflect how the samples were drawn.
@@ -144,6 +155,7 @@ node scripts/check_site.mjs
 - `build_stars.py` writes `site/data/stars.json`; with `--tiles` it writes `site/data/stars-tiles.json`.
 - `build_cmb.py` writes `site/data/cmb-sky.png`, `cmb-lens.png` and `cmb.json` (about 4.3 MB in all). It needs `ducc0`, `astropy` and `Pillow`. The SMICA map comes from IRSA (Planck release 2, 168 MB); the PR4 lensing alm and mask, the ACT catalogue, the SN-like object table and the test results come from the crossmatch analysis (Fink tag pulls, the κ stack with 300 rotated-sky nulls, and the cluster aperture test).
 - `build_dm_clusters.py` adds the ACT DR5 and DR6 catalogues (positions, θ500 from M500c with Planck 2018 cosmology, redshifts, masses, names) and the TNS and tag flags to `scripts/ci-data/dm_inputs.npz`, so the nightly refresh can recompute both cluster meters and the confident supernovae with numpy only.
+- `build_health.py` writes `site/data/health.json`: Fink nightly statistics, the newest Rubin alert on ANTARES, the newest night in each mode's data, and each refresh step's outcome (passed in by the workflow as `STEP_*` variables).
 - `check_site.mjs` scans the repository: no Cyrillic text, no unfinished-work markers, no console logging, and every file the page references exists.
 
 Refetching changes the numbers. Data versions are pinned with a `?v=` query in `site/js`.

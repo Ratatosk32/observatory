@@ -1,5 +1,6 @@
 import { $, esc, ns, shell, setUrl, initTheme, applyTheme, panelControls, fullscreenPanel, exitFs } from './kit.js';
 import { activate as activateData } from './datapanel.js';
+import './health.js';
 
 const sIn = $('#search'), sBox = $('#searchbox'), sList = $('#sugg'), sClear = $('#clear');
 let provider = { items: () => [], empty: '' };

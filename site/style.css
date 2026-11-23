@@ -408,9 +408,29 @@ canvas { display: block; width: 100%; touch-action: none; }
 .data-btn:hover { background: var(--hover); color: var(--ink); }
 .data-btn .long { font-size: 13px; white-space: nowrap; }
 .data-btn.fresh svg.ic { color: var(--gold); }
+.data-btn { position: relative; }
+.hdot { position: absolute; top: 7px; left: 25px; width: 7px; height: 7px; border-radius: 50%; background: var(--b-g); box-shadow: 0 0 0 2px var(--paper); }
+.hdot[data-level=quiet], .hdot[data-level=warn] { background: var(--gold); }
+.hdot[data-level=bad] { background: var(--accent); }
+.sheet .health { margin: 0 0 14px; padding: 0 0 12px; border-bottom: 1px solid var(--field-line); }
+.sheet .health h3 { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); }
+.sheet .health .hl { margin: 0 0 8px; font-size: 13.5px; line-height: 1.45; color: var(--ink2); }
+.sheet .health .hl b { color: var(--gold); font-weight: 600; }
+.sheet .health a { color: var(--gold); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; white-space: nowrap; }
+.sheet .health a:hover { text-decoration-thickness: 2px; }
+.sheet .health .bad { color: var(--accent-soft); }
+.sheet .health svg { display: block; width: 100%; height: 46px; }
+.sheet .health svg .b { fill: var(--gold-soft); }
+.sheet .health svg .l { fill: var(--gold); }
+.sheet .health svg .z { fill: var(--ink3); opacity: 0.6; }
+.sheet .health .hx { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink3); margin: 2px 0 8px; }
+.sheet .health dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 0; font-size: 12.5px; }
+.sheet .health dt { color: var(--ink3); }
+.sheet .health dd { margin: 0; color: var(--ink2); min-width: 0; overflow-wrap: anywhere; }
 .sheet {
   position: absolute; right: 0; top: calc(var(--hc) + 8px); z-index: 35; width: min(400px, calc(100vw - 16px)); padding: 16px 16px 16px 24px;
   background: var(--field); border: 1px solid var(--gold-soft); border-radius: 16px; box-shadow: var(--shadow-2); color: var(--ink);
+  max-height: calc(100vh - var(--hc) - 24px); overflow-y: auto; overscroll-behavior: contain;
 }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .sheet-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
@@ -433,7 +453,7 @@ canvas { display: block; width: 100%; touch-action: none; }
 @media (max-width: 600px) {
   .data-btn .long { display: none; }
   .data-btn { width: var(--hc); padding: 0; justify-content: center; border-color: var(--field-line); }
-  .sheet { position: fixed; left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; }
+  .sheet { position: fixed; left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: calc(100dvh - 16px); }
 }
 
 .sizebar {

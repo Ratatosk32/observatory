@@ -40,18 +40,22 @@ jobs:
           key: raw-data-${{ github.run_id }}
           restore-keys: raw-data-
       - name: Refresh asteroids and stars from Fink
+        id: fink
         timeout-minutes: 15
         continue-on-error: true
         run: node scripts/refresh_site.mjs --minutes 6
       - name: Refresh dark-matter alerts and meters
+        id: dm
         timeout-minutes: 8
         continue-on-error: true
         run: python -I scripts/refresh_dm.py --minutes 6
       - name: Score the showcase
+        id: showcase
         timeout-minutes: 5
         continue-on-error: true
         run: python -I scripts/build_showcase.py
       - name: Pick tonight's targets
+        id: tonight
         timeout-minutes: 8
         continue-on-error: true
         run: python -I scripts/build_tonight.py --minutes 5
@@ -62,9 +66,20 @@ jobs:
             if ! node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$f"; then
               echo "::warning::$f did not parse after the refresh; deploying the committed version"
               git checkout -- "$f"
+              echo "$f" >> "$RUNNER_TEMP/fallbacks.txt"
             fi
           done
           git diff --stat -- site/data
+      - name: Check who is silent upstream and how each refresh went
+        if: always()
+        timeout-minutes: 4
+        env:
+          STEP_STARS: ${{ steps.fink.outcome }}
+          STEP_ASTEROIDS: ${{ steps.fink.outcome }}
+          STEP_DM: ${{ steps.dm.outcome }}
+          STEP_SHOWCASE: ${{ steps.showcase.outcome }}
+          STEP_TONIGHT: ${{ steps.tonight.outcome }}
+        run: python -I scripts/build_health.py --fallbacks "$RUNNER_TEMP/fallbacks.txt" || git checkout -- site/data/health.json
       - name: Save raw data for the next run
         if: always()
         uses: actions/cache/save@v4
