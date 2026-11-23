@@ -5,8 +5,9 @@ import {
 } from './kit.js';
 import { createSync } from './sync.js';
 import { register as registerData, refresh as refreshData, fmtBytes } from './datapanel.js';
+import * as SC from './showcase.js';
 
-const R = await loadJson('data/asteroids.json');
+const [R, SCD] = await Promise.all([loadJson('data/asteroids.json'), SC.loadShowcase()]);
 const sync = createSync(R);
 const MJD_OFF = 60000;
 const K = 0.01720209895;
@@ -157,6 +158,10 @@ function mkObj(o, idx) {
   };
 }
 const O = [], byName = new Map(), flat = [], nightDet = new Map();
+let scA = null, rank = [], W = null, lodFirst = true, lodKey = '', accepted = 0, pill = null, showAll = false, weightRaf = 0;
+let hazeSmall = null;
+const BLUR = typeof CanvasRenderingContext2D !== 'undefined' && 'filter' in CanvasRenderingContext2D.prototype;
+const AST_W = { rare: 1, orbit: 0.9, approach: 1, extreme: 0.8 };
 let N = 0, flatT = new Float64Array(0), META = R.meta, posX = new Float32Array(0), posY = new Float32Array(0);
 function buildData() {
   O.length = 0;
@@ -172,6 +177,10 @@ function buildData() {
   O.forEach((o) => o.det.forEach((d) => { const k = Math.floor(d[0] + MJD_OFF); nightDet.set(k, (nightDet.get(k) || 0) + 1); }));
   META = R.meta;
   posX = new Float32Array(N); posY = new Float32Array(N);
+  const sc = SCD && SCD.modes && SCD.modes.asteroids;
+  scA = sc && sc.n === N && sc.rank.every((k) => O[k] && O[k].name === R.objs[k].n) ? sc : null;
+  rank = scA ? scA.rank : [...O.keys()].sort((a, b) => (O[a].cls === 'MBA') - (O[b].cls === 'MBA') || O[b].nn - O[a].nn);
+  W = SC.makeWeights(N); lodFirst = true; lodKey = '';
 }
 buildData();
 
@@ -248,6 +257,128 @@ function applyFilters() {
 
 function inFilter(o) { return !state.filter || state.filter(o); }
 
+
+const showcaseOn = () => !state.filter && state.preset === 'all';
+function runLod(s) {
+  const n0 = s.w < 600 ? (scA ? scA.top.phone : 50) : (scA ? scA.top.desktop : 100);
+  const k = Math.max(1, 3.9 / state.viewR);
+  const key = [s.w, s.h, state.viewR.toFixed(3), Math.floor(state.t / 5), showAll, showcaseOn(), state.sel ? state.sel.idx : -1, state.hover ? state.hover.idx : -1, n0].join('|');
+  if (key !== lodKey) {
+    lodKey = key;
+    if (!showcaseOn()) { W.tgt.fill(1); accepted = N; }
+    else accepted = SC.lodPass(W, { rank, n0, k, total: N, ok: () => true, x: posX, y: posY, wpx: s.w, hpx: s.h, forced: [state.sel ? state.sel.idx : -1, state.hover ? state.hover.idx : -1], all: showAll });
+    if (lodFirst) { W.w.set(W.tgt); lodFirst = false; }
+  }
+  if (pill) {
+    const [t, b, m] = SC.pillCopy({ phone: s.w < 600, all: showAll, guided: !showcaseOn(), accepted, total: N, n0, zoomed: k > 1.05 });
+    pill.set(t, b, m);
+  }
+}
+function toggleShowAll() {
+  showAll = !showAll;
+  lodKey = '';
+  const rp = new Float32Array(N); rank.forEach((k, q) => { rp[k] = q; });
+  SC.ripple(W, rp, N, showAll, performance.now(), mapS.w < 600);
+  mapS.draw(mapS);
+}
+let hazeCols = {};
+function hazeColors() {
+  if (hazeCols.dark === C.dark) return hazeCols;
+  hazeCols = { dark: C.dark };
+  for (const c of CLASS_ORDER) hazeCols[c] = SC.mixColor(C.cls[c], C.ink, 0.35);
+  return hazeCols;
+}
+function drawHaze(g, s) {
+  const hw = Math.max(2, Math.ceil(s.w / 2)), hh = Math.max(2, Math.ceil(s.h / 2));
+  if (!hazeSmall || hazeSmall.width !== hw || hazeSmall.height !== hh) { hazeSmall = document.createElement('canvas'); hazeSmall.width = hw; hazeSmall.height = hh; }
+  const hg = hazeSmall.getContext('2d'), cols = hazeColors();
+  hg.clearRect(0, 0, hw, hh);
+  for (const c of CLASS_ORDER) {
+    hg.fillStyle = cols[c];
+    for (const lev of [1, 2, 3]) {
+      hg.globalAlpha = 0.5 * lev / 3;
+      hg.beginPath();
+      let any = false;
+      for (let k = 0; k < N; k++) {
+        if (O[k].cls !== c) continue;
+        const crowd = 1 - W.w[k];
+        if (crowd <= 0.02 || Math.min(3, Math.ceil(crowd * 3)) !== lev) continue;
+        hg.rect(posX[k] / 2 - 1, posY[k] / 2 - 1, 2, 2); any = true;
+      }
+      if (any) hg.fill();
+    }
+  }
+  hg.globalAlpha = 1;
+  g.save();
+  g.imageSmoothingEnabled = true;
+  g.globalAlpha = C.dark ? 0.5 : 0.6;
+  if (BLUR) g.filter = 'blur(1.5px)';
+  g.drawImage(hazeSmall, 0, 0, s.w, s.h);
+  g.restore();
+}
+function drawFront(g, sc) {
+  const sp = glowFor(), R = clamp(sc / 11, 4, 7);
+  for (let k = 0; k < N; k++) {
+    const w = W.w[k];
+    if (w <= 0.02) continue;
+    g.globalAlpha = 0.35 * w;
+    g.drawImage(sp, posX[k] - R, posY[k] - R, 2 * R, 2 * R);
+  }
+  for (const c of CLASS_ORDER) {
+    g.fillStyle = C.cls[c];
+    const r = c === 'MBA' ? 2.2 : 2.6;
+    for (let k = 0; k < N; k++) {
+      const w = W.w[k];
+      if (w <= 0.02 || O[k].cls !== c) continue;
+      g.globalAlpha = w;
+      g.beginPath(); g.arc(posX[k], posY[k], r, 0, 6.2832); g.fill();
+    }
+  }
+  g.globalAlpha = 1;
+}
+function drawArcs(g, sc, cx, cy) {
+  if (!scA) return;
+  const tmp = [0, 0];
+  g.strokeStyle = C.cls.NEO; g.lineWidth = 1; g.setLineDash([4, 3]);
+  for (let q = 0; q < Math.min(rank.length, 300); q++) {
+    const k = rank[q], f = scA.facts[String(k)], w = W.w[k];
+    if (!f || w <= 0.02 || f.c[2] < 128) continue;
+    g.globalAlpha = 0.6 * w;
+    g.beginPath();
+    for (let d = 0; d <= 30; d += 1) { posAt(O[k], state.t + d, tmp); const x = cx + tmp[0] * sc, y = cy - tmp[1] * sc; if (d) g.lineTo(x, y); else g.moveTo(x, y); }
+    g.stroke();
+  }
+  g.setLineDash([]); g.globalAlpha = 1;
+}
+const RARE_CHIP = { NEO: 'Near-Earth asteroid', MC: 'Mars-crosser', HUN: 'Hungaria', CYB: 'Cybele', HIL: 'Hilda', TRO: 'Jupiter Trojan', OTH: 'Unusual orbit' };
+const RARE_W = { NEO: 1, MC: 0.6, HUN: 0.6, MBA: 0, CYB: 0.6, HIL: 0.7, TRO: 0.9, OTH: 0.7 };
+function chipsFor(o) {
+  const f = scA && scA.facts[String(o.idx)], out = [];
+  if (f && f.pha) out.push([1.01, 'Potentially hazardous']);
+  else if (RARE_CHIP[o.cls]) out.push([RARE_W[o.cls], RARE_CHIP[o.cls]]);
+  const tilt = clamp((o.inc - 18) / 17, 0, 1), str = clamp((o.e - 0.25) / 0.25, 0, 1);
+  if (o.inc > 90) out.push([0.9, 'Retrograde']);
+  else if (tilt > 0 && tilt >= str) out.push([0.9 * tilt, `Tilted ${Math.round(o.inc)}°`]);
+  else if (str > 0) out.push([0.9 * str, `Stretched orbit, e ${o.e.toFixed(2)}`]);
+  if (f && f.approachAU != null) out.push([f.c[2] / 255, `Passes ${f.approachAU.toFixed(2)} AU on ${fmtShort(f.approachT)}`]);
+  if (f && f.extreme) {
+    const v = 0.8 * f.c[3] / 255;
+    if (f.extreme === 'biggest' && o.D) out.push([v, `Biggest here: ~${o.D >= 10 ? Math.round(o.D) : o.D.toFixed(1)} km`]);
+    if (f.extreme === 'smallest' && o.D) out.push([v, `Smallest: ~${o.D < 1 ? Math.round(o.D * 1000) + ' m' : o.D.toFixed(1) + ' km'}`]);
+    if (f.extreme === 'mostSeen') out.push([v, `Seen on ${o.nn} nights`]);
+  }
+  if (f && scA.refNight - f.last < 1) out.push([0.15, 'Seen last night']);
+  return out.filter((c) => c[0] > 0).sort((a, b) => b[0] - a[0]).map((c) => c[1]);
+}
+function topList() {
+  const out = [], lead = new Map();
+  for (let q = 0; q < rank.length && out.length < 8; q++) {
+    const o = O[rank[q]], b = chipsFor(o)[0] || '';
+    if ((lead.get(b) || 0) >= 2) continue;
+    lead.set(b, (lead.get(b) || 0) + 1); out.push(o);
+  }
+  return out;
+}
 
 function tipFor(o) {
   return `<b>${o.name}</b>${o.des ? ' (' + o.des + ')' : ''}<br>${CLASS[o.cls].short} · a ${o.a.toFixed(2)} AU · e ${o.e.toFixed(2)} · i ${o.inc.toFixed(1)}°<br>${o.det.length} detections on ${o.nn} nights`;
@@ -326,7 +457,7 @@ function buildStatic(s) {
     for (const d of o.det) if (d[6] !== null) { g.beginPath(); g.arc(cx + d[6] * sc, cy - d[7] * sc, 2.2, 0, 7); g.fill(); }
   }
   const au = niceAU(state.viewR);
-  const x0 = 16, y0 = 30;
+  const x0 = s.w - 12 - au * sc, y0 = s.h - 34;
   pencilLine(g, x0, y0, x0 + au * sc, y0, { color: C.graphite, width: 1.4 });
   pencilLine(g, x0, y0 - 5, x0, y0 + 1, { color: C.graphite, width: 1.2, passes: 1 });
   pencilLine(g, x0 + au * sc, y0 - 5, x0 + au * sc, y0 + 1, { color: C.graphite, width: 1.2, passes: 1 });
@@ -437,7 +568,14 @@ function drawMap(s) {
   }
 
   const filtered = !!state.filter;
-  for (const c of CLASS_ORDER) {
+  runLod(s);
+  const moving = SC.stepWeights(W, performance.now());
+  if (moving && !state.playing && !weightRaf) weightRaf = requestAnimationFrame(() => { weightRaf = 0; mapS.draw(mapS); });
+  if (showcaseOn()) {
+    drawHaze(g, s);
+    drawArcs(g, sc, cx, cy);
+    drawFront(g, sc);
+  } else for (const c of CLASS_ORDER) {
     g.fillStyle = C.cls[c];
     const big = c !== 'MBA';
     const r = big ? 2.6 : 1.6;
@@ -992,7 +1130,10 @@ function renderCardInner() {
       <dl><div><dt>Asteroids</dt><dd>${fmtN(META.nobj)}</dd></div><div><dt>Detections</dt><dd>${fmtN(META.ndet)}</dd></div><div><dt>Bands</dt><dd>${Object.keys(META.bands).length}</dd></div>
       <div><dt>Main belt</dt><dd>${fmtN(c.MBA || 0)}</dd></div><div><dt>Near-Earth</dt><dd>${c.NEO || 0}</dd></div><div><dt>Trojans</dt><dd>${c.TRO || 0}</dd></div></dl>
       <p class="cap">Detections per band: ${BANDS.filter((b) => META.bands[b]).map((b) => `${b} ${fmtN(META.bands[b])}`).join(' · ')}.</p>
-      <h4>${state.filter ? 'In this view' : 'Worth a look: everything outside the main belt'}</h4>
+      ${showcaseOn() ? `<h4>Asteroids worth a look</h4>
+      <p class="cap">Chosen from ${fmtN(N)} by orbit, close passes, size and class.</p>
+      <ul class="hooks">${topList().map((x) => `<li><button type="button" data-pick="${x.idx}"><span class="sw" style="background:${C.cls[x.cls]}"></span><b>${esc(x.name)}</b>${SC.chipsHtml(chipsFor(x).slice(0, 2))}</button></li>`).join('')}</ul>
+      <h4>Everything outside the main belt</h4>` : `<h4>${state.filter ? 'In this view' : 'Worth a look: everything outside the main belt'}</h4>`}
       <p class="cap">Sorted by number of detections. Tap a name to open its card.</p>
       <div class="picks">${O.filter((x) => (state.filter ? state.filter(x) : x.cls !== 'MBA')).sort((p, q) => q.det.length - p.det.length).slice(0, 48)
         .map((x) => `<button class="btn" type="button" data-pick="${x.idx}"><span class="sw" style="background:${C.cls[x.cls]}"></span>${x.name} <small>${x.det.length}</small></button>`).join('')}</div>`;
@@ -1009,6 +1150,7 @@ function renderCardInner() {
   card.innerHTML = `
     <h3>${o.name}</h3>
     <div class="cls"><span class="sw" style="background:${C.cls[o.cls]}"></span>${CLASS[o.cls].name} <span style="color:var(--ink3)">· ${CLASS[o.cls].desc}</span></div>
+    ${SC.chipsHtml(chipsFor(o))}
     <dl>
       <div><dt>a, semi-major axis</dt><dd>${o.a.toFixed(3)} <small>AU</small></dd></div>
       <div><dt>e, eccentricity</dt><dd>${o.e.toFixed(3)}</dd></div>
@@ -1218,6 +1360,9 @@ new ResizeObserver(drawSizeHist).observe($('#dual'));
 onTheme(() => { spriteCache.clear(); legendMap(); renderCard(); redrawAll(); drawSizeHist(); });
 
 export function start(params) {
+  const wrap = $('#map').parentElement, zoom = wrap.querySelector('.zoom'), tools = document.createElement('div');
+  tools.className = 'maptools'; tools.id = 'astTools'; wrap.appendChild(tools); if (zoom) tools.appendChild(zoom);
+  pill = SC.makePill(tools, { onToggle: toggleShowAll, onBack: () => runPreset('all') });
   legendMap();
   state.sel = byName.get(norm('2026 CZ10')) || null;
   if (state.sel) $('#search').value = state.sel.name;

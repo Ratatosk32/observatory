@@ -674,6 +674,7 @@ ul.hooks .why { grid-column: 2; margin: 4px 0 0; }
 .maptools { position: absolute; left: 8px; right: 8px; top: 4px; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; pointer-events: none; z-index: 2; }
 .maptools > * { pointer-events: auto; }
 .maptools .zoom { position: static; margin-left: auto; }
+#astTools { flex-wrap: wrap; }
 .showcase { display: flex; gap: 8px; align-items: center; height: 32px; padding: 0 12px; background: var(--field); border: 1px solid var(--chip-line); border-radius: var(--r-ctl); color: var(--ink2); font-size: 13px; font-weight: 450; white-space: nowrap; min-width: 0; overflow: hidden; }
 .showcase .sc-txt { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .showcase button.link { flex: none; font: inherit; font-weight: 600; color: var(--gold); background: none; border: 0; padding: 0; cursor: pointer; }
@@ -691,6 +692,7 @@ ul.hooks .why { grid-column: 2; margin: 4px 0 0; }
   .map-wrap:has(> .maptools:not(.dm-tools)) { display: flex; flex-direction: column; }
   .maptools:not(.dm-tools) { position: static; order: -1; margin: 0 0 8px; padding: 0; }
   .dm-tools .showcase { height: 28px; font-size: 12px; padding: 0 8px; }
+  #astTools .showcase { flex: 1 1 100%; }
 }
 
 .sitebtns { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
