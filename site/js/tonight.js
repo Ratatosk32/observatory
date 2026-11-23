@@ -112,7 +112,7 @@ export function createTonight(T, env) {
     const r = recent[k], c = calc[k];
     const sub = `${esc(shortType(r.type))} · ${r.lastBand} ${r.lastMag.toFixed(1)} · ${stale ? `seen ${ago(r.last)}, may have faded` : ago(r.last)}`;
     const right = stale ? '' : muted ? (c.best > 0 ? `highest ${Math.round(c.best)}° at ${clock(c.bestAt)}` : 'never rises') : `${c.hours.toFixed(1)} h`;
-    return `<li class="${muted ? 'muted' : ''}${env.selected() === k ? ' on' : ''}"><button type="button" data-t="${k}"><span class="sw${muted ? ' hollow' : ''}"></span><span class="nm"><b>${esc(r.name)}</b><small>${sub}</small></span><canvas data-spark="${k}" aria-hidden="true"></canvas><span class="hrs">${right}</span></button></li>`;
+    return `<li class="${muted ? 'muted' : ''}${stale ? ' stale' : ''}${env.selected() === k ? ' on' : ''}"><button type="button" data-t="${k}"><span class="sw${muted ? ' hollow' : ''}"></span><span class="nm"><b>${esc(r.name)}</b><small>${sub}</small></span>${stale ? '' : `<canvas data-spark="${k}" aria-hidden="true"></canvas><span class="hrs">${right}</span>`}</button></li>`;
   }
   function renderList(body) {
     compute();
@@ -283,15 +283,19 @@ export function createTonight(T, env) {
       else { g.fillStyle = dark ? '#eee' : '#111'; g.beginPath(); g.arc(x, y, rad, 0, 6.283); g.fill(); }
     }
     const u = size / 380;
-    g.strokeStyle = C().gold; g.lineWidth = 2 * u;
+    g.strokeStyle = C().gold; g.lineWidth = 2.5 * u;
     for (const [ax, ay] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { g.beginPath(); g.moveTo(cx + ax * 7 * u, cy + ay * 7 * u); g.lineTo(cx + ax * 19 * u, cy + ay * 19 * u); g.stroke(); }
+    const discs = stars.map(([dx, dy, G]) => [cx - dx * sc, cy - dy * sc, clamp(1.2 + (19.5 - G) * 0.85, 1.2, 6) * 0.55 * size / 380]);
+    const clear = (b) => discs.every(([x, y, rr]) => rr <= 1.5 * u || x + rr + 3 * u < b[0] || x - rr - 3 * u > b[2] || y + rr + 3 * u < b[1] || y - rr - 3 * u > b[3]);
+    g.font = K.font(11 * u);
     let lab = 0;
     for (const [dx, dy, G] of stars) {
       const d = Math.hypot(dx, dy);
       if (lab >= 4 || G < 14 || G > 17 || d < 40 || d > 240) continue;
-      const x = cx - dx * sc, y = cy - dy * sc;
+      const x = cx - dx * sc, y = cy - dy * sc, str = G.toFixed(1), tw = g.measureText(str).width;
       if (Math.hypot(x - cx, y - cy) < 24 * u) continue;
-      K.text(g, G.toFixed(1), x + 8 * u, y + 4 * u, { size: 11 * u, color: title ? (dark ? '#bbb' : '#555') : C().ink3 });
+      if (!clear([x + 8 * u, y - 5 * u, x + 8 * u + tw, y + 4 * u])) continue;
+      K.text(g, str, x + 8 * u, y + 4 * u, { size: 11 * u, color: title ? (dark ? '#bbb' : '#555') : C().ink3 });
       lab++;
     }
     const ink = title ? (dark ? '#bbb' : '#555') : C().ink3;
@@ -301,18 +305,23 @@ export function createTonight(T, env) {
     K.text(g, 'N', ox, oy - 30 * u, { size: 11 * u, color: ink, align: 'center' });
     K.text(g, 'E', ox - 32 * u, oy + 4 * u, { size: 11 * u, color: ink, align: 'right' });
     const bar = 60 * sc;
-    g.beginPath(); g.moveTo(12 * u, top + size - 14 * u); g.lineTo(12 * u + bar, top + size - 14 * u); g.stroke();
-    K.text(g, '1′', 12 * u + bar / 2, top + size - 20 * u, { size: 11 * u, color: ink, align: 'center' });
+    let by = top + size - 14 * u;
+    if (discs.some(([x, y, rr]) => x + rr > 12 * u && x - rr < 12 * u + bar && Math.abs(y - by) < rr + 3 * u)) by -= 6 * u;
+    g.beginPath(); g.moveTo(12 * u, by); g.lineTo(12 * u + bar, by); g.stroke();
+    K.text(g, '1′', 12 * u + bar / 2, by - 6 * u, { size: 11 * u, color: ink, align: 'center' });
     K.text(g, 'Gaia DR3 · G < 19.5', size - 10 * u, top + size - 10 * u, { size: 11 * u, color: ink, align: 'right' });
     if (title) K.text(g, `${r.name} · RA ${sexa(r.ra, true)} Dec ${sexa(r.dec, false)} · 12′, N up E left · observatory.noetx.com`, 16, 36, { size: 18, color: dark ? '#eee' : '#111' });
   }
   function savePng(r) {
     const size = 1200, cv = document.createElement('canvas');
     cv.width = size; cv.height = size + 60;
-    drawFinder(cv.getContext('2d'), size, r, { title: true, dark: C().dark });
+    cardTokens(() => drawFinder(cv.getContext('2d'), size, r, { title: true, dark: C().dark }))();
     cv.toBlob((b) => { if (!b) return; const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `${r.name.replace(/\s+/g, '_')}_finder.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); });
   }
+  let cardEl = null;
+  const cardTokens = (fn) => (...a) => (cardEl ? K.withTokensOf(cardEl, fn)(...a) : fn(...a));
   function renderTarget(body, k) {
+    cardEl = body.closest('.card') || body;
     compute();
     const r = recent[k], c = calc[k], chips = [], isFresh = fresh(k);
     if (c.hours >= 1) chips.push(`Up ${c.hours.toFixed(1)} h tonight`);
@@ -347,7 +356,7 @@ export function createTonight(T, env) {
       <p class="note"><button type="button" class="link" data-back>← Tonight’s list</button></p>`;
     const altS = K.setupCanvas(body.querySelector('.altc'), (s) => altChart(s, k));
     const lcS = K.setupCanvas(body.querySelector('.lcc'), (s) => lcChart(s, k));
-    const finderS = K.setupCanvas(body.querySelector('.finder'), (s) => { s.ctx.save(); drawFinder(s.ctx, s.w, r); s.ctx.restore(); });
+    const finderS = K.setupCanvas(body.querySelector('.finder'), cardTokens((s) => { s.ctx.save(); drawFinder(s.ctx, s.w, r); s.ctx.restore(); }));
     body.querySelector('[data-save]').addEventListener('click', () => savePng(r));
     body.querySelector('[data-back]').addEventListener('click', () => env.pick(-1));
     return [altS, lcS, finderS];

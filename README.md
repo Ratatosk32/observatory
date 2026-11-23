@@ -6,9 +6,10 @@ An interactive look at the first season of public alerts from the NSF–DOE Vera
 
 > Independent project, not affiliated with or endorsed by the Vera C. Rubin Observatory.
 
-There are two modes on one page:
+There are three modes on one page:
+- **Stars & beyond** (the default): 4,780 variable stars, supernovae and quasars from the alert stream, placed on Gaia's Milky Way and on a distance ladder. Six guided stories add hands-on tools: a period dial, a light-travel clock, a 3D halo and a horizon chart. "Tonight" picks bright new transients to observe from your own place.
 - **Asteroids:** 2,401 known asteroids and 18,444 detections from 23 Feb to 15 Nov 2026. Their orbits run live in the browser, with orbital-element space, light curves, colours, cadence and image stamps.
-- **Stars & beyond:** 4,780 variable stars, supernovae and quasars from the same alert stream, placed on Gaia's Milky Way and on a distance ladder. Six guided stories add hands-on tools: a period dial, a light-travel clock, a 3D halo and a horizon chart.
+- **Dark matter:** the Planck CMB under a lensing magnifier, the 10,040 ACT DR6 clusters and Rubin's supernova-like alerts, with two meters that ask whether the explosions follow the dark matter yet.
 
 ![Asteroid mode](docs/screenshot-asteroids.png)
 ![Stars mode](docs/screenshot-stars.png)
@@ -52,6 +53,24 @@ There are two modes on one page:
 
 Each step drives the map, the stage and the timeline, and ends on one number with a "how sure are we?" line.
 
+### The showcase: who is in front
+
+Every mode shows its most unusual objects in front and the rest as a soft haze, so the maps stay readable at full sample size.
+- `scripts/build_showcase.py` scores every object nightly and writes `site/data/showcase.json`. Each object gets 0–1 per component; its best three count in full, half and quarter, plus a small boost for being new (score = 100 × (v₁ + ½v₂ + ¼v₃ + 0.15 fresh) / norm). A fifth of the front places go to objects seen in the last three data nights, and no family takes more than 40%.
+  - Stars: rarity of the class here, outburst size, brightness for a small telescope (g or r only), distance and period extremes, a TNS spectrum, and labels that disagree.
+  - Asteroids: class (NEOs, and PHAs from a brute-force MOID), orbit shape, the closest pass in the next 90 days, size and detection extremes.
+  - Dark matter: mass percentile, the SN-like excess over the cluster's own surroundings, Rubin coverage, and a fresh alert inside.
+- In the browser, the front set is the top 120 (stars, dark matter) or 100 (asteroids), half that on phones, growing as N₀ × zoom^1.5 when zoomed in, with at most two per 24 px cell. Weights ease over 250 ms and "Show all" ripples down the ranking. The haze is a half-resolution, blurred layer drawn at alpha 0.35 per object (source-over, so dense deep fields do not burn out).
+- Each card says why an object is there in chips, and the stars card shows its score.
+
+### Tonight
+
+The stars mode has a "Tonight" view for anyone with a 20–50 cm telescope.
+- `scripts/build_tonight.py` runs nightly: Fink's bright-transient tags over the last 30 days, two or more good detections, |b| ≥ 15°, no pre-2025 TNS name and no catalogued star, then a 2″ Gaia DR3 cone (GAVO mirror, ESA fallback) that removes the variable stars and AGN, which are most of the candidates. It stores each target's light curve and a packed 12′ Gaia finder field.
+- A target counts as tonight only if Rubin saw it within the last 7 days. The card lists them with the hours each spends above 30° in the dark from the viewer's place, an altitude chart in the place's clock time, the light curve against what a 30–50 cm scope reaches, a finder chart (also as a PNG) and report links.
+- The place comes from the browser's time zone, an opt-in geolocation rounded to 0.5°, or a list of 30 places. It is kept only in `localStorage` and never sent anywhere or put in the URL.
+- `site/js/skycalc.js` ports the sky calculations (GMST, a low-precision Sun, altitude); `scripts/test_skycalc.mjs` checks it against the Python reference for five sites in CI.
+
 ### Dark matter mode
 
 - **The oldest light:** the Planck SMICA map of the cosmic microwave background, in Galactic coordinates, drawn as a muted warm and cool weave in a WebGL shader.
@@ -59,7 +78,7 @@ Each step drives the map, the stage and the timeline, and ends on one number wit
 - **Clusters:** the 10,040 ACT DR6 SZ clusters, scaled up from their θ500. All of them form a faint static lace; the 120 heaviest and busiest (60 on a phone) are breathing gold rings in front, doubled when unusually many SN-like alerts sit inside. Inside the lens every ring in view shows (at most 150). The card shows redshift, M500c, the SN-like alerts inside R500 and how many the 3–6 R500 ring predicts.
 - **Confident supernovae:** up to 40 SN-like objects stay marked after their spark: TNS-classified supernovae first, then `most_likely_sn` and `extragalactic_new_candidate` objects that do not look like stars, by number of tags, then by recency.
 - **Explosions:** 146,350 Fink `most_likely_sn` objects appear as sparks on the night they were first seen. The Data button can fetch newer ones.
-- **Meters:** κ stacked at 76,640 SN-like alerts gives −0.2σ against 300 rotated skies (b = −0.8 ± 3.5); ACT clusters through the same pipeline give +7.1σ. SN-like alerts inside ACT DR6 clusters: 324 seen against 295.0 expected over 527 of the 7,801 southern clusters, +0.9σ. A dashed needle keeps the DR5 value under the same definition, 144 against 125.5 over 228 of 4,195 clusters, +1.1σ (before 23 Nov 2026 the DR5 meter counted starlike objects too and read 201 against 179.4, 0.9σ). The design prototype read 0.0σ on DR6 (227 against 226.6 over 363 clusters) because it used a different selection, an older 64,473-object snapshot; the live meter uses every SN-like object Fink has tagged since. One definition for the cluster meter: `most_likely_sn` objects that are not starlike (Legacy Survey p_star ≤ 0.5), |b| > 20°, counted inside R500 = θ500 against a 3–6 R500 annulus, over clusters with any object within 6 R500, with a 2,000-draw bootstrap over those clusters (seed 7). Forecasts: 3σ around late 2027 for both tests (about 0.8 years of full southern coverage for DR6).
+- **Meters:** κ stacked at 76,726 SN-like alerts gives −0.2σ against 300 rotated skies (b = −0.8 ± 3.5) over about 1,319 deg², the number of HEALPix nside-64 cells (0.84 deg² each) that hold a used object. The first build quoted 2,351 deg² from the analysis script, which grouped RING-ordered pixels into strips rather than cells and so overstated the area; the meter itself never used that number, and the cluster catalogue does not touch the lensing test; ACT clusters through the same pipeline give +7.1σ. SN-like alerts inside ACT DR6 clusters: 324 seen against 295.0 expected over 527 of the 7,801 southern clusters, +0.9σ. A dashed needle keeps the DR5 value under the same definition, 144 against 125.5 over 228 of 4,195 clusters, +1.1σ (before 23 Nov 2026 the DR5 meter counted starlike objects too and read 201 against 179.4, 0.9σ). The design prototype read 0.0σ on DR6 (227 against 226.6 over 363 clusters) because it used a different selection, an older 64,473-object snapshot; the live meter uses every SN-like object Fink has tagged since. One definition for the cluster meter: `most_likely_sn` objects that are not starlike (Legacy Survey p_star ≤ 0.5), |b| > 20°, counted inside R500 = θ500 against a 3–6 R500 annulus, over clusters with any object within 6 R500, with a 2,000-draw bootstrap over those clusters (seed 7). Forecasts: 3σ around late 2027 for both tests (about 0.8 years of full southern coverage for DR6).
 - Without WebGL the map is drawn once on a 2D canvas, without the lens.
 
 ### Honesty notes
@@ -142,7 +161,9 @@ Refetching changes the numbers. Data versions are pinned with a `?v=` query in `
   - `stars.js`: the sky, ladder, ribbon, census and HR diagram;
   - `starlight.js`: star colours, glow sprites and the pulse shapes;
   - `story.js`: the stories and toys;
-  - `darkmatter.js`: the dark-matter mode, with its WebGL lens shader and meters.
+  - `darkmatter.js`: the dark-matter mode, with its WebGL lens shader and meters;
+  - `showcase.js`: the shared front-set logic (ranking, level of detail, eased weights, the pill and chips);
+  - `tonight.js`, `skycalc.js` and `places.js`: the Tonight view, the sky calculations and the place table.
   
   The stars and dark-matter modules and their data load only on the first switch.
 - **`site/data/`** holds the JSON built by `scripts/`.
@@ -150,8 +171,9 @@ Refetching changes the numbers. Data versions are pinned with a `?v=` query in `
   1. restores the raw-data cache from earlier runs (`actions/cache`, a fresh key per run, restored by prefix), so fetching is incremental;
   2. refreshes the asteroids and stars data with `scripts/refresh_site.mjs`, which runs the site's own update code (`sync.js`, `starsync.js`) in Node against the Fink API (one mode at a time, retries with backoff, a time limit per mode);
   3. refreshes the dark-matter alerts with `scripts/refresh_dm.py` (numpy only) and recomputes both meters: κ stacked at the SN-like objects against 300 rotated skies, and the cluster SN excess. It uses the compact inputs in `scripts/ci-data/dm_inputs.npz` (the matched-filtered PR4 κ map at HEALPix nside 256, the lensing mask, the SN-like object table and the ACT clusters), built once with `scripts/build_dm_ci.py` and `scripts/build_dm_clusters.py`;
-  4. if a mode fails or times out, deploys the last good refresh or the committed file for that mode, with a warning;
-  5. checks the site, stamps every `data/` URL with a hash of the file's content (so the year-long cache never serves stale data), and deploys.
+  4. scores the showcase (`scripts/build_showcase.py`) and picks tonight's targets (`scripts/build_tonight.py`, with its Gaia and Fink caches in the raw-data cache);
+  5. if a mode fails or times out, deploys the last good refresh or the committed file for that mode, with a warning;
+  6. checks the site and the sky calculations, stamps every `data/` URL with a hash of the file's content (so the year-long cache never serves stale data), and deploys.
 
   Refreshed data is never committed, so the history does not grow. A second job pushes an empty commit if the repository has been quiet for 50 days, because GitHub pauses schedules after 60. Python dependencies are pinned in `scripts/requirements.txt` (CI) and `scripts/requirements-build.txt` (the one-off builders).
 - **Globals:** only `window.Observatory` exists (performance counters and test hooks).
@@ -160,13 +182,15 @@ Refetching changes the numbers. Data versions are pinned with a `?v=` query in `
 
 Everything is Canvas 2D. Static layers are rendered once per size, zoom and theme and then cached: planet orbits, the Gaia Milky Way, the ladder, the ribbon and hand-drawn frames. Each frame draws only moving points and sprites.
 
-Measured in headless Chrome over 6 s of play:
+Measured in headless Chrome (draw time per frame, p95):
 
-| Mode | Setting | Draw time per frame | Frame interval |
+| Mode | Desktop 1920, play | Phone 412×915 at DPR 2.6, CPU slowed 4×, play | Same phone, three Show-all toggles |
 |---|---|---|---|
-| Asteroids | 1440×900 | 1.7 ms median, 2.3 ms p95 | 16.7 ms |
-| Stars | 1440×900, busiest nights | 1.3 ms median, 2.6 ms p95 | 16.7 ms |
-| Stars | phone 412×915 at DPR 2, CPU slowed 4× | 4.2 ms median | 16.7 ms |
+| Stars | 2.3 ms | 7.1 ms | 8.3 ms while playing, 14.3 ms paused |
+| Asteroids | 3.6 ms | 10.0 ms | 13.7 ms |
+| Dark matter | 2.5 ms | 8.1 ms | 8.4 ms |
+
+The frame interval stays at the display's 16.7 ms. On phones the haze swaps without a cross-fade, faded transients and objects beyond the first 300 sprites are drawn as batched dots, and the asteroid haze skips its blur.
 
 Zoom re-renders the Milky Way at the new scale about 180 ms after the gesture settles. The period dial refines a snap with a 4-harmonic fit, about 30 ms once.
 

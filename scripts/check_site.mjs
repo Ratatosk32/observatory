@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const site = join(root, 'site');
@@ -88,6 +89,18 @@ if (existsSync(showcasePath)) {
     problems.push('site/data/showcase.json: does not parse');
   }
 }
+const gz = (v) => gzipSync(Buffer.from(typeof v === 'string' ? v : JSON.stringify(v))).length;
+const budgets = [];
+try {
+  const sc = JSON.parse(readFileSync(showcasePath, 'utf8'));
+  for (const [mode, kb] of [['stars', 19], ['asteroids', 10], ['dm', 40]]) if (sc.modes[mode]) budgets.push([`showcase ${mode}`, gz(sc.modes[mode]), kb]);
+} catch {}
+if (existsSync(tonightPath)) budgets.push(['tonight.json', gz(readFileSync(tonightPath, 'utf8')), 15]);
+try {
+  const cmb = JSON.parse(readFileSync(join(site, 'data', 'cmb.json'), 'utf8'));
+  budgets.push(['cmb.json clusters', gz(cmb.clusters), 190]);
+} catch {}
+for (const [name, bytes, kb] of budgets) if (bytes > 1.25 * kb * 1024) problems.push(`${name}: ${(bytes / 1024).toFixed(1)} KB gzip, over 1.25 x the ${kb} KB budget`);
 if (problems.length) {
   process.stderr.write(problems.join('\n') + '\n');
   process.exit(1);

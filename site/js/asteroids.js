@@ -158,7 +158,7 @@ function mkObj(o, idx) {
   };
 }
 const O = [], byName = new Map(), flat = [], nightDet = new Map();
-let scA = null, rank = [], W = null, lodFirst = true, lodKey = '', accepted = 0, pill = null, showAll = false, weightRaf = 0;
+let dataVer = 0, scA = null, rankPosA = new Int32Array(0), rank = [], W = null, lodFirst = true, lodKey = '', accepted = 0, pill = null, showAll = false, weightRaf = 0;
 let hazeSmall = null;
 const BLUR = typeof CanvasRenderingContext2D !== 'undefined' && 'filter' in CanvasRenderingContext2D.prototype;
 const AST_W = { rare: 1, orbit: 0.9, approach: 1, extreme: 0.8 };
@@ -180,6 +180,8 @@ function buildData() {
   const sc = SCD && SCD.modes && SCD.modes.asteroids;
   scA = sc && sc.n === N && sc.rank.every((k) => O[k] && O[k].name === R.objs[k].n) ? sc : null;
   rank = scA ? scA.rank : [...O.keys()].sort((a, b) => (O[a].cls === 'MBA') - (O[b].cls === 'MBA') || O[b].nn - O[a].nn);
+  dataVer++;
+  rankPosA = new Int32Array(N); rank.forEach((k, q) => { rankPosA[k] = q; });
   W = SC.makeWeights(N); lodFirst = true; lodKey = '';
 }
 buildData();
@@ -258,6 +260,13 @@ function applyFilters() {
 function inFilter(o) { return !state.filter || state.filter(o); }
 
 
+let clsIdx = new Uint8Array(0), clsVer = -1;
+function binBy(levelOf, nl) {
+  if (clsVer !== dataVer) { clsIdx = Uint8Array.from(O, (o) => Math.max(0, CLASS_ORDER.indexOf(o.cls))); clsVer = dataVer; }
+  const bins = Array.from({ length: CLASS_ORDER.length * nl }, () => []);
+  for (let k = 0; k < N; k++) { const l = levelOf(k); if (l > 0) bins[clsIdx[k] * nl + l].push(k); }
+  return bins;
+}
 const showcaseOn = () => !state.filter && state.preset === 'all';
 function runLod(s) {
   const n0 = s.w < 600 ? (scA ? scA.top.phone : 50) : (scA ? scA.top.desktop : 100);
@@ -268,10 +277,10 @@ function runLod(s) {
     if (!showcaseOn()) { W.tgt.fill(1); accepted = N; }
     else accepted = SC.lodPass(W, { rank, n0, k, total: N, ok: () => true, x: posX, y: posY, wpx: s.w, hpx: s.h, forced: [state.sel ? state.sel.idx : -1, state.hover ? state.hover.idx : -1], all: showAll });
     if (lodFirst) { W.w.set(W.tgt); lodFirst = false; }
-  }
-  if (pill) {
-    const [t, b, m] = SC.pillCopy({ phone: s.w < 600, all: showAll, guided: !showcaseOn(), accepted, total: N, n0, zoomed: k > 1.05 });
-    pill.set(t, b, m);
+    if (pill) {
+      const [t, b, m] = SC.pillCopy({ phone: s.w < 600, all: showAll, guided: !showcaseOn(), accepted, total: N, n0, zoomed: k > 1.05 });
+      pill.set(t, b, m);
+    }
   }
 }
 function toggleShowAll() {
@@ -292,46 +301,46 @@ function drawHaze(g, s) {
   const hw = Math.max(2, Math.ceil(s.w / 2)), hh = Math.max(2, Math.ceil(s.h / 2));
   if (!hazeSmall || hazeSmall.width !== hw || hazeSmall.height !== hh) { hazeSmall = document.createElement('canvas'); hazeSmall.width = hw; hazeSmall.height = hh; }
   const hg = hazeSmall.getContext('2d'), cols = hazeColors();
+  const bins = binBy((k) => { const crowd = 1 - W.w[k]; return crowd <= 0.02 ? -1 : Math.min(3, Math.ceil(crowd * 3)); }, 4);
+  if (!bins.some((a) => a.length)) return;
   hg.clearRect(0, 0, hw, hh);
-  for (const c of CLASS_ORDER) {
+  for (let ci = 0; ci < CLASS_ORDER.length; ci++) {
+    const c = CLASS_ORDER[ci];
     hg.fillStyle = cols[c];
-    for (const lev of [1, 2, 3]) {
-      hg.globalAlpha = 0.5 * lev / 3;
-      hg.beginPath();
-      let any = false;
-      for (let k = 0; k < N; k++) {
-        if (O[k].cls !== c) continue;
-        const crowd = 1 - W.w[k];
-        if (crowd <= 0.02 || Math.min(3, Math.ceil(crowd * 3)) !== lev) continue;
-        hg.rect(posX[k] / 2 - 1, posY[k] / 2 - 1, 2, 2); any = true;
-      }
-      if (any) hg.fill();
+    for (let lev = 1; lev <= 3; lev++) {
+      const arr = bins[ci * 4 + lev]; if (!arr.length) continue;
+      hg.globalAlpha = 0.5 * lev / 3; hg.beginPath();
+      for (const k of arr) hg.rect(posX[k] / 2 - 1, posY[k] / 2 - 1, 2, 2);
+      hg.fill();
     }
   }
   hg.globalAlpha = 1;
   g.save();
   g.imageSmoothingEnabled = true;
   g.globalAlpha = C.dark ? 0.5 : 0.6;
-  if (BLUR) g.filter = 'blur(1.5px)';
+  if (BLUR && s.w >= 600) g.filter = 'blur(1.5px)';
   g.drawImage(hazeSmall, 0, 0, s.w, s.h);
   g.restore();
 }
+const glowBudget = () => (mapS.w < 600 ? 50 : 100) * Math.max(1, Math.pow(3.9 / state.viewR, 1.5));
 function drawFront(g, sc) {
   const sp = glowFor(), R = clamp(sc / 11, 4, 7);
-  for (let k = 0; k < N; k++) {
-    const w = W.w[k];
+  for (let q = 0; q < Math.min(rank.length, glowBudget()); q++) {
+    const k = rank[q], w = W.w[k];
     if (w <= 0.02) continue;
     g.globalAlpha = 0.35 * w;
     g.drawImage(sp, posX[k] - R, posY[k] - R, 2 * R, 2 * R);
   }
-  for (const c of CLASS_ORDER) {
+  const bins = binBy((k) => { const w = W.w[k]; return w <= 0.02 ? -1 : Math.min(4, Math.ceil(w * 4)); }, 5);
+  for (let ci = 0; ci < CLASS_ORDER.length; ci++) {
+    const c = CLASS_ORDER[ci];
     g.fillStyle = C.cls[c];
-    const r = c === 'MBA' ? 2.2 : 2.6;
-    for (let k = 0; k < N; k++) {
-      const w = W.w[k];
-      if (w <= 0.02 || O[k].cls !== c) continue;
-      g.globalAlpha = w;
-      g.beginPath(); g.arc(posX[k], posY[k], r, 0, 6.2832); g.fill();
+    const r = c === 'MBA' ? 2.2 : 2.6, square = c === 'MBA' && showAll;
+    for (let lvl = 1; lvl <= 4; lvl++) {
+      const arr = bins[ci * 5 + lvl]; if (!arr.length) continue;
+      g.globalAlpha = lvl / 4; g.beginPath();
+      for (const k of arr) { if (square) g.rect(posX[k] - 1.9, posY[k] - 1.9, 3.8, 3.8); else { g.moveTo(posX[k] + r, posY[k]); g.arc(posX[k], posY[k], r, 0, 6.2832); } }
+      g.fill();
     }
   }
   g.globalAlpha = 1;
@@ -598,7 +607,16 @@ function drawMap(s) {
     }
   }
   g.globalAlpha = 1;
-  if (lit.size) drawLit(g, lit, sc);
+  if (lit.size && showcaseOn()) {
+    const front = new Set(), back = [];
+    const nGlow = glowBudget();
+    for (const k of lit) (W.w[k] >= 0.5 && rankPosA[k] < nGlow ? front.add(k) : back.push(k));
+    g.fillStyle = C.dark ? 'rgba(255, 238, 214, 1)' : 'rgba(120, 40, 10, 1)'; g.globalAlpha = 0.5;
+    g.beginPath();
+    for (const k of back) g.rect(posX[k] - 1.1, posY[k] - 1.1, 2.2, 2.2);
+    g.fill(); g.globalAlpha = 1;
+    if (front.size) drawLit(g, front, sc);
+  } else if (lit.size) drawLit(g, lit, sc);
 
   const sunR = Math.round(clamp(sc * 0.04, 3.5, 7.5) * 2) / 2, pf = clamp(sc / 100, 0.7, 1);
   drawSprite(g, 'Sun', cx, cy, sunR);

@@ -29,6 +29,7 @@ const scDm = SCD && SCD.modes && SCD.modes.dm && SCD.modes.dm.n === NC ? SCD.mod
 const RANK = scDm ? scDm.rank : [...Array(NC).keys()].sort((a, b) => CL.m500[b] - CL.m500[a]);
 const massOrder = [...Array(NC).keys()].sort((a, b) => CL.m500[b] - CL.m500[a]);
 const massTop = new Float32Array(NC); massOrder.forEach((i, r) => { massTop[i] = 100 * (r + 1) / NC; });
+const RANKPOS = new Int32Array(NC); RANK.forEach((i, q) => { RANKPOS[i] = q; });
 const busyZ = (i) => (CL.inside[i] - CL.expect[i]) / Math.sqrt(CL.expect[i] + 1);
 const nFront = () => (skyBox.w && skyBox.w < 600 ? (scDm ? scDm.top.phone : 60) : (scDm ? scDm.top.desktop : 120));
 const BASE = M.mjdBase;
@@ -348,7 +349,10 @@ function drawOverlay() {
   g.strokeStyle = C().gold; g.lineWidth = 1.2; g.globalAlpha = 0.9;
   g.beginPath(); g.arc(st.lan[0], st.lan[1], R, 0, 6.283); g.stroke();
   g.globalAlpha = 1;
-  text(g, st.amp > 1 ? `magnified ${LENS_ZOOM}× · bending ×${Math.round(ampNow())}` : `magnified ${LENS_ZOOM}× · true bending`, st.lan[0], st.lan[1] - R - 8, { size: 12, weight: 600, color: C().gold, align: 'center', halo: true });
+  const lensLab = st.amp > 1 ? `magnified ${LENS_ZOOM}× · bending ×${Math.round(ampNow())}` : `magnified ${LENS_ZOOM}× · true bending`;
+  g.font = K.font(12, 600);
+  const lw2 = g.measureText(lensLab).width / 2 + 6;
+  text(g, lensLab, clamp(st.lan[0], lw2, s.w - lw2), Math.max(14, st.lan[1] - R - 8), { size: 12, weight: 600, color: C().gold, align: 'center', halo: true });
   for (const [i, col, w] of [[st.hover, C().ink, 1.5], [st.sel, C().hi, 2]]) {
     if (i < 0) continue;
     g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.arc(cx[i], cy[i], ringR(i) + 5, 0, 6.283); g.stroke();
@@ -444,6 +448,7 @@ function renderCard() {
   body.innerHTML = `<h3>${esc(CL.name[i])}</h3>
     <div class="cls"><span class="sw" style="background:var(--gold)"></span>${CL.catalogue} SZ galaxy cluster</div>
     ${SC.chipsHtml(chipsFor(i))}
+    ${scDm ? `<div class="note scoreline">Unusualness ${scDm.score[i]} of 100 · #${fmtN(RANKPOS[i] + 1)} of ${fmtN(NC)} · <details><summary>How it’s scored</summary><p>Each cluster gets 0–1 for mass (the top 10% by M500c), for SN-like alerts inside beyond what its own 3–6 R500 ring predicts, and 0.5 for Rubin coverage. Its best three count (full, half, quarter), plus a little for a new alert inside. At least 30% of the front places go to clusters with an excess.</p></details></div>` : ''}
     <p class="cap">Its hot gas scatters CMB photons (the Sunyaev–Zel’dovich effect); its mass, mostly dark matter, bends the CMB around it by a fraction of an arcminute.</p>
     <dl>${facts.map(([k, v]) => `<div style="grid-column:span ${v.length > 40 ? 3 : 1}"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
     <p class="note">R500 is the radius inside which the mean density is 500 times the critical density of the universe; here it spans ${CL.theta500[i].toFixed(1)} arcminutes.</p>`;
@@ -474,8 +479,10 @@ function drawMeter(s, opts) {
   if (opts.ghost != null) {
     const [gx, gy] = pt(opts.ghost, R * 0.85);
     g.setLineDash([3, 3]); g.strokeStyle = C().ink3; g.lineWidth = 1.5; g.beginPath(); g.moveTo(cxm, cym); g.lineTo(gx, gy); g.stroke(); g.setLineDash([]);
-    const [lx, ly] = pt(opts.ghost, R * 0.85 + 12);
-    text(g, opts.ghostLabel, lx, ly + 4, { size: 11, color: C().ink3, align: 'center', halo: true });
+    const near = Math.abs(opts.ghost - opts.value) < 0.6, away = opts.ghost >= opts.value ? 1 : -1;
+    const span = (hi - lo) / Math.PI, at = near ? opts.ghost + away * span * 10 / (R + 14) : opts.ghost;
+    const [lx, ly] = pt(at, R + 14);
+    text(g, opts.ghostLabel, lx, ly + 4, { size: 11, color: C().ink3, align: near ? (away > 0 ? 'left' : 'right') : 'center', halo: true });
   }
   if (opts.ref != null) {
     const [r0x, r0y] = pt(opts.ref, R * 0.62), [r1x, r1y] = pt(opts.ref, R * 1.0);
@@ -499,7 +506,7 @@ const sig = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(1)}σ`;
 function ctestNote() {
   const G = CT.dr5Ghost;
   if (!G) return `${CT.observed} alerts inside R500 of ${CT.clusters} clusters, ${CT.expected} expected from their surroundings: ${CT.sigma.toFixed(1)}σ. Forecast: ${esc(CT.forecast)}.`;
-  return `${fmtN(CT.observed)} alerts inside R500 of ${fmtN(CT.clusters)} ACT DR6 clusters, ${CT.expected.toFixed(1)} expected from their surroundings: ${sig(CT.sigma)}${Math.abs(CT.sigma) < 3 ? ', no significant excess yet' : ''}. Dashed: the same test on DR5’s ${fmtN(G.of)} clusters, ${sig(G.sigma)}. Forecast: ${esc(CT.forecast)}.`;
+  return `${fmtN(CT.observed)} alerts inside R500 of ${fmtN(CT.clusters)} ACT DR6 clusters, ${fmtN(Math.round(CT.expected))} expected from their surroundings: ${sig(CT.sigma)}${Math.abs(CT.sigma) < 3 ? ', no significant excess yet' : ''}. Dashed: the same test on DR5’s ${fmtN(G.of)} clusters, ${sig(G.sigma)}. Forecast: ${esc(CT.forecast)}.`;
 }
 function buildDom() {
   $('#dmRoot').innerHTML = `

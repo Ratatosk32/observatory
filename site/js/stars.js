@@ -92,7 +92,7 @@ function derive() {
 }
 derive();
 const scS = SCD && SCD.modes && SCD.modes.stars && SCD.modes.stars.n <= N ? SCD.modes.stars : null;
-let rank = null, rankPos = null, W = SC.makeWeights(N), lodKey = '', lodFirst = true, accepted = 0, hazeKey = '', hazeAt = 0, hazeSmall = null, hazeBlur = null, hazeCv = null, hazePrev = null, hazeFade = -1e9, weightRaf = 0;
+let rank = null, rankPos = null, W = SC.makeWeights(N), lodKey = '', lodFirst = true, accepted = 0, hazeKey = '', hazeAt = 0, hazeSmall = null, hazeBlur = null, hazeCv = null, hazePrev = null, hazeFade = -1e9, weightRaf = 0, inPulse = false;
 function buildRank() {
   let r;
   if (scS) {
@@ -585,15 +585,8 @@ function zenith(t) {
 const LAN_DEC = -30.2446;
 const lan = { ra: null, v: 0, last: 0, raf: 0 };
 const wrap180 = (d) => ((d + 540) % 360) - 180;
-function siteLabel(g, s, f) {
-  const a = lanAim(), [l, b] = eq2gal(a.ra, a.dec), [u, v] = hammer(l, b);
-  const A = 2 * Math.SQRT2, B = Math.SQRT2, len = Math.hypot(u / A, v / B) || 1, ru = u / len, rv = v / len;
-  const x = f.X(ru), y = f.Y(rv), cx = f.X(0), cy = f.Y(0), dx = x - cx, dy = y - cy, dl = Math.hypot(dx, dy) || 1;
-  const str = `Your sky from ${tn.site().label}`;
-  g.font = K.font(11, 500);
-  const tw = g.measureText(str).width, ox = x + dx / dl * 10, oy = y + dy / dl * 10;
-  const tx = clamp(dx >= 0 ? ox : ox - tw, 4, s.w - tw - 4), ty = clamp(oy + (dy > 0 ? 10 : 0), 12, s.h - 4);
-  text(g, str, tx, ty, { size: 11, weight: 500, color: C().gold, halo: true });
+function siteLabel(g, s) {
+  text(g, `Your sky from ${tn.site().label}`, s.w - 10, s.h - 10, { size: 11, weight: 500, color: C().gold, align: 'right', halo: true });
 }
 function lanAim() { return tonightOn() ? tn.lanternTarget() : { ra: zenith(st.t).ra, dec: LAN_DEC }; }
 function stepLantern(now) {
@@ -619,7 +612,7 @@ function followLantern() {
   lan.raf = requestAnimationFrame(tick);
 }
 function lanternPts(ra) { return smallCircleEq(ra, lan.dec == null ? LAN_DEC : lan.dec, 60, 160); }
-let lanPainted = { ra: null, grid: null, dark: null };
+let lanPainted = { ra: null, grid: null, dark: null }, lanCache = null;
 function paintLantern(ra) {
   if (!lanGrid) return;
   if (lanPainted.ra === ra && lanPainted.dec === lan.dec && lanPainted.grid === lanGrid && lanPainted.dark === C().dark && lanPainted.dim === tonightOn()) return;
@@ -716,24 +709,24 @@ function drawSky(s) {
   paintLantern(lan.ra);
   g.imageSmoothingEnabled = true;
   g.drawImage(lanCv, dx, dy, lanGrid.LW * LSTEP * r, lanGrid.LH * LSTEP * r);
-  lantern = lanternPts(lan.ra);
+  if (!lanCache || lanCache.ra !== lan.ra || lanCache.dec !== lan.dec) lanCache = { ra: lan.ra, dec: lan.dec, pts: lanternPts(lan.ra) };
+  lantern = lanCache.pts;
   polyLB(g, f, lantern);
   g.strokeStyle = C().gold; g.lineWidth = 1; g.globalAlpha = tonightOn() ? 0.6 : 0.45; g.stroke(); g.globalAlpha = 1;
-  if (tonightOn()) siteLabel(g, s, f);
   const nNow = lb(t0Sorted, st.t + 1e-9);
   const now = performance.now();
   runLod(s);
   let moving = SC.stepWeights(W, now);
   const hk = [s.w, s.h, s.dpr, view.k.toFixed(3), Math.round(view.px), Math.round(view.py), Math.floor(st.t), st.preset, [...st.groupsOn].join(''), C().dark, emberN, lodKey].join('|');
   if (hk !== hazeKey || !hazeCv) {
-    const crossfade = hazeCv && hazeKey && hazeKey.split('|').slice(0, 9).join('|') === hk.split('|').slice(0, 9).join('|') && !reduceMotion;
+    const crossfade = s.w >= 600 && hazeCv && hazeKey && hazeKey.split('|').slice(0, 9).join('|') === hk.split('|').slice(0, 9).join('|') && !reduceMotion;
     hazeKey = hk;
     if (crossfade) { const t = hazePrev; hazePrev = hazeCv; hazeCv = t; hazeFade = now; } else hazeFade = -1e9;
     const h0 = performance.now(); buildHaze(s); K.pushPerf(perf.haze || (perf.haze = []), performance.now() - h0); emberN = 0;
   }
   const hf = Math.min(1, (now - hazeFade) / 600);
   if (hf < 1) moving = true;
-  if (moving && !st.playing && !weightRaf && !pulseRaf) weightRaf = requestAnimationFrame(() => { weightRaf = 0; drawSky(skyS); });
+  if (moving && !st.playing && !weightRaf && !pulseRaf && !inPulse) weightRaf = requestAnimationFrame(() => { weightRaf = 0; drawSky(skyS); });
   if (hf < 1 && hazePrev) { g.globalAlpha = hooks.emberAlpha * wrapAlpha * (1 - hf); g.drawImage(hazePrev, 0, 0, s.w, s.h); }
   g.globalAlpha = hooks.emberAlpha * wrapAlpha * hf;
   g.drawImage(hazeCv, 0, 0, s.w, s.h);
@@ -776,11 +769,12 @@ function drawSky(s) {
   }
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   if (tonightOn()) tn.drawSky(g, (ra, dec) => { const [l, b] = eq2gal(ra, dec), [u, v] = hammer(l, b); const x = f.X(u), y = f.Y(v); return x < -20 || y < -20 || x > s.w + 20 || y > s.h + 20 ? null : [x, y]; }, now / 1000, Math.min(2, Math.sqrt(view.k)));
-  if (tonightOn() && tn.pulsing() && !reduceMotion && !st.playing && !weightRaf && !pulseRaf) weightRaf = requestAnimationFrame(() => { weightRaf = 0; drawSky(skyS); });
+  if (tonightOn() && tn.pulsing() && !reduceMotion && !st.playing && !weightRaf && !pulseRaf && !inPulse) weightRaf = requestAnimationFrame(() => { weightRaf = 0; drawSky(skyS); });
   if (skyLabels) {
     if (skyFade && skyFade.lab) { const [ox, oy, orr] = place(skyFade.view); g.globalAlpha = hooks.skyAlpha * (1 - fa); g.drawImage(skyFade.lab, ox, oy, s.w * orr, s.h * orr); }
     g.globalAlpha = hooks.skyAlpha * fa; g.drawImage(skyLabels, dx, dy, s.w * r, s.h * r); g.globalAlpha = 1;
   }
+  if (tonightOn()) siteLabel(g, s);
   if (s.w >= 600) text(g, fmtD(st.t), 16, s.h - 30, { size: 16, weight: 650, color: C().ink, halo: true });
   if (s.w >= 600) text(g, `${fmtN(i1 - i0)} sample alerts in the last ${reduceMotion ? 'night' : '4 nights'} · ${fmtN(Math.min(nNow, N))} objects seen so far`, 16, s.h - 12, { size: 12, color: C().ink2, halo: true });
   for (const [i, col, w] of [[st.hover, C().ink, 1.5], [st.sel, C().hi, 2]]) {
@@ -1425,12 +1419,15 @@ function drawStarsOnSky(g, s, sk) {
   const on = pulsesOn(), tau = on ? tauNow() : 0, dark = C().dark, now = performance.now() / 1000, ea = hooks.emberAlpha * wrapAlpha;
   const out = (x, y) => x < -24 || y < -24 || x > s.w + 24 || y > s.h + 24;
   g.globalCompositeOperation = dark ? 'lighter' : 'source-over';
-  const fast = [];
+  const fast = [], soft = [];
+  let budget = s.w < 600 ? 300 : 1e9;
+  const spare = (i) => rankPos[i] >= 120 && budget-- <= 0;
   for (const i of pl.list) {
     if (!vis[i] || Ob.t0[i] == null || Ob.t0[i] > st.t) continue;
     const x = qx[i], y = qy[i]; if (out(x, y)) continue;
     const wi = W.w[i]; if (wi < 0.02) continue;
     const v = on ? SL.pulseLevel(pl, i, tau, st.secPerDay) : 1, r = starR(magOf[i], sk), sp = magOf[i] < SPIKE_MAG;
+    if (spare(i)) { soft.push(x, y, r * 0.55, (v < 0 ? 0.8 : 0.22 + 0.78 * v) * ea * wi); continue; }
     if (v < 0) { blit(g, bucket[i], sp, x, y, r, 0.8 * ea * wi); fast.push(x, y, r); continue; }
     blit(g, bucket[i], sp, x, y, r * (0.75 + 0.4 * v), (0.22 + 0.78 * v) * ea * wi);
   }
@@ -1440,10 +1437,11 @@ function drawStarsOnSky(g, s, sk) {
     const x = qx[i], y = qy[i]; if (out(x, y)) continue;
     const wi = W.w[i]; if (wi < 0.02) continue;
     const v = flickerOf(i, now);
+    if (spare(i)) { soft.push(x, y, starR(magOf[i], sk) * 0.5, (0.2 + 0.4 * v) * ea * wi); continue; }
     blit(g, bucket[i], false, x, y, starR(magOf[i], sk) * 0.85, (0.2 + 0.4 * v) * ea * wi);
   }
   const k0 = lb(trT0, st.t - 80), k1 = lb(trT0, st.t + 1e-9);
-  const rings = [];
+  const rings = [], dots = [], lite = s.w < 600;
   for (let k = k0; k < k1; k++) {
     const i = trList[k];
     if (!vis[i]) continue;
@@ -1452,12 +1450,32 @@ function drawStarsOnSky(g, s, sk) {
     const age = st.t - Ob.t0[i];
     let tr = tracks.get(i);
     if (tr === undefined) { tr = SL.colourTrack(S, i); tracks.set(i, tr); }
-    const bk = tr ? SL.bucketOf(SL.trackAt(tr, st.t)) : SL.NB, fade = Math.exp(-age / 22);
-    const young = Math.max(0, 1 - age / 6);
+    const fade = Math.exp(-age / 22), young = Math.max(0, 1 - age / 6);
+    if (lite && young === 0 && fade < 0.6) { dots.push(x, y, (0.08 + 0.6 * fade) * ea * wi); continue; }
+    if (young === 0 && spare(i)) { soft.push(x, y, starR(magOf[i], sk) * 0.5, Math.min(1, 0.08 + 0.6 * fade) * ea * wi); continue; }
+    const bk = tr ? SL.bucketOf(SL.trackAt(tr, st.t)) : SL.NB;
     blit(g, bk, young > 0 && magOf[i] < SPIKE_MAG + 1.5, x, y, starR(magOf[i], sk) * (0.7 + 0.7 * fade + 1.3 * young), Math.min(1, 0.08 + 0.6 * fade + 0.4 * young) * ea * wi);
     if (age < 10 && !reduceMotion) rings.push(x, y, (3 + age * 2.6) * sk, (1 - age / 10) * wi);
   }
   g.globalCompositeOperation = 'source-over';
+  if (soft.length) {
+    g.fillStyle = dark ? 'rgb(236,240,255)' : C().ink;
+    for (let lvl = 0; lvl < 4; lvl++) {
+      g.globalAlpha = 0.15 + 0.25 * lvl; g.beginPath();
+      for (let k = 0; k < soft.length; k += 4) { if (Math.min(3, Math.floor(soft[k + 3] * 4)) !== lvl) continue; g.moveTo(soft[k] + soft[k + 2], soft[k + 1]); g.arc(soft[k], soft[k + 1], soft[k + 2], 0, 6.283); }
+      g.fill();
+    }
+    g.globalAlpha = 1;
+  }
+  if (dots.length) {
+    g.fillStyle = dark ? 'rgb(214,226,255)' : C().ink;
+    for (const lvl of [0.15, 0.3, 0.5]) {
+      g.globalAlpha = lvl; g.beginPath();
+      for (let k = 0; k < dots.length; k += 3) { const a = dots[k + 2]; if ((a < 0.2 ? 0.15 : a < 0.4 ? 0.3 : 0.5) === lvl) g.rect(dots[k] - 0.9, dots[k + 1] - 0.9, 1.8, 1.8); }
+      g.fill();
+    }
+    g.globalAlpha = 1;
+  }
   g.lineWidth = 1;
   for (let k = 0; k < rings.length; k += 4) {
     g.strokeStyle = dark ? 'rgb(214,226,255)' : C().ink; g.globalAlpha = rings[k + 3] * 0.75 * ea;
@@ -1513,7 +1531,9 @@ function pulseTick() {
   pulseRaf = 0;
   if (!entered || !pulsesOn() || document.hidden) return;
   const c0 = performance.now();
+  inPulse = true;
   if (!st.playing) { if (onScreen.sky) drawSky(skyS); if (onScreen.ladder) drawLadder(ladS); }
+  inPulse = false;
   if (onScreen.hr) drawHrPulse(hrS);
   K.pushPerf(perf.pulse || (perf.pulse = []), performance.now() - c0);
   if (onScreen.sky || onScreen.ladder || onScreen.hr) pulseRaf = requestAnimationFrame(pulseTick);
@@ -1702,7 +1722,7 @@ function renderCard() {
     body.innerHTML = `<h3 class="ph">Most unusual right now</h3>
       <p class="cap">Chosen tonight from ${fmtN(N)} objects by rarity, outbursts, brightness, extremes and freshness.</p>
       <ul class="hooks">${top.map((o) => `<li><button type="button" data-pick="${o}"><span class="sw" style="background:${gcol[grp[o]]}"></span><b>${esc(humanName(o))}</b>${SC.chipsHtml(chipsFor(o).slice(0, 2))}</button></li>`).join('')}
-      <li><button type="button" data-stories="1"><b>Objects from the stories →</b></button></li></ul>`;
+      <li><button type="button" class="solo" data-stories="1"><b>Objects from the stories →</b></button></li></ul>`;
     body.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => select(+b.dataset.pick)));
     body.querySelector('[data-stories]').addEventListener('click', () => { st.cardStories = true; renderCard(); });
     return;
