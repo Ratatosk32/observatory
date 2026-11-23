@@ -69,6 +69,16 @@ for (const ref of referenced(readFileSync(index, 'utf8'))) {
 }
 for (const f of walk(join(site, 'js'))) checkModules(f);
 
+const showcasePath = join(site, 'data', 'showcase.json');
+if (existsSync(showcasePath)) {
+  try {
+    const sc = JSON.parse(readFileSync(showcasePath, 'utf8'));
+    const st = sc.modes && sc.modes.stars;
+    if (!st || !Array.isArray(st.rank) || st.rank.length !== st.n || st.score.length !== st.n || st.why.length !== st.n) problems.push('site/data/showcase.json: stars part is incomplete');
+  } catch (e) {
+    problems.push('site/data/showcase.json: does not parse');
+  }
+}
 if (problems.length) {
   process.stderr.write(problems.join('\n') + '\n');
   process.exit(1);

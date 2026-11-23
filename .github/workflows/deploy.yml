@@ -47,6 +47,10 @@ jobs:
         timeout-minutes: 8
         continue-on-error: true
         run: python -I scripts/refresh_dm.py --minutes 6
+      - name: Score the showcase
+        timeout-minutes: 5
+        continue-on-error: true
+        run: python -I scripts/build_showcase.py
       - name: Keep the committed file for any mode whose refresh broke it
         if: always()
         run: |
