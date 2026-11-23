@@ -110,7 +110,7 @@ function applyFilter() {
 let built = false, entered = false;
 let skyS, ladS, ribS, hrS, cardPlots = [];
 let emberN = -1, emberCv = null, ladderKey = '', ladderCv = null, hrKey = '', hrCv = null, ribKey = '', ribCv = null;
-let skyStatic = null, skyKey = '', skyGeom = null, lantern = null;
+let skyStatic = null, skyKey = '', lantern = null;
 const perf = K.perf;
 const sprites = [];
 
@@ -397,11 +397,6 @@ function buildSkyStatic(s) {
   g.setLineDash([1, 4]); g.strokeStyle = C().ink2; polyLB(g, f, eclLine()); g.stroke(); g.setLineDash([]);
   const vis2 = (x, y) => x > -50 && x < s.w + 50 && y > -20 && y < s.h + 20;
   const sz = s.w < 600 ? 14 : 18;
-  const [eu, ev] = hammer(...eq2gal(150, 33));
-  if (vis2(f.X(eu), f.Y(ev))) skyLabel(lg, 'north of this line Rubin cannot see', f.X(eu), f.Y(ev) - 4, { size: sz - 2, color: gold }, placed);
-  const ecl = eclLine(), ep = ecl[Math.floor(ecl.length * 0.62)], [xu, xv] = hammer(ep[0], ep[1]);
-  if (vis2(f.X(xu), f.Y(xv))) skyLabel(lg, "the asteroids' plane (other mode) →", f.X(xu) + 6, f.Y(xv) - 6, { size: sz - 2, color: C().ink2, align: 'left' }, placed);
-  skyGeom = { eclLabel: [f.X(xu), f.Y(xv) - 20, 260, 26] };
   g.strokeStyle = C().ink; g.lineWidth = 1;
   DDF.forEach(([nm, ra, dec], i) => {
     polyLB(g, f, smallCircleEq(ra, dec, 1.75, 96)); g.closePath(); g.stroke();
@@ -769,7 +764,6 @@ function wireSkyZoom() {
     const now = performance.now();
     if (e.pointerType !== 'mouse' && now - lastTap < 300) { zoomAt(2, x, y); lastTap = 0; return; }
     lastTap = now;
-    if (skyGeom) { const [gx, gy, gw, gh] = skyGeom.eclLabel; if (x >= gx && x <= gx + gw && y >= gy && y <= gy + gh) { K.shell.setMode('asteroids'); return; } }
     select(nearest(qx, qy, x, y, e.pointerType === 'mouse' ? 8 : 14));
   };
   cv.addEventListener('pointerup', end);
@@ -1618,7 +1612,6 @@ function wireCanvas(cv, get) {
   cv.addEventListener('pointerleave', () => { setHover(-1); K.hideTip(); });
   cv.addEventListener('click', (e) => {
     const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-    if (cv.id === 'sky' && skyGeom) { const [gx, gy, gw, gh] = skyGeom.eclLabel; if (x >= gx && x <= gx + gw && y >= gy && y <= gy + gh) { K.shell.setMode('asteroids'); return; } }
     const i = get(x, y, e.pointerType === 'mouse' ? 8 : 14);
     select(i);
   });
