@@ -608,7 +608,7 @@ function stepLantern(now) {
 }
 function followLantern() {
   if (lan.raf || st.playing) return;
-  const tick = () => { lan.raf = 0; if (st.playing || !entered) return; drawSky(skyS); if (!lan.done) lan.raf = requestAnimationFrame(tick); };
+  const tick = () => { lan.raf = 0; if (st.playing || !entered) return; drawSky(skyS); if (!lan.done && !lan.raf) lan.raf = requestAnimationFrame(tick); };
   lan.raf = requestAnimationFrame(tick);
 }
 function lanternPts(ra) { return smallCircleEq(ra, lan.dec == null ? LAN_DEC : lan.dec, 60, 160); }
