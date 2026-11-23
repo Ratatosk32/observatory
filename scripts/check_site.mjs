@@ -69,6 +69,15 @@ for (const ref of referenced(readFileSync(index, 'utf8'))) {
 }
 for (const f of walk(join(site, 'js'))) checkModules(f);
 
+const tonightPath = join(site, 'data', 'tonight.json');
+if (existsSync(tonightPath)) {
+  try {
+    const tn = JSON.parse(readFileSync(tonightPath, 'utf8'));
+    if (!Array.isArray(tn.recent) || tn.recent.some((r) => !Number.isFinite(r.ra) || !Number.isFinite(r.dec) || !Array.isArray(r.det) || !r.finder)) problems.push('site/data/tonight.json: a target is incomplete');
+  } catch {
+    problems.push('site/data/tonight.json: does not parse');
+  }
+}
 const showcasePath = join(site, 'data', 'showcase.json');
 if (existsSync(showcasePath)) {
   try {

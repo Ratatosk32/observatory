@@ -51,6 +51,10 @@ jobs:
         timeout-minutes: 5
         continue-on-error: true
         run: python -I scripts/build_showcase.py
+      - name: Pick tonight's targets
+        timeout-minutes: 8
+        continue-on-error: true
+        run: python -I scripts/build_tonight.py --minutes 5
       - name: Keep the committed file for any mode whose refresh broke it
         if: always()
         run: |
@@ -68,7 +72,9 @@ jobs:
           path: data
           key: raw-data-${{ github.run_id }}
       - name: Site checks
-        run: node scripts/check_site.mjs
+        run: |
+          node scripts/check_site.mjs
+          node scripts/test_skycalc.mjs
       - name: Say why nothing was deployed
         if: ${{ env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == '' }}
         run: echo "::warning::Checked, but not deployed. Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets to deploy."

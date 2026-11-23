@@ -691,3 +691,28 @@ ul.hooks .why { grid-column: 2; margin: 4px 0 0; }
   .map-wrap:has(> .maptools) { display: flex; flex-direction: column; }
   .maptools { position: static; order: -1; margin: 0 0 8px; padding: 0; }
 }
+
+.sitebtns { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.picker { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 8px; }
+.picker select, .picker input { font: inherit; font-size: 13px; height: 32px; padding: 0 8px; border: 1px solid var(--chip-line); border-radius: var(--r-ctl); background: var(--field); color: var(--ink); }
+.picker input { width: 84px; }
+.picker .custom { display: inline-flex; gap: 8px; }
+.picker .custom[hidden] { display: none; }
+ul.tonight { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 2px; }
+ul.tonight li > button { display: grid; grid-template-columns: 10px minmax(0, 1fr) 80px minmax(44px, auto); gap: 0 10px; align-items: center; width: 100%; min-height: 50px; text-align: left; background: none; border: 0; border-radius: 8px; padding: 4px 8px; color: var(--ink); font: inherit; cursor: pointer; }
+ul.tonight li > button:hover, ul.tonight li.on > button { background: var(--hover); }
+ul.tonight .sw { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+ul.tonight .sw.hollow { background: none; border: 1px solid var(--ink3); }
+ul.tonight .nm { display: flex; flex-direction: column; min-width: 0; }
+ul.tonight .nm b, ul.tonight .nm small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ul.tonight .nm small { font-size: 12px; color: var(--ink3); }
+ul.tonight .hrs { font-size: 13px; font-weight: 600; text-align: right; white-space: nowrap; }
+ul.tonight li.muted .nm b, ul.tonight li.muted .hrs { color: var(--ink3); font-weight: 500; }
+ul.tonight li.more { padding: 6px 8px; }
+button.link { font: inherit; color: var(--gold); background: none; border: 0; padding: 0; cursor: pointer; font-weight: 600; }
+button.link:hover { text-decoration: underline; }
+#sCardBody canvas.altc { width: 100%; height: 130px; display: block; }
+#sCardBody canvas.lcc { width: 100%; height: 150px; display: block; }
+#sCardBody canvas.finder { width: min(100%, 380px); aspect-ratio: 1 / 1; height: auto; display: block; }
+#sCardBody .links { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 600px) { ul.tonight li > button { grid-template-columns: 10px minmax(0, 1fr) 60px minmax(40px, auto); } ul.tonight canvas { width: 60px !important; } }

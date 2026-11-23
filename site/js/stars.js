@@ -1,10 +1,11 @@
 import * as K from './kit.js';
 import * as SL from './starlight.js';
 import * as SC from './showcase.js';
+import * as TN from './tonight.js';
 import { createStarSync, QUERIES } from './starsync.js';
 import { register as registerData, refresh as refreshData, fmtBytes } from './datapanel.js';
 
-const [S, SCD] = await Promise.all([K.loadJson('data/stars.json'), SC.loadShowcase()]);
+const [S, SCD, TND] = await Promise.all([K.loadJson('data/stars.json'), SC.loadShowcase(), TN.loadTonight()]);
 const sync = createStarSync(S);
 let lastInfo = (await sync.loadStored()).info;
 const { $, pencilLine, pencilCircle, hatch, text, annotate, setupCanvas, fmtN, MON, clamp, esc } = K;
@@ -122,7 +123,7 @@ const DDF = [['COSMOS', 150.11, 2.18], ['XMM-LSS', 35.71, -4.75], ['ECDFS', 53.1
 
 const st = {
   t: Math.min(T1, Math.max(T0, Ob.t1.reduce((a, b) => Math.max(a, b), -1e9))), playing: false, speed: 2, skip: true,
-  secPerDay: 2, showAll: false, sel: -1, hover: -1, groupsOn: new Set(GROUPS.map((_, i) => i)), pred: null, preset: 'all', lcMode: 'flux', tour: null,
+  secPerDay: 2, showAll: false, selT: -1, sel: -1, hover: -1, groupsOn: new Set(GROUPS.map((_, i) => i)), pred: null, preset: 'all', lcMode: 'flux', tour: null,
 };
 function applyFilter() {
   for (let i = 0; i < N; i++) vis[i] = st.groupsOn.has(grp[i]) && (!st.pred || st.pred(i)) ? 1 : 0;
@@ -584,8 +585,11 @@ function zenith(t) {
 const LAN_DEC = -30.2446;
 const lan = { ra: null, v: 0, last: 0, raf: 0 };
 const wrap180 = (d) => ((d + 540) % 360) - 180;
+function lanAim() { return tonightOn() ? tn.lanternTarget() : { ra: zenith(st.t).ra, dec: LAN_DEC }; }
 function stepLantern(now) {
-  const target = zenith(st.t).ra;
+  const aim = lanAim(), target = aim.ra;
+  if (lan.dec == null || reduceMotion) lan.dec = aim.dec;
+  else if (Math.abs(aim.dec - lan.dec) > 0.01) { lan.dec += (aim.dec - lan.dec) * Math.min(1, ((now - lan.last) / 1000 || 0) / 0.4); lan.decMoving = true; } else { lan.dec = aim.dec; lan.decMoving = false; }
   const dt = lan.ra == null ? 0 : clamp((now - lan.last) / 1000, 0, 0.05);
   lan.last = now;
   if (lan.ra == null || reduceMotion) { lan.ra = target; lan.v = 0; return true; }
@@ -596,7 +600,7 @@ function stepLantern(now) {
   const vd = clamp(rate + Math.sign(diff) * Math.min(Math.sqrt(2 * amax * ad), 4 * ad), -vmax, vmax);
   lan.v += clamp(vd - lan.v, -amax * dt, amax * dt);
   lan.ra = (lan.ra + lan.v * dt + 360) % 360;
-  if (Math.abs(diff) < 0.002 && Math.abs(lan.v) < 0.01) { lan.ra = target; lan.v = 0; return true; }
+  if (Math.abs(diff) < 0.002 && Math.abs(lan.v) < 0.01 && !lan.decMoving) { lan.ra = target; lan.v = 0; return true; }
   return false;
 }
 function followLantern() {
@@ -604,13 +608,13 @@ function followLantern() {
   const tick = () => { lan.raf = 0; if (st.playing || !entered) return; drawSky(skyS); if (!lan.done) lan.raf = requestAnimationFrame(tick); };
   lan.raf = requestAnimationFrame(tick);
 }
-function lanternPts(ra) { return smallCircleEq(ra, LAN_DEC, 60, 160); }
+function lanternPts(ra) { return smallCircleEq(ra, lan.dec == null ? LAN_DEC : lan.dec, 60, 160); }
 let lanPainted = { ra: null, grid: null, dark: null };
 function paintLantern(ra) {
   if (!lanGrid) return;
-  if (lanPainted.ra === ra && lanPainted.grid === lanGrid && lanPainted.dark === C().dark) return;
-  lanPainted = { ra, grid: lanGrid, dark: C().dark };
-  const { LW, LH, vec } = lanGrid, z = { ra, dec: LAN_DEC }, a = z.ra * DEG, dd = z.dec * DEG;
+  if (lanPainted.ra === ra && lanPainted.dec === lan.dec && lanPainted.grid === lanGrid && lanPainted.dark === C().dark) return;
+  lanPainted = { ra, dec: lan.dec, grid: lanGrid, dark: C().dark };
+  const { LW, LH, vec } = lanGrid, z = { ra, dec: lan.dec == null ? LAN_DEC : lan.dec }, a = z.ra * DEG, dd = z.dec * DEG;
   const zx = Math.cos(dd) * Math.cos(a), zy = Math.cos(dd) * Math.sin(a), zz = Math.sin(dd);
   const lg = lanCv.getContext('2d'), im = lg.createImageData(LW, LH), d = im.data;
   const gc = C().dark ? [240, 191, 79] : [74, 74, 74], c0 = Math.cos(56 * DEG), c1 = Math.cos(62 * DEG), amax = C().dark ? 34 : 26;
@@ -754,6 +758,8 @@ function drawSky(s) {
     g.fill();
   }
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+  if (tonightOn()) tn.drawSky(g, (ra, dec) => { const [l, b] = eq2gal(ra, dec), [u, v] = hammer(l, b); const x = f.X(u), y = f.Y(v); return x < -20 || y < -20 || x > s.w + 20 || y > s.h + 20 ? null : [x, y]; }, now / 1000, Math.min(2, Math.sqrt(view.k)));
+  if (tonightOn() && !reduceMotion && !st.playing && !weightRaf && !pulseRaf) weightRaf = requestAnimationFrame(() => { weightRaf = 0; drawSky(skyS); });
   if (skyLabels) {
     if (skyFade && skyFade.lab) { const [ox, oy, orr] = place(skyFade.view); g.globalAlpha = hooks.skyAlpha * (1 - fa); g.drawImage(skyFade.lab, ox, oy, s.w * orr, s.h * orr); }
     g.globalAlpha = hooks.skyAlpha * fa; g.drawImage(skyLabels, dx, dy, s.w * r, s.h * r); g.globalAlpha = 1;
@@ -810,6 +816,7 @@ function wireSkyZoom() {
     const now = performance.now();
     if (e.pointerType !== 'mouse' && now - lastTap < 300) { zoomAt(2, x, y); lastTap = 0; return; }
     lastTap = now;
+    if (tonightOn()) { const f = skyFrame(skyS), k = tn.hit(x, y, (ra, dec) => { const [l, b] = eq2gal(ra, dec), [u, v] = hammer(l, b); return [f.X(u), f.Y(v)]; }); if (k >= 0) { st.selT = k; const r = TND.recent[k]; st.sel = r.inSample != null && r.inSample < N ? r.inSample : -1; lodKey = ''; renderCard(); redraw(); return; } }
     select(nearest(qx, qy, x, y, e.pointerType === 'mouse' ? 8 : 14));
   };
   cv.addEventListener('pointerup', end);
@@ -1308,14 +1315,27 @@ function flickerOf(i, now) {
   const n = (Math.sin(1.3 * now + ph) + 0.6 * Math.sin(2.9 * now + 2 * ph) + 0.8 * Math.sin(0.7 * now + 3 * ph)) / 2.4;
   return 1 - amp * 0.5 * (1 + n);
 }
-const scOn = () => st.preset === 'all' && !(ext.story && ext.story.chapter);
+const scOn = () => (st.preset === 'all' || st.preset === 'tonight') && !(ext.story && ext.story.chapter);
+const tonightOn = () => st.preset === 'tonight' && !!tn;
+const tn = TND ? TN.createTonight(TND, {
+  atlas: () => atlas,
+  selected: () => st.selT,
+  pick: (k) => { st.selT = k; const r = k >= 0 ? TND.recent[k] : null; st.sel = r && r.inSample != null && r.inSample < N ? r.inSample : -1; lodKey = ''; renderCard(); redraw(); },
+  changed: () => { tonightChip(); lodKey = ''; renderCard(); redraw(); },
+}) : null;
+function tonightChip() { const b = document.querySelector('#sPresets [data-p="tonight"]'); if (b && tn) b.textContent = tn.chipLabel(); }
+function tonightSample() { return tn ? tn.targets().map((k) => TND.recent[k].inSample).filter((i) => i != null && i < N) : []; }
 function runLod(s) {
   const n0 = s.w < 600 ? (scS ? scS.top.phone : 60) : (scS ? scS.top.desktop : 120);
   const key = [s.w, s.h, view.k.toFixed(3), Math.round(view.px), Math.round(view.py), Math.floor(st.t), st.preset, [...st.groupsOn].join(''), st.sel, st.hover, st.showAll, scOn(), n0].join('|');
   if (key === lodKey) return;
   lodKey = key;
   if (!scOn()) { W.tgt.fill(1); accepted = N; }
-  else accepted = SC.lodPass(W, { rank, n0, k: view.k, total: N, ok: (i) => vis[i] && Ob.t0[i] != null && Ob.t0[i] <= st.t, x: qx, y: qy, wpx: s.w, hpx: s.h, forced: [st.sel, st.hover], all: st.showAll });
+  else {
+    const tgts = tonightOn() ? tonightSample() : [];
+    accepted = SC.lodPass(W, { rank, n0, k: view.k, total: N, ok: (i) => vis[i] && Ob.t0[i] != null && Ob.t0[i] <= st.t, x: qx, y: qy, wpx: s.w, hpx: s.h, forced: [st.sel, st.hover, ...tgts], all: st.showAll });
+    if (tgts.length) { const set = new Set(tgts.concat([st.sel, st.hover])); for (let i = 0; i < N; i++) if (!set.has(i) && W.tgt[i] > 0.35) W.tgt[i] = 0.35; }
+  }
   if (lodFirst) { W.w.set(W.tgt); lodFirst = false; }
   if (pill) {
     const [t, b, m] = SC.pillCopy({ phone: s.w < 600, all: st.showAll, guided: !scOn(), accepted, total: N, n0, zoomed: view.k > 1.05 });
@@ -1535,6 +1555,7 @@ function census() {
 
 const PRESETS = [
   { id: 'all', label: 'Everything', pred: null },
+  ...(TND ? [{ id: 'tonight', label: 'Tonight', pred: null }] : []),
   { id: 'puls', label: 'Pulsating stars', pred: (i) => grp[i] === 0 },
   { id: 'expl', label: 'Explosions', pred: (i) => grp[i] === 2 },
   { id: 'bh', label: 'Black holes', pred: (i) => grp[i] === 3 },
@@ -1547,6 +1568,8 @@ const PRESETS = [
 function markPresets() { $('#sPresets').querySelectorAll('.btn').forEach((x) => { x.classList.toggle('on', x.dataset.p === st.preset); x.setAttribute('aria-pressed', String(x.dataset.p === st.preset)); }); }
 function runPreset(id) {
   stopTour();
+  st.selT = -1;
+  if (id === 'tonight' || st.preset === 'tonight') { st.sel = -1; lodKey = ''; }
   const p = PRESETS.find((x) => x.id === id);
   st.preset = id; st.groupsOn = new Set(GROUPS.map((_, i) => i));
   if (p.top) { const idx = Array.from({ length: N }, (_, i) => i).filter((i) => Ob.dist[i] != null && Ob.distMethod[i] >= 0).sort(p.top).slice(0, 20); const set = new Set(idx); st.pred = (i) => set.has(i); }
@@ -1642,6 +1665,10 @@ function scoreLine(i) {
 function renderCard() {
   const body = $('#sCardBody');
   cardPlots = [];
+  if (tonightOn()) {
+    if (st.selT >= 0) cardPlots = tn.renderTarget(body, st.selT); else tn.renderList(body);
+    return;
+  }
   const i = st.sel;
   if (i < 0 && scS && !st.cardStories) {
     const top = [];
@@ -1898,6 +1925,7 @@ function build() {
   for (const p of PRESETS) {
     const b = document.createElement('button');
     b.className = 'btn' + (p.id === 'all' ? ' on' : ''); b.type = 'button'; b.textContent = p.label; b.dataset.p = p.id;
+    if (p.id === 'tonight') b.style.minWidth = '112px';
     b.addEventListener('click', () => runPreset(p.id));
     pnav.appendChild(b);
   }
@@ -1929,7 +1957,7 @@ function build() {
   document.addEventListener('keydown', onKey);
   document.addEventListener('visibilitychange', () => { if (document.hidden && st.playing) { st.wasPlaying = true; setPlay(false); } else if (!document.hidden && st.wasPlaying) { st.wasPlaying = false; if (entered) setPlay(true); } if (!document.hidden) startPulses(); });
   K.onTheme(() => { if (!entered) { skyKey = ''; return; } readColors(); makeSprites(); skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1; legend(); census(); renderCard(); redraw(); });
-  legend(); census(); scaleText(); pulseCaption();
+  legend(); census(); scaleText(); pulseCaption(); tonightChip();
   built = true;
 }
 
