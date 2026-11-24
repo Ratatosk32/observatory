@@ -23,6 +23,6 @@ Raw Rubin alerts are not here: Fink keeps them and they can be fetched again. Th
   - `kp` as `[unix time, Kp]` per 3 hours, `kpForecast`, the NOAA `scales` (R, S, G now and the day's maximum), and GOES X-ray `flares` as `[unix time, class, peak flux W/m²]`.
   - `solarWind`: the active L1 spacecraft and its backups, and the mean, minimum and maximum of the 5-minute medians of speed (km/s), density (per cm³) and Bz in GSM (nT).
   - `auroraPowerGW`: the OVATION hemispheric power, north and south, summarised the same way (the text product starts at 00:00 UTC, so the early part of the window is missing), and the model run kept that night.
-  - `lightning`: the flash total, per-satellite file counts and flashes for GOES-East and GOES-West GLM and for the MTG Lightning Imager (`li`, with its state), flashes per hour, flashes per region (with whether open data covers it), and the ten largest storm cells.
+  - `lightning`: the flash total, per-satellite file counts and flashes for GOES-East and GOES-West GLM and for the MTG Lightning Imager (`li`, with its state), flashes per hour, flashes per region (with whether open data covers it), and the ten largest storm cells. Counts that include the Lightning Imager contain modified EUMETSAT Meteosat data 2026 (CC BY 4.0).
 
 A field is `null` when that part of the refresh failed that night; the run's log says why.
