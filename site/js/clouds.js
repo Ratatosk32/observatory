@@ -57,6 +57,7 @@ async function compose(parts) {
     g.drawImage(bmp, 0, 0, w, h);
     const d = g.getImageData(0, 0, w, h).data, cl = Math.cos(s.lon * Math.PI / 180), sl = Math.sin(s.lon * Math.PI / 180);
     for (let y = 0; y < h; y++) {
+      if (y && y % 40 === 0) await new Promise((r) => setTimeout(r, 0));
       const lat = 90 - (y0 + y + 0.5) / H * 180, cla = Math.cos(lat * Math.PI / 180);
       for (let x = 0; x < w; x++) {
         const o = (y * w + x) * 4;
