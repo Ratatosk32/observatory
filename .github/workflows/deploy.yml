@@ -115,6 +115,7 @@ jobs:
         run: |
           node scripts/check_site.mjs
           node scripts/test_skycalc.mjs
+          node scripts/test_cosmo.mjs
       - name: Say why nothing was deployed
         if: ${{ env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == '' }}
         run: echo "::warning::Checked, but not deployed. Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets to deploy."
