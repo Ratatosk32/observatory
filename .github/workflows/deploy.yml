@@ -61,12 +61,12 @@ jobs:
         run: python -I scripts/build_tonight.py --minutes 5
       - name: Aggregate last night's lightning and the space-weather copy
         id: earth
-        timeout-minutes: 14
+        timeout-minutes: 16
         continue-on-error: true
         env:
           METSAT_KEY: ${{ secrets.METSAT_KEY }}
           METSAT_SECRET: ${{ secrets.METSAT_SECRET }}
-        run: python -I scripts/build_earth.py --minutes 10
+        run: python -I scripts/build_earth.py --minutes 12
       - name: Keep the committed file for any mode whose refresh broke it
         if: always()
         run: |

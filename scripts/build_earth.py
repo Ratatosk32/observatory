@@ -247,26 +247,31 @@ def load_li(t0, deadline, per, stats):
                 first_err.append(f'{e.__class__.__name__}: {str(e)[:300]}')
             return None
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
-        for ts in hours:
+    todo = []
+    for ts in hours:
+        path = hour_cache(LI, ts)
+        if os.path.exists(path):
+            z = np.load(path)
+            per[LI['id']][ts] = ({k: z[k] for k in ('lat', 'lon', 't', 'energy', 'area')}, json.loads(str(z['info'])))
+        elif token:
+            todo += [(ts, href) for href in found.get(ts, [])]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
+        results = list(pool.map(lambda job: one(job[1]), todo))
+    for ts in hours:
+        if ts in per[LI['id']]:
+            continue
+        got = [r for (t, _), r in zip(todo, results) if t == ts and r is not None]
+        listed = sum(1 for t, _ in todo if t == ts)
+        if not got:
+            continue
+        data = {k: np.concatenate([g[k] for g in got]) for k in ('lat', 'lon', 't', 'energy', 'area')}
+        info = {'files': len(got), 'listed': listed, 'expected': max(6, listed), 'sublon': LI['lon']}
+        per[LI['id']][ts] = (data, info)
+        if len(got) == listed and ts + 7200 < time.time():
             path = hour_cache(LI, ts)
-            if os.path.exists(path):
-                z = np.load(path)
-                per[LI['id']][ts] = ({k: z[k] for k in ('lat', 'lon', 't', 'energy', 'area')}, json.loads(str(z['info'])))
-                continue
-            hrefs = found.get(ts, [])
-            if not token or not hrefs or time.time() > deadline:
-                continue
-            got = [x for x in pool.map(one, hrefs) if x is not None]
-            if not got:
-                continue
-            data = {k: np.concatenate([g[k] for g in got]) for k in ('lat', 'lon', 't', 'energy', 'area')}
-            info = {'files': len(got), 'listed': len(hrefs), 'expected': max(6, len(hrefs)), 'sublon': LI['lon']}
-            per[LI['id']][ts] = (data, info)
-            if len(got) == len(hrefs) and ts + 7200 < time.time():
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-                np.savez_compressed(path, info=json.dumps(info), **data)
-            log(f'earth: {LI["id"]} {iso(ts)} {len(got)}/{len(hrefs)} products, {data["lat"].size} flashes')
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            np.savez_compressed(path, info=json.dumps(info), **data)
+    log(f'earth: {LI["id"]} {sum(r is not None for r in results)} of {len(todo)} products read')
     if first_err:
         warn(f'earth: some MTG LI products failed, first error: {first_err[0]}')
     for ts in hours:
@@ -793,7 +798,7 @@ def main():
         aur, ovation_ok = None, False
 
     per, stats = {}, {}
-    load_li(t0, min(deadline, time.time() + 180), per, stats)
+    load_li(t0, min(deadline - 330, time.time() + 270), per, stats)
     glm_per, glm_stats = load_glm(t0, deadline, args.workers)
     per.update(glm_per)
     stats.update(glm_stats)
