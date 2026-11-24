@@ -94,7 +94,7 @@ The sparkline shows Rubin alerts per night over the last 60 nights as counted by
 
 ### Nightly archive
 
-Each nightly run also writes a snapshot of what the site computed (`scripts/build_archive.py`, about 60 KB gzip) and appends it to the `archive` branch as `snapshots/<year>/<date>.json.gz`. The branch shares no history with `main` and is never deployed. It keeps what cannot be fetched again later: classifications as they stood that night, the showcase and its scores, the dark-matter meters, the Tonight targets and the data-health verdict. Its README lists the fields. The snapshot travels from the build job to a separate `archive` job as a short-lived artifact, so only that small job can write to the repository.
+Each nightly run also writes a snapshot of what the site computed (`scripts/build_archive.py`, about 60 KB gzip) and keeps it as a workflow artifact for 21 days. Every Monday's scheduled run, or any manual run, flushes the waiting snapshots to the `archive` branch in one commit, as `snapshots/<year>/<date>.json.gz`; a missed Monday is caught up the next week. The branch shares no history with `main` and is never deployed. It keeps what cannot be fetched again later: classifications as they stood that night, the showcase and its scores, the dark-matter meters, the Tonight targets and the data-health verdict. Its README lists the fields. Only the small `archive` job can write to the repository; the build job just uploads its artifact.
 
 ### Honesty notes
 

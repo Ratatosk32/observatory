@@ -84,14 +84,18 @@ jobs:
         id: snapshot
         if: always()
         continue-on-error: true
-        run: python -I scripts/build_archive.py --out "$RUNNER_TEMP/archive"
-      - name: Hand the snapshot to the archive job
+        run: |
+          python -I scripts/build_archive.py --out "$RUNNER_TEMP/archive"
+          f=$(ls "$RUNNER_TEMP"/archive/*.json.gz | head -n 1)
+          echo "name=$(basename "$f" .json.gz)" >> "$GITHUB_OUTPUT"
+      - name: Keep the snapshot until the weekly flush
         if: steps.snapshot.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: archive-snapshot
+          name: archive-${{ steps.snapshot.outputs.name }}
           path: ${{ runner.temp }}/archive
-          retention-days: 3
+          retention-days: 21
+          overwrite: true
       - name: Save raw data for the next run
         if: always()
         uses: actions/cache/save@v4
@@ -120,50 +124,59 @@ jobs:
 
   archive:
     needs: pages
-    if: ${{ always() && needs.pages.result != 'cancelled' && github.ref == 'refs/heads/main' }}
+    if: ${{ always() && needs.pages.result != 'cancelled' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
         with:
           path: src
-      - name: Fetch the snapshot
-        id: get
-        continue-on-error: true
-        uses: actions/download-artifact@v4
-        with:
-          name: archive-snapshot
-          path: snapshot
-      - name: Append the snapshot to the archive branch
-        if: steps.get.outcome == 'success'
+      - name: Flush the week's snapshots to the archive branch
         env:
-          TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          file=$(ls snapshot/*.json.gz | head -n 1)
-          name=$(basename "$file")
-          year=${name:0:4}
+          if [ "$GITHUB_EVENT_NAME" = schedule ] && [ "$(date -u +%u)" != 1 ]; then
+            echo "snapshots wait as artifacts; they are flushed on Mondays or by a manual run"
+            exit 0
+          fi
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100"             --jq '.artifacts[] | select(.expired == false and (.name | startswith("archive-"))) | "\(.created_at) \(.id)"' | sort > waiting.txt
+          if [ ! -s waiting.txt ]; then
+            echo "no snapshots waiting"
+            exit 0
+          fi
+          mkdir got
+          while read -r created id; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > snap.zip
+            unzip -o -q snap.zip -d got
+          done < waiting.txt
           git init -q archive
           cd archive
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           if git fetch -q --depth 1 origin archive; then
             git checkout -q -b archive FETCH_HEAD
           else
             git checkout -q --orphan archive
           fi
           cp ../src/scripts/archive-readme.md README.md
-          mkdir -p "snapshots/$year"
-          cp "../$file" "snapshots/$year/$name"
-          git add README.md "snapshots/$year/$name"
+          git add README.md
+          for f in ../got/*.json.gz; do
+            name=$(basename "$f")
+            mkdir -p "snapshots/${name:0:4}"
+            cp "$f" "snapshots/${name:0:4}/$name"
+            git add "snapshots/${name:0:4}/$name"
+          done
           if git diff --cached --quiet; then
-            echo "nothing new to archive"
+            echo "every waiting snapshot is already archived"
           else
-            git commit -q -m "Snapshot ${name%.json.gz}"
+            first=$(ls ../got | sort | head -n 1); last=$(ls ../got | sort | tail -n 1)
+            git commit -q -m "Snapshots ${first%.json.gz} to ${last%.json.gz}"
             git push -q origin archive
-            echo "archived snapshots/$year/$name"
+            git show --stat --format=%s HEAD | tail -n +1
           fi
 
   keepalive:

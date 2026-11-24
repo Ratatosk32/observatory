@@ -1,6 +1,6 @@
 # Observatory nightly archive
 
-This branch holds one snapshot per night of what observatory.noetx.com computed, written by the nightly refresh (`scripts/build_archive.py` on `main`). It never shares history with `main` and is not deployed. A later run on the same day replaces that day's file.
+This branch holds one snapshot per night of what observatory.noetx.com computed, written by the nightly refresh (`scripts/build_archive.py` on `main`). Snapshots wait as workflow artifacts and are committed here once a week, on Mondays. The branch never shares history with `main` and is not deployed. When a day had several runs, the latest one's file is kept.
 
 Raw Rubin alerts are not here: Fink keeps them and they can be fetched again. The snapshots keep what cannot be recovered later: classifications as they stood that night, the site's own scores and meters, and the state of the upstream data.
 
