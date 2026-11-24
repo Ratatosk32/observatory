@@ -36,7 +36,7 @@ EUM = 'https://api.eumetsat.int/'
 FIELDS = ['flash_lat', 'flash_lon', 'flash_time_offset_of_first_event', 'flash_energy', 'flash_area', 'flash_quality_flag']
 EPOCH_2000 = datetime.datetime(2000, 1, 1, 12, tzinfo=datetime.timezone.utc).timestamp()
 HOURS = 24
-L0_MOD, L1_MOD = 128, 8
+L0_MOD, L1_MOD, L0_MAX = 128, 8, 13000
 TILE_DEG = 30
 TILE_GZ_MAX = 280 * 1024
 U64 = np.uint64
@@ -811,7 +811,10 @@ def main():
     h = flash_hash(f)
     log(f'earth: {f["lat"].size} flashes after the overlap split and quality filter')
 
-    l0 = records(f, h % U64(L0_MOD) == 0, t0)
+    l0_mod = L0_MOD
+    while f['lat'].size / l0_mod > L0_MAX:
+        l0_mod *= 2
+    l0 = records(f, h % U64(l0_mod) == 0, t0)
     dens, dens_tot = density(f, t0)
     cells, _ = storm_cells(f, t0, N)
     regs = regions(f, t0, N, sats)
@@ -858,7 +861,7 @@ def main():
         'meta': {
             'built': iso(time.time()), 'window': [iso(t0), iso(t1)], 't0': t0, 't1': t1,
             'defaultT': int(default_t), 'defaultView': default_view, 'flashes': int(f['lat'].size),
-            'l0': {'mod': L0_MOD, 'n': int(l0.size)}, 'l1': {'mod': L1_MOD, 'n': int(l1.sum())},
+            'l0': {'mod': l0_mod, 'n': int(l0.size)}, 'l1': {'mod': L1_MOD, 'n': int(l1.sum())},
             'glm': glm, 'li': li_meta,
             'swpc': {'reachable': bool(sw_ok) or ovation_ok, 'parts': sorted(sw_ok), 'ovationRun': aur['obs'] if aur else None, 'source': sw.get('source', {}).get('active')},
             'aurora': {'frames': 1 if aur else 0, 'mode': 'latest'},
