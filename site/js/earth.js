@@ -693,7 +693,7 @@ function provenanceLine() {
     return `${v} · no lightning after ${hhmm(T1)}`;
   }
   const a = AUR ? `aurora: OVATION run ${hhmm(AUR.obs)}, turned with the Sun to ${hhmm(st.t)}` : 'aurora: no model run kept';
-  return `${a} · lightning: GLM, 1 h trail`;
+  return `${a} · lightning: ${LI_ON ? "GLM and MTG LI" : "GLM"}, 1 h trail`;
 }
 function drawOverlay(now) {
   if (!box.w || !entered) return;
