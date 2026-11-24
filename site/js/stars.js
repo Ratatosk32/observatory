@@ -117,7 +117,6 @@ const nameOf = (i) => Ob.name[i] || 'Rubin object …' + Ob.id[i].slice(-6);
 const famLabel = (i) => FAM[Ob.fam[i]].label;
 const catOf = (i) => S.meta.catTypes[Ob.catType[i]] || '';
 const fmtPc = (pc) => pc >= 1e9 ? (pc / 1e9).toFixed(pc >= 1e10 ? 0 : 1) + ' Gpc' : pc >= 1e6 ? (pc / 1e6).toFixed(pc >= 1e7 ? 0 : 1) + ' Mpc' : pc >= 1e3 ? (pc / 1e3).toFixed(pc >= 1e4 ? 0 : 1) + ' kpc' : Math.round(pc) + ' pc';
-const fmtLy = (pc) => { const ly = pc * 3.2616; return ly >= 1e9 ? (ly / 1e9).toFixed(1) + ' billion light years' : ly >= 1e6 ? (ly / 1e6).toFixed(ly >= 1e7 ? 0 : 1) + ' million light years' : fmtN(Math.round(ly)) + ' light years'; };
 const METHOD_WORDS = { gaia_parallax: 'Gaia DR3 parallax', rr_lyrae_candle: 'RR Lyrae standard candle', cloud_member: 'cloud membership', tns_redshift: 'TNS spectroscopic redshift', host_galaxy: 'host-galaxy distance (Mangrove)', photo_z: 'host photometric redshift (Legacy DR8)', sdss_specz: 'SDSS DR16 spectroscopic redshift' };
 const DDF = [['COSMOS', 150.11, 2.18], ['XMM-LSS', 35.71, -4.75], ['ECDFS', 53.13, -28.10], ['ELAIS-S1', 9.45, -44.03], ['EDFS', 58.90, -49.32], ['', 63.60, -47.60]];
 
@@ -1746,7 +1745,11 @@ function renderCard() {
   const mm = Ob.meanMag[i].map((m, k) => m == null ? null : `${BANDS[k]} ${m.toFixed(1)}`).filter(Boolean).join(' · ');
   facts.push(['Mean magnitude', mm || '—']);
   if (Ob.gaiaG[i] != null) facts.push(['Gaia DR3', `G ${f1(Ob.gaiaG[i], 2)}${Ob.gaiaBpRp[i] != null ? ` · BP−RP ${f1(Ob.gaiaBpRp[i], 2)}` : ''} <small>(match ${f1(Ob.gaiaSep[i], 2)}″)</small>`]);
-  if (Ob.distMethod[i] >= 0 && Ob.dist[i] != null) facts.push(['Distance', `${fmtPc(Ob.dist[i])} <small>${esc(METHOD_WORDS[METHODS[Ob.distMethod[i]]] || '')}${Ob.distLo[i] != null ? `, ${fmtPc(Ob.distLo[i])}–${fmtPc(Ob.distHi[i])}` : ''}; light left it ${fmtLy(Ob.dist[i])} ago</small>`]);
+  if (Ob.distMethod[i] >= 0 && Ob.dist[i] != null) {
+    const lbi = Ob.lookbackGyr ? Ob.lookbackGyr[i] : null;
+    const ago = lbi != null ? fmtAgo(lbi) : fmtAgo(Ob.dist[i] * 3.2616e-9);
+    facts.push(['Distance', `${fmtPc(Ob.dist[i])} <small>${lbi != null ? 'luminosity distance, ' : ''}${esc(METHOD_WORDS[METHODS[Ob.distMethod[i]]] || '')}${Ob.distLo[i] != null ? `, ${fmtPc(Ob.distLo[i])}–${fmtPc(Ob.distHi[i])}` : ''}; light left it ${ago} ago</small>`]);
+  }
   else facts.push(['Distance', '<small>unknown: no Gaia match, no redshift</small>']);
   if (Ob.period[i]) facts.push(['Period', `${Ob.period[i].toFixed(Ob.period[i] < 10 ? 5 : 2)} d <small>${esc(Ob.periodSrc[i] || 'Gaia DR3')}</small>`]);
   const pr = fe && fe.periodRubin && fe.periodRubin.reliable ? fe.periodRubin : null;
