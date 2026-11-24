@@ -92,6 +92,10 @@ The Data panel opens with a health check that the nightly refresh writes to `sit
 
 The sparkline shows Rubin alerts per night over the last 60 nights as counted by Fink (log scale). A dot on the Data button carries the level: green when all is in step, gold for a quiet or lagging stream, red for a failed refresh. If the check itself is more than 36 hours old the panel says so.
 
+### Nightly archive
+
+Each nightly run also writes a snapshot of what the site computed (`scripts/build_archive.py`, about 60 KB gzip) and appends it to the `archive` branch as `snapshots/<year>/<date>.json.gz`. The branch shares no history with `main` and is never deployed. It keeps what cannot be fetched again later: classifications as they stood that night, the showcase and its scores, the dark-matter meters, the Tonight targets and the data-health verdict. Its README lists the fields. The snapshot travels from the build job to a separate `archive` job as a short-lived artifact, so only that small job can write to the repository.
+
 ### Honesty notes
 
 - These are samples of the alert stream, not the survey. Proportions reflect how the samples were drawn.
@@ -155,6 +159,7 @@ node scripts/check_site.mjs
 - `build_stars.py` writes `site/data/stars.json`; with `--tiles` it writes `site/data/stars-tiles.json`.
 - `build_cmb.py` writes `site/data/cmb-sky.png`, `cmb-lens.png` and `cmb.json` (about 4.3 MB in all). It needs `ducc0`, `astropy` and `Pillow`. The SMICA map comes from IRSA (Planck release 2, 168 MB); the PR4 lensing alm and mask, the ACT catalogue, the SN-like object table and the test results come from the crossmatch analysis (Fink tag pulls, the κ stack with 300 rotated-sky nulls, and the cluster aperture test).
 - `build_dm_clusters.py` adds the ACT DR5 and DR6 catalogues (positions, θ500 from M500c with Planck 2018 cosmology, redshifts, masses, names) and the TNS and tag flags to `scripts/ci-data/dm_inputs.npz`, so the nightly refresh can recompute both cluster meters and the confident supernovae with numpy only.
+- `build_archive.py --out <dir>` writes the night's snapshot for the `archive` branch.
 - `build_health.py` writes `site/data/health.json`: Fink nightly statistics, the newest Rubin alert on ANTARES, the newest night in each mode's data, and each refresh step's outcome (passed in by the workflow as `STEP_*` variables).
 - `check_site.mjs` scans the repository: no Cyrillic text, no unfinished-work markers, no console logging, and every file the page references exists.
 

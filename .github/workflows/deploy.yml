@@ -80,6 +80,18 @@ jobs:
           STEP_SHOWCASE: ${{ steps.showcase.outcome }}
           STEP_TONIGHT: ${{ steps.tonight.outcome }}
         run: python -I scripts/build_health.py --fallbacks "$RUNNER_TEMP/fallbacks.txt" || git checkout -- site/data/health.json
+      - name: Build tonight's archive snapshot
+        id: snapshot
+        if: always()
+        continue-on-error: true
+        run: python -I scripts/build_archive.py --out "$RUNNER_TEMP/archive"
+      - name: Hand the snapshot to the archive job
+        if: steps.snapshot.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-snapshot
+          path: ${{ runner.temp }}/archive
+          retention-days: 3
       - name: Save raw data for the next run
         if: always()
         uses: actions/cache/save@v4
@@ -105,6 +117,54 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy site --project-name=observatory --branch=main
+
+  archive:
+    needs: pages
+    if: ${{ always() && needs.pages.result != 'cancelled' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
+      - name: Fetch the snapshot
+        id: get
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: archive-snapshot
+          path: snapshot
+      - name: Append the snapshot to the archive branch
+        if: steps.get.outcome == 'success'
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          file=$(ls snapshot/*.json.gz | head -n 1)
+          name=$(basename "$file")
+          year=${name:0:4}
+          git init -q archive
+          cd archive
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git fetch -q --depth 1 origin archive; then
+            git checkout -q -b archive FETCH_HEAD
+          else
+            git checkout -q --orphan archive
+          fi
+          cp ../src/scripts/archive-readme.md README.md
+          mkdir -p "snapshots/$year"
+          cp "../$file" "snapshots/$year/$name"
+          git add README.md "snapshots/$year/$name"
+          if git diff --cached --quiet; then
+            echo "nothing new to archive"
+          else
+            git commit -q -m "Snapshot ${name%.json.gz}"
+            git push -q origin archive
+            echo "archived snapshots/$year/$name"
+          fi
 
   keepalive:
     if: github.event_name == 'schedule'
