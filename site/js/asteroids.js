@@ -65,10 +65,11 @@ function drawSizeHist() {
   for (let k = 0; k < nb; k++) {
     if (!h[k]) continue;
     const v = (k + 0.5) / nb * 1000, on = v >= state.dLo && v <= state.dHi;
-    g.fillStyle = on ? C.goldSoft : C.grid;
+    g.fillStyle = on ? C.goldSoft : C.grid; g.globalAlpha = on ? 0.7 : 1;
     const hh = Math.max(1, Math.sqrt(h[k] / mx) * r.height);
     g.fillRect(k * bw + 0.5, r.height - hh, bw - 1, hh);
   }
+  g.globalAlpha = 1;
 }
 let sizeTimer = 0;
 function onSize(which) {
@@ -159,7 +160,7 @@ function mkObj(o, idx) {
 }
 const O = [], byName = new Map(), flat = [], nightDet = new Map();
 let dataVer = 0, scA = null, rankPosA = new Int32Array(0), rank = [], W = null, lodFirst = true, lodKey = '', accepted = 0, pill = null, showAll = false, weightRaf = 0;
-let hazeSmall = null;
+let hazeSmall = null, hazeSoft = null;
 const BLUR = typeof CanvasRenderingContext2D !== 'undefined' && 'filter' in CanvasRenderingContext2D.prototype;
 const AST_W = { rare: 1, orbit: 0.9, approach: 1, extreme: 0.8 };
 let N = 0, flatT = new Float64Array(0), META = R.meta, posX = new Float32Array(0), posY = new Float32Array(0);
@@ -299,7 +300,10 @@ function hazeColors() {
 }
 function drawHaze(g, s) {
   const hw = Math.max(2, Math.ceil(s.w / 2)), hh = Math.max(2, Math.ceil(s.h / 2));
-  if (!hazeSmall || hazeSmall.width !== hw || hazeSmall.height !== hh) { hazeSmall = document.createElement('canvas'); hazeSmall.width = hw; hazeSmall.height = hh; }
+  if (!hazeSmall || hazeSmall.width !== hw || hazeSmall.height !== hh) {
+    hazeSmall = document.createElement('canvas'); hazeSmall.width = hw; hazeSmall.height = hh;
+    hazeSoft = document.createElement('canvas'); hazeSoft.width = hw; hazeSoft.height = hh;
+  }
   const hg = hazeSmall.getContext('2d'), cols = hazeColors();
   const bins = binBy((k) => { const crowd = 1 - W.w[k]; return crowd <= 0.02 ? -1 : Math.min(3, Math.ceil(crowd * 3)); }, 4);
   if (!bins.some((a) => a.length)) return;
@@ -315,11 +319,14 @@ function drawHaze(g, s) {
     }
   }
   hg.globalAlpha = 1;
+  const sg = hazeSoft.getContext('2d');
+  sg.clearRect(0, 0, hw, hh);
+  if (BLUR) { sg.filter = 'blur(1.25px)'; sg.drawImage(hazeSmall, 0, 0); sg.filter = 'none'; }
+  else { sg.drawImage(hazeSmall, 0, 0); sg.globalAlpha = 0.33; for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) sg.drawImage(hazeSmall, ox, oy); sg.globalAlpha = 1; }
   g.save();
   g.imageSmoothingEnabled = true;
-  g.globalAlpha = C.dark ? 0.5 : 0.6;
-  if (BLUR && s.w >= 600) g.filter = 'blur(1.5px)';
-  g.drawImage(hazeSmall, 0, 0, s.w, s.h);
+  g.globalAlpha = C.dark ? 0.55 : 0.65;
+  g.drawImage(hazeSoft, 0, 0, s.w, s.h);
   g.restore();
 }
 const glowBudget = () => (mapS.w < 600 ? 50 : 100) * Math.max(1, Math.pow(3.9 / state.viewR, 1.5));
@@ -410,6 +417,7 @@ function buildStatic(s) {
   g.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
   g.clearRect(0, 0, s.w, s.h);
   const sc = mapScale(s), cx = s.w / 2, cy = s.h / 2;
+  const plateR = drawPlate(g, s, cx, cy);
   const members = O.filter(inFilter);
   g.lineWidth = 1;
   g.strokeStyle = C.orbit;
@@ -434,7 +442,7 @@ function buildStatic(s) {
     const r = rng(seed);
     g.strokeStyle = color; g.lineWidth = width; g.lineCap = 'round';
     for (let pass = 0; pass < passes; pass++) {
-      g.globalAlpha = pass === 0 ? 1 : 0.45;
+      g.globalAlpha = pass === 0 ? (color === C.hi ? 0.75 : 1) : 0.45;
       const ph = r() * 6.283, k1 = (r() - 0.5) * amp, k2 = (r() - 0.5) * amp, over = 0.06 + r() * 0.05;
       g.beginPath();
       for (let k = 0; k <= n; k++) {
@@ -456,23 +464,65 @@ function buildStatic(s) {
       return [(co * cO - so * sO * cI) * xp + (-so * cO - co * sO * cI) * yp, (co * sO + so * cO * cI) * xp + (-so * sO + co * cO * cI) * yp];
     }, 200, seedOf(a, 3), 0, C.porbit, 0.8, 1);
   }
+  plateLabels(g, s, cx, cy, plateR);
   if (state.sel) {
     const o = state.sel;
     ellipse((E) => {
       const xp = o.a * (Math.cos(E) - o.e), yp = o.b * Math.sin(E);
       return [xp * o.Px + yp * o.Qx, xp * o.Py + yp * o.Qy];
-    }, 240, seedOf(o.idx, 5), 0, C.hi, 1.2, 1);
-    g.fillStyle = C.hi;
-    for (const d of o.det) if (d[6] !== null) { g.beginPath(); g.arc(cx + d[6] * sc, cy - d[7] * sc, 2.2, 0, 7); g.fill(); }
+    }, 240, seedOf(o.idx, 5), 0, C.hi, 1, 1);
+    g.globalAlpha = 0.8; g.fillStyle = C.hi; g.beginPath();
+    for (const d of o.det) if (d[6] !== null) { const x = cx + d[6] * sc, y = cy - d[7] * sc; g.moveTo(x + 1.6, y); g.arc(x, y, 1.6, 0, 6.2832); }
+    g.fill(); g.globalAlpha = 1;
   }
+  staticLayer = cv;
+}
+function scaleBar(g, s, sc) {
   const au = niceAU(state.viewR);
   const x0 = s.w - 12 - au * sc, y0 = s.h - 34;
-  pencilLine(g, x0, y0, x0 + au * sc, y0, { color: C.graphite, width: 1.4 });
-  pencilLine(g, x0, y0 - 5, x0, y0 + 1, { color: C.graphite, width: 1.2, passes: 1 });
-  pencilLine(g, x0 + au * sc, y0 - 5, x0 + au * sc, y0 + 1, { color: C.graphite, width: 1.2, passes: 1 });
-  text(g, `${au} AU`, x0 + au * sc / 2, y0 - 8, { size: 12.5, weight: 500, color: C.ink2, align: 'center', halo: true });
-  text(g, 'Vernal equinox direction →', s.w - 16, s.h - 14, { size: 12, color: C.ink3, align: 'right', halo: true });
-  staticLayer = cv;
+  pencilLine(g, x0, y0, x0 + au * sc, y0, { color: C.graphite, width: 1.2 });
+  pencilLine(g, x0, y0 - 5, x0, y0 + 1, { color: C.graphite, width: 1 });
+  pencilLine(g, x0 + au * sc, y0 - 5, x0 + au * sc, y0 + 1, { color: C.graphite, width: 1 });
+  text(g, `${au} AU`, x0 + au * sc / 2, y0 - 8, { size: 11, weight: 500, color: C.ink2, align: 'center', halo: true });
+}
+function plateFill() {
+  const [r, g, b] = SC.rgbOf(C.dark ? C.ink : getComputedStyle(document.documentElement).getPropertyValue('--field').trim());
+  return (a) => `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+function drawPlate(g, s, cx, cy) {
+  const R = Math.min(s.w, s.h) / 2 - 6, fill = plateFill();
+  const gr = g.createRadialGradient(cx, cy, 0, cx, cy, R);
+  gr.addColorStop(0, fill(C.dark ? 0.065 : 0.8)); gr.addColorStop(0.75, fill(C.dark ? 0.035 : 0.5)); gr.addColorStop(1, fill(C.dark ? 0.02 : 0.3));
+  g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, R, 0, 6.2832); g.fill();
+  return R;
+}
+function plateLabels(g, s, cx, cy, R) {
+  g.strokeStyle = C.goldSoft; g.lineWidth = 1.2; g.beginPath(); g.arc(cx, cy, R, 0, 6.2832); g.stroke();
+  g.lineWidth = 1; g.beginPath();
+  for (let d = 0; d < 360; d += 10) {
+    const a = d * DEG, len = d % 90 === 0 ? 7 : d % 30 === 0 ? 4.5 : 2;
+    g.moveTo(cx + Math.cos(a) * R, cy - Math.sin(a) * R); g.lineTo(cx + Math.cos(a) * (R - len), cy - Math.sin(a) * (R - len));
+  }
+  g.stroke();
+  const lab = { size: 11, color: C.ink3, halo: true };
+  text(g, '90°', cx, cy - R + 20, { ...lab, align: 'center' });
+  text(g, '180°', cx - R + 11, cy + 4, lab);
+  text(g, '270°', cx, cy + R - 12, { ...lab, align: 'center' });
+  const eq = '0° · vernal equinox';
+  g.font = font(11);
+  if (cx + R + 10 + g.measureText(eq).width < s.w - 8) plateEq = [eq, cx + R + 10, cy + 4, 'left'];
+  else {
+    text(g, '0°', cx + R - 11, cy + 4, { ...lab, align: 'right' });
+    plateEq = ['0°: vernal equinox', s.w - 12, s.h - 12, 'right'];
+  }
+}
+let plateEq = null;
+function fadeOutside(g, s) {
+  const cx = s.w / 2, cy = s.h / 2, R = Math.min(s.w, s.h) / 2 - 6;
+  if (Math.hypot(cx, cy) < R + 4) return;
+  const gr = g.createRadialGradient(cx, cy, R + 2, cx, cy, R + 28);
+  gr.addColorStop(0, 'rgba(0, 0, 0, 0)'); gr.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
+  g.save(); g.globalCompositeOperation = 'destination-out'; g.fillStyle = gr; g.fillRect(0, 0, s.w, s.h); g.restore();
 }
 function niceAU(r) { return r < 2.5 ? 0.5 : r < 5 ? 1 : 2; }
 
@@ -499,6 +549,11 @@ function drawLit(g, lit, sc) {
   g.fill();
 }
 const FAN_BINS = 240;
+let fanCol = null;
+function fanRgb() {
+  if (!fanCol || fanCol.dark !== C.dark) fanCol = { dark: C.dark, rgb: SC.rgbOf(C.gold) };
+  return fanCol.rgb;
+}
 const fanCount = new Float32Array(FAN_BINS), fanDist = new Float32Array(FAN_BINS);
 function drawFan(g, ex, ey, i0, i1, sc, cx, cy) {
   fanCount.fill(0); fanDist.fill(0);
@@ -510,15 +565,15 @@ function drawFan(g, ex, ey, i0, i1, sc, cx, cy) {
   let mx = 0, md = 0;
   for (let b = 0; b < FAN_BINS; b++) { mx = Math.max(mx, fanCount[b]); md = Math.max(md, fanDist[b]); }
   if (!mx) return;
-  const gr = g.createRadialGradient(ex, ey, 0, ex, ey, md);
-  gr.addColorStop(0, C.dark ? 'rgba(242, 138, 118, 0.55)' : 'rgba(194, 65, 12, 0.4)');
-  gr.addColorStop(1, C.dark ? 'rgba(242, 138, 118, 0)' : 'rgba(194, 65, 12, 0)');
+  const gr = g.createRadialGradient(ex, ey, 0, ex, ey, md), [fr, fg, fb] = fanRgb();
+  gr.addColorStop(0, `rgba(${fr}, ${fg}, ${fb}, ${C.dark ? 0.42 : 0.3})`);
+  gr.addColorStop(1, `rgba(${fr}, ${fg}, ${fb}, 0)`);
   g.fillStyle = gr;
   const w = 2 * Math.PI / FAN_BINS;
   for (let b = 0; b < FAN_BINS; b++) {
     if (!fanCount[b]) continue;
     const a0 = -Math.PI + b * w;
-    g.globalAlpha = 0.03 + 0.55 * Math.sqrt(fanCount[b] / mx);
+    g.globalAlpha = 0.03 + 0.5 * Math.sqrt(fanCount[b] / mx);
     g.beginPath(); g.moveTo(ex, ey); g.arc(ex, ey, fanDist[b], a0, a0 + w); g.closePath(); g.fill();
   }
   g.globalAlpha = 1;
@@ -611,9 +666,9 @@ function drawMap(s) {
     const front = new Set(), back = [];
     const nGlow = glowBudget();
     for (const k of lit) (W.w[k] >= 0.5 && rankPosA[k] < nGlow ? front.add(k) : back.push(k));
-    g.fillStyle = C.dark ? 'rgba(255, 238, 214, 1)' : 'rgba(120, 40, 10, 1)'; g.globalAlpha = 0.5;
+    g.fillStyle = C.dark ? 'rgba(255, 238, 214, 1)' : 'rgba(120, 40, 10, 1)'; g.globalAlpha = C.dark ? 0.45 : 0.35;
     g.beginPath();
-    for (const k of back) g.rect(posX[k] - 1.1, posY[k] - 1.1, 2.2, 2.2);
+    for (const k of back) { g.moveTo(posX[k] + 1.1, posY[k]); g.arc(posX[k], posY[k], 1.1, 0, 6.2832); }
     g.fill(); g.globalAlpha = 1;
     if (front.size) drawLit(g, front, sc);
   } else if (lit.size) drawLit(g, lit, sc);
@@ -629,16 +684,21 @@ function drawMap(s) {
     drawSprite(g, p, x, y, pr);
     discs.push([x, y, pr + 2, p]);
   }
+  fadeOutside(g, s);
+  if (g !== s.ctx) fadeOutside(s.ctx, s);
+  if (plateEq) text(g, plateEq[0], plateEq[1], plateEq[2], { size: 11, color: C.ink3, align: plateEq[3], halo: true });
+  scaleBar(g, s, sc);
   planetLabels(g, s, discs);
 
   if (state.sel) {
     const k = state.sel.idx, x = posX[k], y = posY[k];
     g.strokeStyle = C.hi; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 8, 0, 7); g.stroke();
-    g.setLineDash([4, 4]); g.lineWidth = 1; g.beginPath(); g.moveTo(ex, ey); g.lineTo(x, y); g.stroke(); g.setLineDash([]);
+    g.setLineDash([3, 4]); g.lineWidth = 1; g.globalAlpha = 0.55; g.beginPath(); g.moveTo(ex, ey); g.lineTo(x, y); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
     const dx = (x - cx) / sc - E[0], dy = -(y - cy) / sc - E[1];
-    const dist = Math.hypot(dx, dy);
-    text(g, state.sel.name, x + 11, y - 9, { size: 13.5, weight: 650, color: C.ink, halo: true });
-    text(g, `${dist.toFixed(2)} AU from Earth (in-plane)`, x + 11, y + 7, { size: 12, color: C.ink2, halo: true });
+    const dist = Math.hypot(dx, dy), right = x <= s.w * 0.7, lx = x + (right ? 44 : -44), ly = y < 60 ? y + 40 : y - 30;
+    g.lineWidth = 1.5; g.beginPath(); g.moveTo(x + (right ? 7 : -7), y + (ly > y ? 5 : -5)); g.lineTo(lx, ly + (ly > y ? -10 : 4)); g.stroke();
+    annotate(g, state.sel.name, lx + (right ? 4 : -4), ly, { size: 19, color: C.ink, align: right ? 'left' : 'right' });
+    text(g, `${dist.toFixed(2)} AU from Earth, in-plane`, lx + (right ? 4 : -4), ly + 15, { size: 11.5, color: C.ink2, align: right ? 'left' : 'right', halo: true });
   }
   if (state.hover && state.hover !== state.sel) {
     const k = state.hover.idx;
@@ -647,9 +707,11 @@ function drawMap(s) {
   if (g !== s.ctx) { s.ctx.globalAlpha = wrapAlpha; s.ctx.drawImage(g.canvas, 0, 0, s.w, s.h); s.ctx.globalAlpha = 1; }
 
   const inData = state.t >= META.tmin - 1 && state.t <= META.tmax + 1;
-  text(s.ctx, fmtDate(state.t), 16, s.h - 50, { size: 17, weight: 650, color: C.ink, halo: true });
-  text(s.ctx, i1 > i0 ? `${i1 - i0} detections within ±${win} days` : inData ? 'no detections in this sample within ±2 days' : 'outside the data window: positions are extrapolated',
-    16, s.h - 32, { size: 12.5, color: C.ink2, halo: true });
+  if (s.w >= 600) {
+    text(s.ctx, fmtDate(state.t), 16, s.h - 30, { size: 16, weight: 650, color: C.ink, halo: true });
+    text(s.ctx, i1 > i0 ? `${fmtN(i1 - i0)} detections within ±${win} days` : inData ? 'no detections in this sample within ±2 days' : 'outside the data window: positions are extrapolated',
+      16, s.h - 12, { size: 12, color: C.ink2, halo: true });
+  }
   perf.draw.push(performance.now() - t0);
   if (perf.draw.length > 600) perf.draw.shift();
 }
@@ -804,7 +866,7 @@ function drawElem(s) {
   const bw = 0.025, nb = Math.ceil((5.6 - 1.4) / bw), hist = new Array(nb).fill(0);
   for (const o of O) if (inFilter(o) && o.a >= 1.4 && o.a < 5.6) hist[Math.floor((o.a - 1.4) / bw)]++;
   const hmax = Math.max(1, ...hist), hT = 20, hB = f.T - 26;
-  g.fillStyle = C.gold; g.globalAlpha = 0.55;
+  g.fillStyle = C.gold; g.globalAlpha = 0.3;
   for (let k = 0; k < nb; k++) {
     if (!hist[k]) continue;
     const x = f.X(1.4 + k * bw), w = Math.max(1, f.X(1.4 + (k + 1) * bw) - x - 0.6);
@@ -839,10 +901,10 @@ function drawElem(s) {
       }
       g.stroke();
     }
-    annotate(g, 'near-Earth: q < 1.3 AU', f.X(1.45), f.Y(0.57), { size: 18, color: C.cls.NEO, align: 'left' });
-    annotate(g, 'Mars-crossers', f.X(2.55), f.Y(0.385), { size: 18, color: C.cls.MC, align: 'left' });
+    annotate(g, 'near-Earth: q < 1.3 AU', f.X(1.45), f.Y(0.57), { size: 17, color: C.cls.NEO, align: 'left' });
+    annotate(g, 'Mars-crossers', f.X(2.55), f.Y(0.385), { size: 17, color: C.cls.MC, align: 'left' });
   }
-  const lab = (str, a, v) => annotate(g, str, f.X(a), f.Y(v), { size: s.w < 500 ? 17 : 21, color: C.ink });
+  const lab = (str, a, v) => annotate(g, str, f.X(a), f.Y(v), { size: s.w < 500 ? 16 : 18, color: C.ink2 });
   if (yKey === 'e') {
     lab('Hungarias', 1.62, 0.1); lab('Hildas', 3.97, 0.33); lab('Trojans', 5.2, 0.2); lab('Cybeles', 3.5, 0.26);
   } else {
@@ -862,7 +924,7 @@ function drawElem(s) {
     g.fillStyle = C.cls[c];
     const r = c === 'MBA' ? 1.8 : 3;
     for (const pass of [0, 1]) {
-      g.globalAlpha = pass === 0 ? 0.14 : (c === 'MBA' ? 0.75 : 1);
+      g.globalAlpha = pass === 0 ? 0.14 : (c === 'MBA' ? 0.6 : 1);
       g.beginPath();
       for (const o of O) {
         if (o.cls !== c) continue;
@@ -1004,8 +1066,8 @@ function drawCad(s) {
       const x0 = f.X(ts[k - 1] + 1), x1 = f.X(ts[k]);
       g.setLineDash([3, 4]); pencilLine(g, x0 + 2, topB - 6, x1 - 2, topB - 6, { color: C.line, passes: 1 }); g.setLineDash([]);
       const lbl = `no data · ${Math.round(ts[k] - ts[k - 1] - 1)} nights`;
-      g.font = font(13, 600);
-      if (x1 - x0 > g.measureText(lbl).width + 12) annotate(g, lbl, (x0 + x1) / 2, topB - 14, { size: 19, color: C.ink2 });
+      g.font = font(11);
+      if (x1 - x0 > g.measureText(lbl).width + 12) text(g, lbl, (x0 + x1) / 2, topB - 14, { size: 11, color: C.ink2, align: 'center', halo: true });
     }
   }
   pencilLine(g, f.L, topB, s.w - f.Rm, topB, { color: C.goldSoft, width: 1.2 });
@@ -1143,18 +1205,19 @@ function renderCardInner() {
   const o = state.sel;
   if (!o) {
     const c = META.classes;
-    card.innerHTML = `<h3 class="ph">Pick an asteroid</h3>
-      <p class="cap">Tap any dot on the map or in the element plot, search a designation, or pick one below. The chosen asteroid is then marked in red in every view.</p>
-      <dl><div><dt>Asteroids</dt><dd>${fmtN(META.nobj)}</dd></div><div><dt>Detections</dt><dd>${fmtN(META.ndet)}</dd></div><div><dt>Bands</dt><dd>${Object.keys(META.bands).length}</dd></div>
+    const stats = `<dl><div><dt>Asteroids</dt><dd>${fmtN(META.nobj)}</dd></div><div><dt>Detections</dt><dd>${fmtN(META.ndet)}</dd></div><div><dt>Bands</dt><dd>${Object.keys(META.bands).length}</dd></div>
       <div><dt>Main belt</dt><dd>${fmtN(c.MBA || 0)}</dd></div><div><dt>Near-Earth</dt><dd>${c.NEO || 0}</dd></div><div><dt>Trojans</dt><dd>${c.TRO || 0}</dd></div></dl>
-      <p class="cap">Detections per band: ${BANDS.filter((b) => META.bands[b]).map((b) => `${b} ${fmtN(META.bands[b])}`).join(' · ')}.</p>
-      ${showcaseOn() ? `<h4>Asteroids worth a look</h4>
-      <p class="cap">Chosen from ${fmtN(N)} by orbit, close passes, size and class.</p>
+      <p class="cap">Detections per band: ${BANDS.filter((b) => META.bands[b]).map((b) => `${b} ${fmtN(META.bands[b])}`).join(' · ')}.</p>`;
+    const pickList = O.filter((x) => (state.filter ? state.filter(x) : x.cls !== 'MBA')).sort((p, q) => q.det.length - p.det.length);
+    const picks = `<div class="picks">${pickList.slice(0, 48).map((x) => `<button class="btn" type="button" data-pick="${x.idx}"><span class="sw" style="background:${C.cls[x.cls]}"></span>${x.name} <small>${x.det.length}</small></button>`).join('')}</div>`;
+    card.innerHTML = showcaseOn() ? `<h3 class="ph">Asteroids worth a look</h3>
+      <p class="cap">Chosen from ${fmtN(N)} by orbit, close passes, size and class. Tap one, or any dot on the map, to open its card.</p>
       <ul class="hooks">${topList().map((x) => `<li><button type="button" data-pick="${x.idx}"><span class="sw" style="background:${C.cls[x.cls]}"></span><b>${esc(x.name)}</b>${SC.chipsHtml(chipsFor(x).slice(0, 2))}</button></li>`).join('')}</ul>
-      <h4>Everything outside the main belt</h4>` : `<h4>${state.filter ? 'In this view' : 'Worth a look: everything outside the main belt'}</h4>`}
-      <p class="cap">Sorted by number of detections. Tap a name to open its card.</p>
-      <div class="picks">${O.filter((x) => (state.filter ? state.filter(x) : x.cls !== 'MBA')).sort((p, q) => q.det.length - p.det.length).slice(0, 48)
-        .map((x) => `<button class="btn" type="button" data-pick="${x.idx}"><span class="sw" style="background:${C.cls[x.cls]}"></span>${x.name} <small>${x.det.length}</small></button>`).join('')}</div>`;
+      <details class="about ast-more"><summary>Everything outside the main belt (${fmtN(pickList.length)})</summary><p class="cap">${pickList.length > 48 ? 'The 48 most detected, sorted' : 'Sorted'} by number of detections.</p>${picks}</details>
+      <h4>This sample</h4>${stats}`
+      : `<h3 class="ph">${state.filter ? 'In this view' : 'Pick an asteroid'}</h3>
+      <p class="cap">${pickList.length > 48 ? `The 48 most detected of ${fmtN(pickList.length)}` : `${fmtN(pickList.length)} asteroids`}, sorted by number of detections. Tap a name, or any dot on the map, to open its card.</p>${picks}
+      <h4>This sample</h4>${stats}`;
     card.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => select(O[+b.dataset.pick], { zoom: true })));
     return;
   }
@@ -1267,7 +1330,7 @@ function legendMap() {
   const counts = META.classes;
   const clsBtns = (withN) => CLASS_ORDER.filter((c) => counts[c]).map((c) => `<button type="button" class="k${state.preset === 'cls-' + c ? ' on' : ''}" data-cls="${c}" title="${CLASS[c].name}: ${CLASS[c].desc}. Click to show only these." aria-pressed="${state.preset === 'cls-' + c}"><span class="sw" style="background:${C.cls[c]}"></span>${CLASS[c].short}${withN ? ' ' + fmtN(counts[c]) : ''}</button>`).join('');
   $('#legend-map').innerHTML = `<span class="ttl">Orbit class (click to filter):</span>` + clsBtns(true) +
-    `<span class="k"><span class="sw" style="background:${C.dark ? '#ffe4be' : '#8a3a14'};box-shadow:0 0 6px ${C.dark ? 'rgba(242,168,120,0.9)' : 'rgba(176,70,24,0.6)'}"></span>detected by Rubin within ±2 d</span><span class="k"><span class="sw sq" style="background:${C.det};opacity:.45"></span>Rubin's lines of sight</span><span class="k"><span class="sw ring" style="border-color:${C.hi}"></span>selected</span>`;
+    `<span class="k"><span class="sw" style="background:${C.dark ? '#ffe4be' : '#8a3a14'};box-shadow:0 0 6px ${C.dark ? 'rgba(242,168,120,0.9)' : 'rgba(176,70,24,0.6)'}"></span>detected by Rubin within ±2 d</span><span class="k"><span class="sw sq" style="background:${C.gold};opacity:.45"></span>Rubin's lines of sight</span><span class="k"><span class="sw ring" style="border-color:${C.hi}"></span>selected</span>`;
   $('#legend-el').innerHTML = clsBtns(false) +
     `<span class="k"><span class="sw ln" style="border-color:${C.gold}"></span>Jupiter resonance</span>`;
   document.querySelectorAll('[data-cls]').forEach((b) => b.addEventListener('click', () => {
@@ -1382,8 +1445,6 @@ export function start(params) {
   tools.className = 'maptools'; tools.id = 'astTools'; wrap.appendChild(tools); if (zoom) tools.appendChild(zoom);
   pill = SC.makePill(tools, { onToggle: toggleShowAll, onBack: () => runPreset('all') });
   legendMap();
-  state.sel = byName.get(norm('2026 CZ10')) || null;
-  if (state.sel) $('#search').value = state.sel.name;
   sizeRange();
   applyFilters();
   renderCard();
@@ -1396,7 +1457,8 @@ export function start(params) {
 export function show(params) {
   $('h1').textContent = ASTRO_TITLE;
   setUrl({ mode: 'asteroids', obj: null, chapter: null, beat: null, sel: state.sel ? state.sel.name : null });
-  metaText(); staticKey = ''; redrawAll();
+  metaText(); mapS.draw(mapS);
+  setTimeout(() => { elS.draw(elS); colS.draw(colS); cadS.draw(cadS); cardPlots.forEach((p) => p.draw(p)); }, 0);
   $('#search').value = state.sel ? state.sel.name : '';
   if (params && !reduceMotion && !params.has('still')) setPlaying(true);
 }

@@ -101,7 +101,7 @@
   <section class="panel map-panel" aria-labelledby="h-map">
     <div class="phead">
       <div class="pbar"><h2 id="h-map">Where are they, and where is Rubin looking?</h2></div>
-      <p class="cap">The Solar System seen from above, distances to scale. Dots are asteroids moving on their own orbits. Glowing dots are asteroids Rubin detected within two days of the shown date; the faint fan from Earth shows which way the telescope was pointing, brighter where it looked more often.</p>
+      <p class="cap">The Solar System from above, to scale. Bright: the most unusual asteroids; the soft haze is everyone else. Glowing: detected by Rubin within two days; the gold fan from Earth is where it looked.</p>
     </div>
     <div class="map-wrap">
       <canvas id="map" aria-label="Solar System map"></canvas>
@@ -128,7 +128,7 @@
         </select>
       </label>
     </div>
-    <p class="note" id="timenote"></p>
+    <details class="about"><summary>About this view</summary><p>Each asteroid moves on its own orbit; the fan from Earth is brighter where Rubin looked more often. The ring is the ecliptic, marked in heliocentric longitude from the vernal equinox. <span id="timenote"></span></p></details>
     <div class="legend" id="legend-map"></div>
   </section>
 
