@@ -59,6 +59,14 @@ jobs:
         timeout-minutes: 8
         continue-on-error: true
         run: python -I scripts/build_tonight.py --minutes 5
+      - name: Aggregate last night's lightning and the space-weather copy
+        id: earth
+        timeout-minutes: 14
+        continue-on-error: true
+        env:
+          METSAT_KEY: ${{ secrets.METSAT_KEY }}
+          METSAT_SECRET: ${{ secrets.METSAT_SECRET }}
+        run: python -I scripts/build_earth.py --minutes 10
       - name: Keep the committed file for any mode whose refresh broke it
         if: always()
         run: |
@@ -79,6 +87,7 @@ jobs:
           STEP_DM: ${{ steps.dm.outcome }}
           STEP_SHOWCASE: ${{ steps.showcase.outcome }}
           STEP_TONIGHT: ${{ steps.tonight.outcome }}
+          STEP_EARTH: ${{ steps.earth.outcome }}
         run: python -I scripts/build_health.py --fallbacks "$RUNNER_TEMP/fallbacks.txt" || git checkout -- site/data/health.json
       - name: Build tonight's archive snapshot
         id: snapshot

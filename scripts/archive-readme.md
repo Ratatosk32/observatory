@@ -19,5 +19,10 @@ Raw Rubin alerts are not here: Fink keeps them and they can be fetched again. Th
 - `stars.objects`: every object in the stars sample as `id: [family, catalogueType, name, z, zSource]`, so reclassifications can be found by comparing nights.
 - `asteroids`: the asteroid sample's counts by class and band, and its date range.
 - `tonight`: the Tonight targets for amateur telescopes, with their recent detections.
+- `earth` (from 2026-11-25): the Earth mode's 24-hour window to the nightly build.
+  - `kp` as `[unix time, Kp]` per 3 hours, `kpForecast`, the NOAA `scales` (R, S, G now and the day's maximum), and GOES X-ray `flares` as `[unix time, class, peak flux W/m²]`.
+  - `solarWind`: the active L1 spacecraft and its backups, and the mean, minimum and maximum of the 5-minute medians of speed (km/s), density (per cm³) and Bz in GSM (nT).
+  - `auroraPowerGW`: the OVATION hemispheric power, north and south, summarised the same way (the text product starts at 00:00 UTC, so the early part of the window is missing), and the model run kept that night.
+  - `lightning`: the flash total, per-satellite file counts and flashes for GOES-East and GOES-West GLM and for the MTG Lightning Imager (`li`, with its state), flashes per hour, flashes per region (with whether open data covers it), and the ten largest storm cells.
 
 A field is `null` when that part of the refresh failed that night; the run's log says why.

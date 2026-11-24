@@ -27,7 +27,7 @@ for (const file of readdirSync(join(siteDir, 'js')).filter((f) => f.endsWith('.j
   changed += rewrite(join('js', file), /((?:from\s*|import\s*\(\s*)['"])(\.\/[\w-]+\.js)(['"])/g);
   const path = join(siteDir, 'js', file);
   const text = readFileSync(path, 'utf8');
-  const next = text.replace(/(['"])data\/([\w.-]+\.(?:json|png))(['"])/g, (whole, q1, name, q2) => {
+  const next = text.replace(/(['"])data\/([\w.-]+\.(?:json|png|jpg))(['"])/g, (whole, q1, name, q2) => {
     const h = hashOf(name);
     if (!h) return whole;
     data++;

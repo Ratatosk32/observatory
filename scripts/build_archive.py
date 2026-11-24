@@ -95,6 +95,31 @@ def dm_classified(cmb):
     return [[r[kl], r[kb], r[kc], r[kt], r[kz]] for r in sne['rows'] if r[kt]]
 
 
+def summary(arr, scale=1):
+    vals = [v / scale for v in (arr or []) if v is not None]
+    if not vals:
+        return None
+    return {'mean': round(sum(vals) / len(vals), 2), 'min': round(min(vals), 2), 'max': round(max(vals), 2), 'n': len(vals)}
+
+
+def earth(e):
+    m, sw = e['meta'], e.get('sw') or {}
+    return {
+        'window': m.get('window'),
+        'kp': sw.get('kp'),
+        'kpForecast': sw.get('kpForecast'),
+        'scales': sw.get('scales'),
+        'flares': sw.get('flares'),
+        'solarWind': {'source': sw.get('source'), 'speedKmS': summary(sw.get('speed')), 'densityCm3': summary(sw.get('density'), 10), 'bzGsmNt': summary(sw.get('bz'), 10)},
+        'auroraPowerGW': {'north': summary(sw.get('hpN')), 'south': summary(sw.get('hpS')), 'ovationRun': (m.get('swpc') or {}).get('ovationRun')},
+        'lightning': {
+            'flashes': m.get('flashes'), 'glm': m.get('glm'), 'li': m.get('li'), 'hourly': e.get('hourly'),
+            'regions': {r['id']: {'name': r['name'], 'covered': r['covered'], 'flashes': r['total']} for r in e.get('regions') or []},
+            'topStorms': [{k: c.get(k) for k in ('name', 'lat', 'lon', 'sat', 'total', 'peak', 'h0', 'h1', 'areaMax', 'sea')} for c in (e.get('cells') or [])[:10]],
+        },
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--out', required=True)
@@ -123,6 +148,7 @@ def main():
         } if st else None,
         'asteroids': part('asteroids meta', lambda: ast['meta']) if ast else None,
         'tonight': part('tonight.json', lambda: load('tonight.json')),
+        'earth': part('earth', lambda: earth(load('earth.json'))),
     }
     os.makedirs(args.out, exist_ok=True)
     path = os.path.join(args.out, f"{snap['date']}.json.gz")

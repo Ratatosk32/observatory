@@ -13,7 +13,7 @@ ANTARES = 'https://api.antares.noirlab.edu/v1/loci'
 UA = 'observatory-data-refresh'
 MJD0 = datetime.date(1858, 11, 17)
 HISTORY_DAYS = 60
-STEPS = ['stars', 'asteroids', 'dm', 'showcase', 'tonight']
+STEPS = ['stars', 'asteroids', 'dm', 'showcase', 'tonight', 'earth']
 
 
 def warn(msg):
@@ -101,6 +101,16 @@ def site_newest():
     return out
 
 
+def earth_block():
+    try:
+        with open(os.path.join(DATA, 'earth.json'), encoding='utf-8') as f:
+            m = json.load(f)['meta']
+        return {'window': m.get('window'), 'glm': m.get('glm'), 'li': m.get('li'), 'swpc': m.get('swpc'), 'aurora': m.get('aurora'), 'complete': m.get('complete')}
+    except Exception as e:
+        warn(f'health: could not read earth.json ({e})')
+        return None
+
+
 def verdict(today, fink_last, antares_last, newest, steps, reachable):
     upstream = max([d for d in (fink_last, antares_last) if d], default=None)
     failed = [k for k, v in steps.items() if v in ('failure', 'fallback')]
@@ -150,7 +160,7 @@ def main():
     if args.fallbacks and os.path.exists(args.fallbacks):
         with open(args.fallbacks, encoding='utf-8') as f:
             fallbacks = {os.path.basename(x.strip()) for x in f if x.strip()}
-    for k, name in (('stars', 'stars.json'), ('asteroids', 'asteroids.json'), ('dm', 'cmb.json'), ('showcase', 'showcase.json'), ('tonight', 'tonight.json')):
+    for k, name in (('stars', 'stars.json'), ('asteroids', 'asteroids.json'), ('dm', 'cmb.json'), ('showcase', 'showcase.json'), ('tonight', 'tonight.json'), ('earth', 'earth.json')):
         if name in fallbacks:
             steps[k] = 'fallback'
 
@@ -171,6 +181,7 @@ def main():
         'steps': steps,
         'site': newest,
         'verdict': verdict(today, fink_last, antares_last, newest, steps, reachable),
+        'earth': earth_block(),
         'links': {'rubin': 'https://rubinobservatory.org/for-scientists/rubin-101/live-status', 'fink': 'https://lsst.fink-portal.org/', 'antares': 'https://antares.noirlab.edu/'},
     }
     with open(os.path.join(DATA, 'health.json'), 'w', encoding='utf-8') as f:

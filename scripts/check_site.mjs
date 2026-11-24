@@ -100,6 +100,26 @@ try {
   const cmb = JSON.parse(readFileSync(join(site, 'data', 'cmb.json'), 'utf8'));
   budgets.push(['cmb.json clusters', gz(cmb.clusters), 190]);
 } catch {}
+const earthPath = join(site, 'data', 'earth.json');
+if (existsSync(earthPath)) {
+  try {
+    const e = JSON.parse(readFileSync(earthPath, 'utf8'));
+    if (!e.meta || !Array.isArray(e.meta.window) || !Array.isArray(e.coverage) || !e.sources) problems.push('site/data/earth.json: lacks meta.window, coverage or sources');
+    for (const id of Object.keys(e.tiles || {})) if (!existsSync(join(site, 'data', 'earth-tiles', `${id}.json`))) problems.push(`site/data/earth.json: tile ${id} is in the manifest but missing`);
+  } catch {
+    problems.push('site/data/earth.json: does not parse');
+  }
+  for (const [name, kb] of [['earth.json', 30], ['earth-lightning.json', 160], ['earth-aurora.json', 150], ['earth-lights-4096.jpg', 393], ['earth-lights-2048.jpg', 99], ['earth-land-2048.png', 137]]) {
+    const f = join(site, 'data', name);
+    if (existsSync(f)) budgets.push([name, gzipSync(readFileSync(f)).length, kb]); else problems.push(`site/data/${name}: missing`);
+  }
+  const tdir = join(site, 'data', 'earth-tiles');
+  if (existsSync(tdir)) for (const t of readdirSync(tdir)) budgets.push([`earth-tiles/${t}`, gzipSync(readFileSync(join(tdir, t))).length, 300]);
+  const foot = (readFileSync(index, 'utf8').match(/<p class="earth-only">[\s\S]*?<\/p>/) || [''])[0];
+  for (const credit of ['NOAA Space Weather Prediction Center', 'OVATION', 'GOES-R Geostationary Lightning Mapper', 'NOAA Open Data Dissemination', 'Black Marble', 'NASA GIBS', 'Natural Earth', 'Contains modified EUMETSAT Meteosat data']) {
+    if (!foot.includes(credit)) problems.push(`site/index.html: the Earth credits lack "${credit}"`);
+  }
+}
 for (const [name, bytes, kb] of budgets) if (bytes > 1.25 * kb * 1024) problems.push(`${name}: ${(bytes / 1024).toFixed(1)} KB gzip, over 1.25 x the ${kb} KB budget`);
 if (problems.length) {
   process.stderr.write(problems.join('\n') + '\n');
