@@ -2009,7 +2009,7 @@ function build() {
   built = true;
 }
 
-const STARS_TITLE = 'The restless sky';
+const STARS_TITLE = 'Look up';
 const monthYear = (t) => `${MON[dateOf(t).getUTCMonth()]} ${dateOf(t).getUTCFullYear()}`;
 function headerText() {
   $('#sub').textContent = `Rubin alerts · ${fmtN(N)} objects · ${monthYear(T0)} – ${monthYear(T1 - 1)} · Fink + Gaia DR3`;

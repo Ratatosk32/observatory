@@ -3,8 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Observatory · the restless sky</title>
-<meta name="description" content="An independent, interactive observatory of the restless sky: public Vera C. Rubin Observatory alerts (asteroids, variable stars, supernovae, quasars), the cosmic microwave background and dark matter, and the Earth's aurora, space weather and lightning.">
+<title>Look up · Observatory</title>
+<meta name="description" content="Look up: an independent, interactive observatory of public Vera C. Rubin Observatory alerts (asteroids, variable stars, supernovae, quasars), the cosmic microwave background and dark matter, and the Earth's aurora, space weather and lightning.">
+<meta property="og:title" content="Look up · Observatory">
+<meta property="og:description" content="Look up: an independent, interactive observatory of public Vera C. Rubin Observatory alerts (asteroids, variable stars, supernovae, quasars), the cosmic microwave background and dark matter, and the Earth's aurora, space weather and lightning.">
+<meta property="og:type" content="website">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/IBMPlexSans-latin-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
@@ -12,7 +15,7 @@
 <body data-mode="stars">
 <header class="top">
   <div class="brand">
-    <h1>The restless sky</h1>
+    <h1>Look up</h1>
     <p class="sub" id="sub"></p>
   </div>
   <div class="searchbox" id="searchbox">
@@ -187,7 +190,7 @@
   <p>Data: <a href="https://lsst.fink-broker.org/">Fink</a> LSST broker API (api.lsst.fink-portal.org): SSO alerts, SSOFT, nightly statistics, alert cutouts, from the alert stream of the NSF–DOE Vera C. Rubin Observatory. Planet positions from JPL approximate Keplerian elements (Standish). Orbits are two-body Keplerian; see README for caveats.</p>
   <p class="stars-only">Stars &amp; beyond: this work uses alert data from the NSF–DOE Vera C. Rubin Observatory Legacy Survey of Space and Time, via the Fink broker (Möller et al. 2021, MNRAS 501, 3272), with crossmatch labels from AAVSO VSX, SIMBAD (CDS), the Transient Name Server, Mangrove and Legacy Surveys DR8 photo-z. This work has made use of data from the European Space Agency (ESA) mission <a href="https://www.cosmos.esa.int/gaia">Gaia</a>, processed by the Gaia Data Processing and Analysis Consortium (<a href="https://www.cosmos.esa.int/web/gaia/dpac/consortium">DPAC</a>). Funding for the DPAC has been provided by national institutions, in particular the institutions participating in the Gaia Multilateral Agreement. Gaia Collaboration, Vallenari et al. 2023, A&amp;A 674, A1; distances from Bailer-Jones et al. 2021, AJ 161, 147. Gaia-derived grids: CC BY-SA 3.0 IGO. Redshifts: SDSS DR16 (Ahumada et al. 2020) via the GAVO Data Center; funding for the Sloan Digital Sky Survey IV has been provided by the Alfred P. Sloan Foundation, the U.S. Department of Energy Office of Science, and the Participating Institutions. Star names: IAU Catalog of Star Names, IAU Working Group on Star Names (WGSN), compiled by E. Mamajek (CC BY). RR Lyrae M<sub>G</sub> = 0.63 (Muraveva et al. 2018); flat ΛCDM, H<sub>0</sub> = 70, Ω<sub>m</sub> = 0.3.</p>
   <p class="dm-only">Dark matter: based on observations obtained with Planck (https://www.esa.int/Planck), an ESA science mission with instruments and contributions directly funded by ESA Member States, NASA, and Canada; SMICA CMB map (Planck 2015 release) and the PR4 lensing reconstruction (Carron, Mirmelstein and Lewis 2022). ACT DR6 SZ cluster catalogue (ACT Collaboration 2025, arXiv:2507.21459), via NASA LAMBDA; the DR5 catalogue (Hilton et al. 2021) for the dashed comparison needle. SN-like alerts from the Fink broker tag most_likely_sn, from the NSF–DOE Vera C. Rubin Observatory alert stream.</p>
-  <p class="earth-only">Earth: space weather from the NOAA Space Weather Prediction Center (OVATION Prime aurora model: Newell et al. 2009, 2010; real-time solar wind from SWFO-L1, ACE and IMAP; GOES XRS X-rays; planetary Kp from the GFZ and NOAA magnetometer network). Lightning from the GOES-R Geostationary Lightning Mapper (GOES-East and GOES-West GLM L2 flashes) via NOAA Open Data Dissemination on AWS. City lights: NASA Black Marble 2016 (Román et al. 2018), NASA Earth Observatory and NOAA NGDC from Suomi NPP VIIRS, via NASA GIBS. Lightning over Europe, Africa and the Atlantic from the MTG-I1 Lightning Imager (LI-2-LFL flashes). Contains modified EUMETSAT Meteosat data 2026 (EUMETSAT Data Policy, CC BY 4.0). Land, country and sea outlines: Natural Earth.</p>
+  <p class="earth-only">Earth: space weather from the NOAA Space Weather Prediction Center (OVATION Prime aurora model: Newell et al. 2009, 2010; real-time solar wind from SWFO-L1, ACE and IMAP; GOES XRS X-rays; planetary Kp from the GFZ and NOAA magnetometer network). Lightning from the GOES-R Geostationary Lightning Mapper (GOES-East and GOES-West GLM L2 flashes) via NOAA Open Data Dissemination on AWS. City lights: NASA Black Marble 2016 (Román et al. 2018), NASA Earth Observatory and NOAA NGDC from Suomi NPP VIIRS, via NASA GIBS. Lightning over Europe, Africa and the Atlantic from the MTG-I1 Lightning Imager (LI-2-LFL flashes). Contains modified EUMETSAT Meteosat data 2026 (EUMETSAT Data Policy, CC BY 4.0). Land, country and sea outlines: Natural Earth. Clouds, when switched on: infrared imagery recoloured for this site, based on EUMETSAT Meteosat data, NOAA GOES and Himawari (Japan Meteorological Agency), via EUMETView and NASA GIBS. We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).</p>
 </footer>
 
 <div id="tip" class="tip" role="tooltip" hidden></div>

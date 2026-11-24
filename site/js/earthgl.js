@@ -1,6 +1,6 @@
 const VERT = 'attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }';
 const FRAG = (deriv) => `${deriv ? '#extension GL_OES_standard_derivatives : enable\n' : ''}precision highp float;
-uniform sampler2D uLights; uniform sampler2D uLand; uniform sampler2D uOvA; uniform sampler2D uOvB;
+uniform sampler2D uLights; uniform sampler2D uLand; uniform sampler2D uOvA; uniform sampler2D uOvB; uniform sampler2D uCloud; uniform float uCloudA; uniform vec3 uCloudC;
 uniform vec2 uRes; uniform vec3 uGlobe; uniform vec2 uView; uniform vec3 uCapN; uniform vec3 uCapS; uniform float uCapA;
 uniform vec2 uSun; uniform float uOvMix; uniform vec2 uOvShift; uniform float uAurGain; uniform float uHatchA; uniform float uDayTint; uniform float uDpr;
 uniform vec4 uCov0; uniform vec4 uCov1; uniform vec4 uCov2;
@@ -31,6 +31,13 @@ vec4 surface(float lat, float lon, float z, bool cap) {
   col = mix(col, uTint, uDayTint * smoothstep(-0.05, 0.1, cz));
   float night = 1.0 - smoothstep(-0.2, 0.02, cz);
   float L = lights * night;
+  if (uCloudA > 0.0) {
+    vec4 cl = texture2D(uCloud, uv);
+    float op = cl.r * uCloudA, cold = cl.a;
+    L *= 1.0 - 0.8 * op;
+    col = mix(col, uCloudC, op * (uDark > 0.5 ? 0.55 : 0.7));
+    col = mix(col, uGold, smoothstep(0.78, 1.0, cold) * op * 0.28);
+  }
   col = mix(col, uLightsC, clamp(L * (uDark > 0.5 ? 1.15 : 0.9), 0.0, 1.0));
   if (uDark > 0.5) col = mix(col, vec3(1.0, 0.97, 0.88), smoothstep(0.55, 1.0, L) * 0.6);
   ${deriv ? `col = mix(col, uGold, clamp(fwidth(land) * 1.6, 0.0, 1.0) * 0.35 * (uDark > 0.5 ? 1.0 : 1.15));` : ''}
@@ -129,7 +136,7 @@ export function hexRgb(c) {
 }
 
 const UNIFORMS = ['uLights', 'uLand', 'uOvA', 'uOvB', 'uRes', 'uGlobe', 'uView', 'uCapN', 'uCapS', 'uCapA', 'uSun', 'uOvMix', 'uOvShift', 'uAurGain', 'uHatchA', 'uDayTint', 'uDpr',
-  'uCov0', 'uCov1', 'uCov2', 'uNightSea', 'uNightLand', 'uDaySea', 'uDayLand', 'uLightsC', 'uGold', 'uGrid', 'uInk', 'uAur', 'uAurHi', 'uTint', 'uDark'];
+  'uCov0', 'uCov1', 'uCov2', 'uNightSea', 'uNightLand', 'uDaySea', 'uDayLand', 'uLightsC', 'uGold', 'uGrid', 'uInk', 'uAur', 'uAurHi', 'uTint', 'uDark', 'uCloud', 'uCloudA', 'uCloudC'];
 
 export function initGl(cv) {
   let g = null;
@@ -147,8 +154,8 @@ export function initGl(cv) {
     const loc = g.getAttribLocation(pr, 'p'); g.enableVertexAttribArray(loc); g.vertexAttribPointer(loc, 2, g.FLOAT, false, 0, 0);
     const U = {};
     for (const n of UNIFORMS) U[n] = g.getUniformLocation(pr, n);
-    const tex = [0, 1, 2, 3].map((k) => { const t = g.createTexture(); g.activeTexture(g.TEXTURE0 + k); g.bindTexture(g.TEXTURE_2D, t); return t; });
-    g.uniform1i(U.uLights, 0); g.uniform1i(U.uLand, 1); g.uniform1i(U.uOvA, 2); g.uniform1i(U.uOvB, 3);
+    const tex = [0, 1, 2, 3, 4].map((k) => { const t = g.createTexture(); g.activeTexture(g.TEXTURE0 + k); g.bindTexture(g.TEXTURE_2D, t); return t; });
+    g.uniform1i(U.uLights, 0); g.uniform1i(U.uLand, 1); g.uniform1i(U.uOvA, 2); g.uniform1i(U.uOvB, 3); g.uniform1i(U.uCloud, 4);
     return { g, U, tex, deriv };
   } catch { return null; }
 }
@@ -173,6 +180,15 @@ export function uploadGrid(G, k, grid) {
   g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE); g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
 }
 
+export function uploadClouds(G, data, w, h) {
+  const { g } = G;
+  g.activeTexture(g.TEXTURE4); g.bindTexture(g.TEXTURE_2D, G.tex[4]);
+  g.pixelStorei(g.UNPACK_ALIGNMENT, 1);
+  g.texImage2D(g.TEXTURE_2D, 0, g.LUMINANCE_ALPHA, w, h, 0, g.LUMINANCE_ALPHA, g.UNSIGNED_BYTE, data);
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.LINEAR); g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.LINEAR);
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.REPEAT); g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
+}
+
 export function drawGl(G, P) {
   const { g, U } = G;
   g.viewport(0, 0, g.canvas.width, g.canvas.height);
@@ -185,5 +201,6 @@ export function drawGl(G, P) {
   g.uniform4f(U.uCov0, ...P.cov[0]); g.uniform4f(U.uCov1, ...P.cov[1]); g.uniform4f(U.uCov2, ...P.cov[2]);
   for (const k of ['NightSea', 'NightLand', 'DaySea', 'DayLand', 'LightsC', 'Gold', 'Grid', 'Ink', 'Aur', 'AurHi', 'Tint']) g.uniform3fv(U['u' + k], P.colors[k]);
   g.uniform1f(U.uDark, P.dark ? 1 : 0);
+  g.uniform1f(U.uCloudA, P.cloudA || 0); g.uniform3fv(U.uCloudC, P.colors.Cloud);
   g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
 }

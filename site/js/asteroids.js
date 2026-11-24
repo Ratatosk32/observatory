@@ -1280,7 +1280,7 @@ function legendMap() {
   $('#legend-cad').innerHTML = `<span class="k"><span class="sw sq" style="background:${C.bar}"></span>all Fink alerts</span><span class="k"><span class="sw sq" style="background:${C.bar2}"></span>matched to known SSOs</span><span class="k"><span class="sw sq" style="background:${C.gold}"></span>this sample</span><span class="k"><span class="sw sq" style="background:${C.hi}"></span>selected asteroid's nights</span>`;
 }
 
-const ASTRO_TITLE = 'The restless sky';
+const ASTRO_TITLE = 'Look up';
 function metaText() {
   if (document.body.dataset.mode && document.body.dataset.mode !== 'asteroids') return;
   const d0 = mjdDate(META.tmin), d1 = mjdDate(META.tmax);

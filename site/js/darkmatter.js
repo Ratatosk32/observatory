@@ -33,7 +33,7 @@ const RANKPOS = new Int32Array(NC); RANK.forEach((i, q) => { RANKPOS[i] = q; });
 const busyZ = (i) => (CL.inside[i] - CL.expect[i]) / Math.sqrt(CL.expect[i] + 1);
 const nFront = () => (skyBox.w && skyBox.w < 600 ? (scDm ? scDm.top.phone : 60) : (scDm ? scDm.top.desktop : 120));
 const BASE = M.mjdBase;
-const TITLE = 'The restless sky';
+const TITLE = 'Look up';
 
 const raw = Uint8Array.from(atob(D.alerts.data), (c) => c.charCodeAt(0));
 const triples = new Uint16Array(raw.buffer, raw.byteOffset, raw.byteLength / 2);

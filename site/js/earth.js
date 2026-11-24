@@ -5,6 +5,7 @@ import * as EG from './earthgl.js';
 import { PICK, guessSite } from './places.js';
 import { register as registerData, refresh as refreshData } from './datapanel.js';
 import { createLive } from './swpc.js';
+import * as CL from './clouds.js';
 
 const [E, LT, AU] = await Promise.all([K.loadJson('data/earth.json'), K.loadJson('data/earth-lightning.json'), K.loadJson('data/earth-aurora.json').catch(() => null)]);
 const { $, esc, fmtN, MON, clamp, text, annotate } = K;
@@ -116,6 +117,48 @@ let drawnFlashes = 0, gridState = '', lastGlAt = 0;
 const eggs = { count: 0, last: null, at: 0 };
 const stats = { drawn: [], level: 'L0', stride: 128, sub: 1, rate: 0 };
 const live = createLive({ desktop: innerWidth >= 700, onUpdate });
+const CLOUD_KEY = 'observatory.earth.clouds';
+const clouds = { on: false, ready: false, loading: false, alpha: 0, time: 0, status: {}, err: '' };
+function cloudPref() { try { return localStorage.getItem(CLOUD_KEY) === '1'; } catch { return false; } }
+function setCloudPref(v) { try { if (v) localStorage.setItem(CLOUD_KEY, '1'); else localStorage.removeItem(CLOUD_KEY); } catch {} }
+async function loadCloudLayer(fresh) {
+  if (!G || clouds.loading) return;
+  clouds.loading = true; clouds.err = ''; cloudUi();
+  try {
+    const r = await CL.loadClouds({ fresh });
+    EG.uploadClouds(G, r.data, CL.W, CL.H);
+    clouds.ready = true; clouds.time = r.time; clouds.status = r.status;
+    if (clouds.on) fadeClouds(1);
+  } catch (e) {
+    clouds.err = 'The cloud imagery did not load.';
+  } finally {
+    clouds.loading = false; cloudUi(); redraw();
+  }
+}
+function fadeClouds(to) {
+  const from = clouds.alpha, t0 = performance.now();
+  const step = (ts) => { const p = reduceMotion ? 1 : clamp((ts - t0) / 400, 0, 1); clouds.alpha = from + (to - from) * p; glDirty = true; if (entered) drawGl(); if (p < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+function setClouds(on) {
+  clouds.on = on; setCloudPref(on);
+  if (on) { if (clouds.ready) fadeClouds(1); else loadCloudLayer(false); } else fadeClouds(0);
+  cloudUi();
+}
+function cloudUi() {
+  const b = $('#eClouds'), n = $('#eCloudNote');
+  if (!b || !n) return;
+  b.classList.toggle('on', clouds.on); b.setAttribute('aria-pressed', String(clouds.on));
+  if (!G) { b.hidden = true; return; }
+  n.hidden = !clouds.on;
+  if (!clouds.on) return;
+  const ok = CL.SOURCES.filter((s) => clouds.status[s.id]), bad = CL.SOURCES.filter((s) => clouds.status[s.id] === false);
+  const when = clouds.loading ? 'Loading the cloud imagery…' : clouds.err ? clouds.err : `Clouds as of ${hhmm(clouds.time / 1000)} UTC, not the map’s time${bad.length ? ` · missing: ${bad.map((s) => s.label).join(', ')}` : ''}.`;
+  n.innerHTML = `${esc(when)} <button class="link" type="button" id="eCloudRefresh"${clouds.loading ? ' hidden' : ''}>Refresh</button><br><span class="cred">Clouds: infrared imagery recoloured for this site, based on EUMETSAT Meteosat data, NOAA GOES and Himawari (Japan Meteorological Agency), via EUMETView and NASA GIBS.</span>`;
+  n.title = ok.length ? `Loaded: ${ok.map((s) => s.label).join(', ')}` : '';
+  const rb = $('#eCloudRefresh');
+  if (rb) rb.addEventListener('click', () => loadCloudLayer(true));
+}
 
 function layout() {
   const cv = $('#earthGl'), r = cv.getBoundingClientRect();
@@ -188,7 +231,7 @@ function readColors() {
 }
 function glColors() {
   const c = C(), h = EG.hexRgb, rgb = (x) => { const v = SC.rgbOf(x); return v.map((u) => u / 255); };
-  return { NightSea: h(tokens.nightSea), NightLand: h(tokens.nightLand), DaySea: h(tokens.daySea), DayLand: h(tokens.dayLand), LightsC: h(tokens.lights), Gold: rgb(c.gold), Grid: rgb(c.ink), Ink: rgb(c.ink), Aur: h(tokens.aurora), AurHi: h(tokens.auroraHi), Tint: rgb(c.band.r) };
+  return { NightSea: h(tokens.nightSea), NightLand: h(tokens.nightLand), DaySea: h(tokens.daySea), DayLand: h(tokens.dayLand), LightsC: h(tokens.lights), Gold: rgb(c.gold), Grid: rgb(c.ink), Ink: rgb(c.ink), Aur: h(tokens.aurora), AurHi: h(tokens.auroraHi), Tint: rgb(c.band.r), Cloud: c.dark ? rgb(SC.mixColor(c.ink, tokens.daySea, 0.18)) : [0.985, 0.98, 0.965] };
 }
 let glCol = null;
 
@@ -240,7 +283,7 @@ function drawGl() {
     capN: [box.capN[0] * d, box.capN[1] * d, box.capR * d], capS: [box.capS[0] * d, box.capS[1] * d, box.capR * d], capA: capA(),
     sun: [sd * DEG, sl * DEG], ovMix: a ? a.mix : 0, ovShift: a ? [a.shiftA, a.shiftB] : [0, 0],
     aurGain: (a ? 1 : 0) * em.aurora * (st.live || !wrapAt ? 1 : 0.4 + 0.6 * wrapAlpha), hatchA: em.hatch * (C().dark ? 1 : 1.15), dayTint: em.dayTint, dpr: d,
-    cov: [covVec(0), covVec(1), covVec(2)], colors: glCol, dark: C().dark,
+    cov: [covVec(0), covVec(1), covVec(2)], colors: glCol, dark: C().dark, cloudA: clouds.on && clouds.ready ? clouds.alpha : 0,
   });
   lastSunPx = [sd, sl, view.k]; lastGlAt = performance.now();
 }
@@ -860,6 +903,7 @@ function wire() {
   $('#eZoomIn').addEventListener('click', () => zoomAt(box.cx, box.cy, 1.5));
   $('#eZoomOut').addEventListener('click', () => zoomAt(box.cx, box.cy, 1 / 1.5));
   $('#eZoomReset').addEventListener('click', resetView);
+  $('#eClouds').addEventListener('click', () => setClouds(!clouds.on));
   $('#ePlay').addEventListener('click', () => setPlay(!st.playing));
   $('#eSpeed').addEventListener('change', (e) => { st.speed = +e.target.value; });
   $('#eSlider').addEventListener('input', (e) => setT(T0 + +e.target.value / 1000 * (T1 - T0)));
@@ -1400,7 +1444,7 @@ function buildDom() {
       <div class="phead"><div class="pbar"><h2 id="h-emap">Where is the night sky glowing?</h2></div>
       <p class="cap">The Earth at night from NASA’s Black Marble, the aurora the OVATION model expects, and the lightning the ${LI_ON ? 'GOES and Meteosat' : 'GOES'} satellites saw. Gold line: dusk and dawn.${LI_ON ? ' Contains modified EUMETSAT Meteosat data 2026.' : ''}</p></div>
       <div class="map-wrap e-wrap"><div class="e-stage"><canvas id="earthGl" tabindex="0" aria-label="Globe with the two polar caps. Drag to turn, wheel or pinch to zoom, plus and minus zoom, 0 resets, arrows turn."></canvas><canvas id="earthOv" aria-hidden="true"></canvas></div>
-        <div class="maptools" id="eTools"><div class="zoom"><button class="btn sm" type="button" id="eZoomIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="eZoomOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="eZoomReset" hidden>Reset view</button></div></div></div>
+        <div class="maptools" id="eTools"><div class="zoom"><button class="btn sm" type="button" id="eZoomIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="eZoomOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="eZoomReset" hidden>Reset view</button><button class="btn sm" type="button" id="eClouds" aria-pressed="false" title="Show today’s clouds from five weather satellites">Clouds</button></div></div></div>
       <div class="time etime">
         <button id="ePlay" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
         <div class="slider-wrap etrack" style="--fr:${(fr * 100).toFixed(1)}%">
@@ -1412,6 +1456,7 @@ function buildDom() {
       </div>
       <details class="about"><summary>About this view</summary><p>City lights are NASA’s Black Marble 2016 composite, not tonight’s lights. The aurora is OVATION Prime, a model: a 30–90 minute forecast from the solar wind measured at L1, not an observation. One model run is kept each night; for other hours it is turned with the Sun. Live shows the newest run. The aurora is drawn on two shells about 1.7% and 3.4% above the surface (110 and 220 km), true to scale, so it pokes past the limb. GLM (and, over Europe and Africa, MTG’s Lightning Imager) sees total lightning, cloud-to-ground and in-cloud, from geostationary orbit, and detects fewer flashes by day; where two satellites overlap, each flash is kept from the one whose point below is nearer. Hatched: nobody shares open lightning data there yet. GLM flash areas are optical footprints, not channel lengths. City lights and aurora are styled into the site’s palette. Geomagnetic poles: the 2025 IGRF dipole. Tags: <span class="prov live"></span> live, <span class="prov nightly"></span> nightly copy, <span class="prov model">◆</span> model.</p></details>
       <div class="legend" id="eLegend"></div>
+      <p class="note ecloud" id="eCloudNote" aria-live="polite" hidden></p>
     </section>
     <section class="panel e-sw" aria-labelledby="h-esw">
       <div class="phead"><div class="pbar"><h2 id="h-esw">What is the Sun sending us?</h2></div>
@@ -1475,7 +1520,7 @@ async function enter(objId) {
     try { await build(); } finally { $('#earthLoading').hidden = true; }
   }
   if (!entered) return;
-  $('h1').textContent = 'The restless sky';
+  $('h1').textContent = 'Look up';
   $('#sub').textContent = 'The Earth tonight: aurora, space weather and lightning';
   K.shell.setSearch({ items: searchItems, empty: 'No storm or place matches. Try Northern lights.' }, 'Search a storm or a place');
   drawnFlashes = 0; eggs.count = 0; eggs.last = null; eggList.length = 0; eggQueue.length = 0;
@@ -1490,6 +1535,7 @@ async function enter(objId) {
     redraw();
   });
   if (live.enabled) live.start();
+  if (cloudPref() && !clouds.on) setClouds(true); else cloudUi();
 }
 function leave() {
   entered = false; setPlay(false); live.stop(); K.hideTip();

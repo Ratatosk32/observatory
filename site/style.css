@@ -843,3 +843,5 @@ ul.watch small { display: block; color: var(--ink3); font-size: 12.5px; }
   .escale .t1 { font-size: 11px; }
 }
 .map-panel.e-map .cap { min-height: 0; }
+.ecloud .cred { color: var(--ink3); font-size: 11.5px; }
+.ecloud button.link { font-size: 12.5px; margin-left: 4px; }
