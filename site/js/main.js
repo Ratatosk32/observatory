@@ -58,13 +58,14 @@ panelControls();
 
 const params = new URLSearchParams(location.search);
 let mode = null;
-const MODES = ['stars', 'asteroids', 'dm'];
+const MODES = ['stars', 'asteroids', 'dm', 'earth'];
 const loaders = {
   asteroids: () => import('./asteroids.js'),
   stars: () => import('./stars.js').then(async (m) => { await import('./story.js'); return m; }),
   dm: () => import('./darkmatter.js'),
+  earth: () => import('./earth.js'),
 };
-const LOADING = { stars: ['#starsLoading', 'the stars data'], dm: ['#dmLoading', 'the dark-matter data'], asteroids: [null, 'the asteroid data'] };
+const LOADING = { stars: ['#starsLoading', 'the stars data'], dm: ['#dmLoading', 'the dark-matter data'], earth: ['#earthLoading', 'the Earth data'], asteroids: [null, 'the asteroid data'] };
 const modules = {}, started = new Set();
 const loadMode = (m) => (modules[m] ||= loaders[m]());
 

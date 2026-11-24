@@ -2006,10 +2006,10 @@ function build() {
   built = true;
 }
 
-const STARS_TITLE = 'Rubin’s restless sky';
+const STARS_TITLE = 'The restless sky';
 const monthYear = (t) => `${MON[dateOf(t).getUTCMonth()]} ${dateOf(t).getUTCFullYear()}`;
 function headerText() {
-  $('#sub').textContent = `${fmtN(N)} objects · ${monthYear(T0)} – ${monthYear(T1 - 1)} · Fink + Gaia DR3`;
+  $('#sub').textContent = `Rubin alerts · ${fmtN(N)} objects · ${monthYear(T0)} – ${monthYear(T1 - 1)} · Fink + Gaia DR3`;
   K.shell.setSearch({ items: searchItems, empty: 'No object in this sample matches. Try a TNS name (SN 2026…), a family or a Rubin ID.' }, `Search ${fmtN(N)} objects, e.g. SN or RR Lyrae`);
 }
 function scaleText() { $('#sScale0').textContent = monthYear(T0); $('#sScale1').textContent = monthYear(T1 - 1); }

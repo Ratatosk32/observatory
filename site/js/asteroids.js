@@ -1280,12 +1280,12 @@ function legendMap() {
   $('#legend-cad').innerHTML = `<span class="k"><span class="sw sq" style="background:${C.bar}"></span>all Fink alerts</span><span class="k"><span class="sw sq" style="background:${C.bar2}"></span>matched to known SSOs</span><span class="k"><span class="sw sq" style="background:${C.gold}"></span>this sample</span><span class="k"><span class="sw sq" style="background:${C.hi}"></span>selected asteroid's nights</span>`;
 }
 
-const ASTRO_TITLE = 'Rubin’s first asteroid season';
+const ASTRO_TITLE = 'The restless sky';
 function metaText() {
   if (document.body.dataset.mode && document.body.dataset.mode !== 'asteroids') return;
   const d0 = mjdDate(META.tmin), d1 = mjdDate(META.tmax);
   const span = d0.getUTCFullYear() === d1.getUTCFullYear() ? `${MON[d0.getUTCMonth()]}–${MON[d1.getUTCMonth()]} ${d1.getUTCFullYear()}` : `${fmtShort(META.tmin)} ${d0.getUTCFullYear()} – ${fmtDate(META.tmax)}`;
-  $('#sub').textContent = `${fmtN(META.nobj)} asteroids · ${fmtN(META.ndet)} detections · ${span}`;
+  $('#sub').textContent = `Rubin’s first asteroid season · ${fmtN(META.nobj)} asteroids · ${fmtN(META.ndet)} detections · ${span}`;
   $('#search').placeholder = `Search ${fmtN(META.nobj)} asteroids, e.g. 2026 CZ10`;
   $('#colnote').textContent = colNote();
   $('#timenote').textContent = `Detections run ${fmtDate(META.tmin)} – ${fmtDate(META.tmax)} (the highlighted stretch of the slider). Each orbit is a simple Sun-only ellipse fixed at the asteroid's last detection, so far outside that window the dots are extrapolations. Zoom with the buttons, the mouse wheel or a pinch; Space plays and pauses.`;

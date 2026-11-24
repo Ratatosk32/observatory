@@ -23,8 +23,33 @@ export function activate(mode) {
   refresh();
 }
 
+const optBox = $('#optRefresh');
+function showStandard(v) {
+  $('#doUpdate').closest('.actions').hidden = !v;
+  panel.querySelector('.store').hidden = !v;
+}
+function refreshLive(P) {
+  if (optBox.dataset.saved == null) optBox.dataset.saved = optBox.checked ? '1' : '0';
+  optBox.checked = P.optChecked();
+  $('#dataTtl').textContent = P.title;
+  $('#dataLbl').textContent = P.label();
+  btn.setAttribute('aria-label', `${P.title}: ${P.label()}`);
+  btn.title = `${P.title}. Click for details.`;
+  btn.classList.remove('fresh');
+  $('#dataStatus').innerHTML = P.status();
+  $('#optRefreshTxt').textContent = P.optText;
+  $('#optRefreshN').textContent = '';
+  $('#optExtra').closest('label').hidden = true;
+  $('#dataNote').textContent = P.note;
+  showStandard(false);
+}
+optBox.addEventListener('change', () => { if (active && active.live) active.onOpt(optBox.checked); });
+
 export function refresh(p) {
   if (!active || (p && p !== active)) return;
+  if (active.live) { refreshLive(active); return; }
+  if (optBox.dataset.saved != null) { optBox.checked = optBox.dataset.saved === '1'; delete optBox.dataset.saved; }
+  showStandard(true);
   const P = active, c = P.counts(), B = P.bundled, info = P.info();
   const plus = c.nunit - B.nunit;
   $('#dataTtl').textContent = P.title;
@@ -51,7 +76,7 @@ export function refresh(p) {
 }
 
 async function storeLabel() {
-  if (!active) return;
+  if (!active || !active.storage) return;
   const P = active;
   const txt = await P.storage();
   if (P === active) $('#storeTxt').textContent = txt;
@@ -59,7 +84,7 @@ async function storeLabel() {
 
 function openData(v) {
   panel.hidden = !v; btn.setAttribute('aria-expanded', String(v));
-  if (v && active) { refresh(); storeLabel(); $('#doUpdate').focus(); }
+  if (v && active) { refresh(); storeLabel(); (active.live ? $('#dataClose') : $('#doUpdate')).focus(); }
 }
 
 btn.addEventListener('click', () => openData(panel.hidden));

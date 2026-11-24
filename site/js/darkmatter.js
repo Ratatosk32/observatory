@@ -33,7 +33,7 @@ const RANKPOS = new Int32Array(NC); RANK.forEach((i, q) => { RANKPOS[i] = q; });
 const busyZ = (i) => (CL.inside[i] - CL.expect[i]) / Math.sqrt(CL.expect[i] + 1);
 const nFront = () => (skyBox.w && skyBox.w < 600 ? (scDm ? scDm.top.phone : 60) : (scDm ? scDm.top.desktop : 120));
 const BASE = M.mjdBase;
-const TITLE = 'The dark-matter shadow';
+const TITLE = 'The restless sky';
 
 const raw = Uint8Array.from(atob(D.alerts.data), (c) => c.charCodeAt(0));
 const triples = new Uint16Array(raw.buffer, raw.byteOffset, raw.byteLength / 2);
@@ -665,7 +665,7 @@ async function enter(objId) {
   }
   if (!entered) return;
   $('h1').textContent = TITLE;
-  $('#sub').textContent = `Planck CMB and lensing · ${fmtN(NC)} ACT clusters · ${fmtN(NA)} Rubin SN-like alerts`;
+  $('#sub').textContent = `The dark-matter shadow · Planck CMB and lensing · ${fmtN(NC)} ACT clusters · ${fmtN(NA)} Rubin SN-like alerts`;
   K.shell.setSearch({ items: searchItems, empty: 'No ACT cluster matches. Try ACT-CL J0102.' }, `Search ${fmtN(NC)} ACT clusters, e.g. ACT-CL J0102`);
   if (objId) { const i = CL.name.indexOf(objId); if (i >= 0) st.sel = i; }
   renderCard();
