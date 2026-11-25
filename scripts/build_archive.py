@@ -7,7 +7,8 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 DATA = os.path.join(ROOT, 'site', 'data')
-VERSION = 1
+VERSION = 2
+PART_VERSIONS = {'health': 1, 'dm': 1, 'dmClassified': 1, 'showcase': 1, 'stars': 1, 'asteroids': 1, 'tonight': 1, 'earth': 1}
 
 
 def warn(msg):
@@ -132,12 +133,15 @@ def main():
     cmb = part('cmb.json', lambda: load('cmb.json'))
     sc = part('showcase.json', lambda: load('showcase.json'))
 
+    health = part('health.json', lambda: load('health.json'))
     snap = {
         'version': VERSION,
+        'parts': PART_VERSIONS,
         'date': now.strftime('%Y-%m-%d'),
+        'night': part('night', lambda: health['fink']['last']) if health else None,
         'built': now.strftime('%Y-%m-%dT%H:%MZ'),
         'commit': args.commit,
-        'health': part('health.json', lambda: load('health.json')),
+        'health': health,
         'dm': part('dm meters', lambda: dm_meters(cmb)) if cmb else None,
         'dmClassified': part('dm classified', lambda: dm_classified(cmb)) if cmb else None,
         'showcase': part('showcase', lambda: showcase(sc, st, ast, cmb)) if sc else None,
@@ -154,7 +158,7 @@ def main():
     path = os.path.join(args.out, f"{snap['date']}.json.gz")
     with gzip.open(path, 'wt', encoding='utf-8', compresslevel=9) as f:
         json.dump(snap, f, separators=(',', ':'), allow_nan=False)
-    missing = [k for k, v in snap.items() if v is None]
+    missing = [k for k in PART_VERSIONS if snap[k] is None]
     print(f'archive: wrote {path} ({os.path.getsize(path) / 1024:.1f} KB gzip){" missing " + ", ".join(missing) if missing else ""}', flush=True)
 
 
