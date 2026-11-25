@@ -43,6 +43,23 @@ let keysEl = null, keysOpener = null;
 
 const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[’']/g, '\'');
 
+function near(a, b) {
+  const n = a.length, m = b.length;
+  if (Math.abs(n - m) > 2) return 9;
+  const d = Array.from({ length: n + 1 }, (_, i) => [i, ...Array(m).fill(0)]);
+  for (let j = 1; j <= m; j++) d[0][j] = j;
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+  }
+  return d[n][m];
+}
+function typo(t, q) {
+  if (q.length < 4 || /\s/.test(q)) return 0;
+  const limit = q.length >= 7 ? 2 : 1;
+  for (const w of t.split(/[\s\-(·:/]+/)) if (w.length >= 3 && (near(w, q) <= limit || near(w.slice(0, q.length), q) <= limit)) return 220;
+  return 0;
+}
 function score(text, q, fuzzy = true) {
   const t = norm(text);
   if (!q || !t) return 0;
@@ -54,6 +71,8 @@ function score(text, q, fuzzy = true) {
   const words = q.split(/\s+/).filter(Boolean);
   if (words.length > 1 && words.every((w) => t.includes(w))) return 480;
   if (!fuzzy || q.length < 2) return 0;
+  const ty = typo(t, q);
+  if (ty) return ty;
   let i = 0, run = 0, best = 0, gaps = 0, first = -1, last = -1;
   for (let k = 0; k < t.length && i < q.length; k++) {
     if (t[k] === q[i]) { if (first < 0) first = k; last = k; i++; run++; best = Math.max(best, run); } else if (i > 0) { run = 0; gaps++; }
@@ -372,11 +391,11 @@ export const paletteItems = (q = '') => collect(q).map((it) => ({ id: it.id, gro
 export function runById(id, q = '') { const it = collect(q).find((x) => x.id === id); if (it) run(it); return !!it; }
 
 function keyRows() {
-  const own = [[[MOD, 'K'], 'Search and commands'], [['/'], 'Search and commands'], [['N'], 'Above you: one line per floor'], [['?'], 'This list of shortcuts'], [['Alt', '↑'], 'Climb a floor'], [['Alt', '↓'], 'Descend a floor'], [['Esc'], 'Close the topmost panel']];
+  const own = [[[MOD, 'K', 'or', '/'], 'Search and commands'], [['N'], 'Above you: one line per floor'], [['?'], 'This list of shortcuts'], [['Alt', '↑'], 'Climb a floor'], [['Alt', '↓'], 'Descend a floor'], [['Esc'], 'Close the topmost panel']];
   const theirs = (shell.keyHelp || []).filter((h) => h.keys && h.label).map((h) => [h.keys, h.label]);
   return { anywhere: [...own, ...theirs], floor: [[['Space'], 'Play or pause time (Stars, Dark matter, Earth)'], [['←', '→'], 'Step a night on the season ribbon, or 10 minutes on Earth; Shift for a week or an hour'], [['L'], 'Live space weather and aurora (Earth)'], [['+', '−', '0'], 'Zoom in, out and reset (sky, HR diagram, globe)'], [['↑', '↓'], 'Move between floors when the ladder has focus']], story: [[['←', '→'], 'Previous or next step'], [['Esc'], 'Leave the story']] };
 }
-function dl(rows) { return `<dl>${rows.map(([k, v]) => `<dt>${k.map((x) => `<kbd>${esc(x)}</kbd>`).join('')}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`; }
+function dl(rows) { return `<dl>${rows.map(([k, v]) => `<dt>${k.map((x) => (x === 'or' ? '<span>or</span>' : `<kbd>${esc(x)}</kbd>`)).join('')}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`; }
 function keysKey(e) { if (e.key === 'Escape' && keysEl && !keysEl.hidden) { e.preventDefault(); e.stopImmediatePropagation(); closeKeys(); } else if (e.key === 'Tab' && keysEl && !keysEl.hidden) { e.preventDefault(); keysEl.querySelector('.ky-close').focus(); } }
 export function openKeys(from) {
   css();
