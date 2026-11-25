@@ -11,6 +11,9 @@ const SHOTS = opt('shots', null);
 const MODES = (opt('modes', 'stars,asteroids,dm,earth')).split(',');
 const LIMIT_MS = +opt('timeout', 240000);
 const EXTRA = opt('query', '');
+const [PERF_W, PERF_H] = opt('perf-size', '412x915').split('x').map(Number);
+const CPU = +opt('cpu', 4);
+const PERF_DPR = +opt('dpr', PERF_W < 700 ? 2.6 : 1);
 const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PUP = process.env.PUPPETEER_CORE || 'puppeteer-core';
 
@@ -140,8 +143,8 @@ async function perfRun(browser, results, errors) {
   page.on('pageerror', (e) => errors.push(`perf: ${e.message}`));
   try {
     const cdp = await page.createCDPSession();
-    await page.setViewport({ width: 412, height: 915, deviceScaleFactor: 2.6, isMobile: true, hasTouch: true });
-    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    await page.setViewport({ width: PERF_W, height: PERF_H, deviceScaleFactor: PERF_DPR, isMobile: PERF_W < 700, hasTouch: PERF_W < 700 });
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU });
     await page.evaluateOnNewDocument(() => {
       window.__long = [];
       try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__long.push([performance.now(), e.duration]); }).observe({ type: 'longtask', buffered: true }); } catch (e) { window.__long = null; }

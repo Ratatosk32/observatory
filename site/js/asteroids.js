@@ -454,6 +454,7 @@ let staticLayer = null, staticKey = '';
 const planetNow = {};
 
 function mapScale(s) { return Math.min(s.w, s.h) / 2 / state.viewR * 0.94; }
+const mapCy = (s) => (s.h > s.w ? s.h - s.w / 2 : s.h / 2);
 
 function buildStatic(s) {
   const key = [s.w, s.h, s.dpr, state.viewR, state.preset, state.sel ? state.sel.idx : -1, C.dark].join('|');
@@ -464,7 +465,7 @@ function buildStatic(s) {
   const g = cv.getContext('2d');
   g.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
   g.clearRect(0, 0, s.w, s.h);
-  const sc = mapScale(s), cx = s.w / 2, cy = s.h / 2;
+  const sc = mapScale(s), cx = s.w / 2, cy = mapCy(s);
   const plateR = drawPlate(g, s, cx, cy);
   const members = O.filter(inFilter);
   g.lineWidth = 1;
@@ -579,7 +580,7 @@ function plateLabels(g, s, cx, cy, R) {
 }
 let plateEq = null;
 function fadeOutside(g, s) {
-  const cx = s.w / 2, cy = s.h / 2, R = Math.min(s.w, s.h) / 2 - 6;
+  const cx = s.w / 2, cy = mapCy(s), R = Math.min(s.w, s.h) / 2 - 6;
   if (Math.hypot(cx, cy) < R + 4) return;
   const gr = g.createRadialGradient(cx, cy, R + 2, cx, cy, R + 28);
   gr.addColorStop(0, 'rgba(0, 0, 0, 0)'); gr.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
@@ -640,8 +641,22 @@ function drawFan(g, ex, ey, i0, i1, sc, cx, cy) {
   g.globalAlpha = 1;
 }
 const ALWAYS_LABEL = new Set(['Earth', 'Mars', 'Jupiter', 'Saturn']);
+let hudBox = { key: '', r: [] };
+function hudRects(s) {
+  const hud = document.querySelector('#astRoot .hud');
+  if (!hud) return [];
+  const key = `${s.w}x${s.h}|${hud.textContent.length}`;
+  if (hudBox.key === key) return hudBox.r;
+  const cr = $('#map').getBoundingClientRect();
+  const r = [...hud.querySelectorAll('.hb, .pill-host > *')].filter((e) => e.getClientRects().length).map((e) => {
+    const b = e.getBoundingClientRect();
+    return [b.left - cr.left - 4, b.top - cr.top - 4, b.right - cr.left + 4, b.bottom - cr.top + 4];
+  });
+  hudBox = { key: cr.width ? key : '', r };
+  return r;
+}
 function planetLabels(g, s, discs) {
-  const placed = [];
+  const placed = hudRects(s).slice();
   const hit = (b) => placed.some((q) => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]) || discs.some(([x, y, r]) => b[0] < x + r && b[2] > x - r && b[1] < y + r && b[3] > y - r);
   g.font = font(12.5, 500);
   const crowd = state.viewR > 2.4;
@@ -673,7 +688,7 @@ function drawMap(s) {
   if (!s.w) return;
   const t0 = performance.now();
   buildStatic(s);
-  const sc = mapScale(s), cx = s.w / 2, cy = s.h / 2;
+  const sc = mapScale(s), cx = s.w / 2, cy = mapCy(s);
   s.ctx.clearRect(0, 0, s.w, s.h);
   s.ctx.drawImage(staticLayer, 0, 0, s.w, s.h);
   const g = wrapAlpha < 1 ? wrapLayer(s) : s.ctx;
@@ -890,7 +905,7 @@ $('#map').addEventListener('pointercancel', endPtr);
 $('#map').addEventListener('pointerleave', () => { setHover(null); hideTip(); if (state.planetHover) { state.planetHover = null; mapS.draw(mapS); } });
 function pickPlanet(e) {
   const r = $('#map').getBoundingClientRect(), s = mapS, sc = mapScale(s), x = e.clientX - r.left, y = e.clientY - r.top;
-  for (const p in PLANETS) { const P = planetNow[p]; if (P && Math.hypot(s.w / 2 + P[0] * sc - x, s.h / 2 - P[1] * sc - y) < PLANET_R[p] + 6) return p; }
+  for (const p in PLANETS) { const P = planetNow[p]; if (P && Math.hypot(s.w / 2 + P[0] * sc - x, mapCy(s) - P[1] * sc - y) < PLANET_R[p] + 6) return p; }
   return null;
 }
 function pickMap(e) {

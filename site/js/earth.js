@@ -113,6 +113,8 @@ const st = {
   sel: null, hover: null, emph: { light: 1, aurora: 1, hatch: 1, others: 1, dayTint: 0, focus: -1 }, stopAt: null,
 };
 const view = { lat: (M.defaultView || [0, -60])[0], lon: (M.defaultView || [0, -60])[1], k: 1, tween: null };
+const phoneQ = matchMedia('(max-width: 699.98px)');
+const HUD_BAND = 46;
 const box = { w: 0, h: 0, dpr: 1, R: 1, cx: 0, cy: 0, capR: 0, capN: [0, 0], capS: [0, 0], phone: false };
 let built = false, entered = false, G = null, glFail = '', imgs = null, ov = null, stripS = null, pill = null, whyEl = null;
 let wrapAt = 0, wrapAlpha = 1, raf = 0, lastTs = 0, glDirty = true, lastSunPx = null;
@@ -177,7 +179,7 @@ function layout() {
     box.R = 0.47 * h; box.cx = w / 2; box.cy = h / 2;
     box.capR = 0.26 * h; box.capN = [0.125 * w, 0.56 * h]; box.capS = [0.875 * w, 0.56 * h];
   } else {
-    box.R = Math.min(0.42 * w, 0.46 * h); box.cx = w / 2; box.cy = box.R + 6;
+    box.R = Math.min(0.42 * w, 0.46 * h); box.cx = w / 2; box.cy = box.R + 6 + (phoneQ.matches && h > 2 * box.R + 60 ? HUD_BAND : 0);
     box.capR = 0.105 * w; box.capN = [box.capR + 2, h - box.capR - 2]; box.capS = [w - box.capR - 2, h - box.capR - 2];
   }
   cv.width = Math.round(w * box.dpr); cv.height = Math.round(h * box.dpr);

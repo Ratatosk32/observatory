@@ -6,6 +6,7 @@ const BASE = opt('url', 'http://127.0.0.1:8095/');
 const CHROME = opt('chrome', process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe');
 const MODULES = opt('modules', process.env.PUPPETEER_MODULES || '');
 const LIMIT = +opt('timeout', 300000);
+const SIZE = opt('size', '1440x900').split('x').map(Number);
 const require = createRequire(MODULES ? MODULES.replace(/\/?$/, '/') : import.meta.url);
 const puppeteer = require('puppeteer-core');
 
@@ -30,7 +31,7 @@ const ROWS = [
   ['Stars census', 'census', 'inst:stars:Census', `shown('.s-census')`],
   ['Stars HR diagram', 'hr diagram', 'inst:stars:HR diagram', `shown('.s-hr')`],
   ['Stars family filter', 'explosions', 'stars:fam:2', `document.querySelector('#sLegend [data-g="2"]').getAttribute('aria-pressed') !== window.__before && shown('#sLegend')`, `document.querySelector('#sLegend [data-g="2"]').getAttribute('aria-pressed')`],
-  ['Stars drop to distance', 'drop', 'stars:drop', `shown('.s-ladder')`],
+  ['Stars drop to distance', 'drop', 'stars:drop', `shown('.s-ladder') || (shown('#sky') && [...document.querySelectorAll('.proj-switch [aria-checked="true"]')].some((b) => b.textContent.trim() === 'Distance'))`],
   ['Stars pulse scale', 'pulse', 'stars:pulse', `document.activeElement && document.activeElement.id === 'sPulse' && shown('#sPulse')`],
   ['Stars object card', 'SN 2025agpz', '@obj', `window.Observatory.stars.state.sel != null && window.Observatory.stars.state.sel >= 0`],
   ['Hide the controls (zen)', 'hide', 'key:Hide or show the controls', `document.body.classList.contains('zen')`],
@@ -80,7 +81,7 @@ async function main() {
   try {
     const page = await browser.newPage();
     page.on('pageerror', (e) => out.push('FAIL page error: ' + e.message));
-    await page.setViewport({ width: 1440, height: 900 });
+    await page.setViewport({ width: SIZE[0], height: SIZE[1], isMobile: SIZE[0] < 700, hasTouch: SIZE[0] < 700 });
     await page.goto(BASE + '?mode=stars', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.Observatory && window.Observatory.ready, { timeout: 40000 });
     await page.evaluate(HELPERS);

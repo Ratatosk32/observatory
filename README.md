@@ -223,6 +223,7 @@ Refetching changes the numbers. Data versions are pinned with a `?v=` query in `
   - `kit.js`: tokens, the pencil drawing primitives, canvases, tooltips, panels, theme and URL helpers;
   - `main.js`: search, mode switching and start-up;
   - `ladder.js`: the altitude ladder (rail, strip, peek and sheet), which is also the mode radiogroup;
+  - `scene.js`: the shared floor scene (HUD, View, Instruments drawer, info popover, card column); on phones the card is a bottom sheet with three positions (peek, half, full) that you drag, tap or move with the arrow keys, and its peek never covers the time dock;
   - `cosmo.js`: the site's cosmology (lookback time, comoving distance and its inverse), re-exported by `kit.js` as `cosmo`;
   - `asteroids.js`: the asteroid mode;
   - `net.js`: the polite Fink client (retries, backoff, concurrency) and the IndexedDB wrapper;
@@ -271,5 +272,7 @@ The frame interval stays at the display's 16.7 ms. On phones the haze swaps with
 Zoom re-renders the Milky Way at the new scale about 180 ms after the gesture settles. The period dial refines a snap with a 4-harmonic fit, about 30 ms once.
 
 Earth mode: measured with the machine's GPU (ANGLE on Direct3D 11); the frame interval stays at 16.7 ms with no long tasks. A haze rebuild costs 6.4 ms p95 on the throttled phone, a lightning tile decode chunk 4.1 ms. With the software renderer (SwiftShader) the JavaScript cost is the same but the GPU process limits the frame rate. While playing, the globe shader redraws at most every 100 ms, or when the terminator has moved by more than half a pixel; the space-weather strip is cached and only its cursor and values are redrawn.
+
+UX 2 phase 5 re-measure (25 Nov 2026, `scripts/ux_metrics.mjs --perf-only`, quiet machine, play): desktop 1920 × 1080 without throttling draws Stars 2.4 ms, Asteroids 2.8 ms, Dark matter 1.9 ms and Earth 0.7 ms p95; the 412 × 915 phone at 4× CPU draws 6.0–6.7, 8.9–9.0, 6.3–6.5 and 2.5–2.7 ms over three runs. The frame interval stays at 17 ms. Coming back to a floor gives no long task except Stars on the phone (one of about 65 ms, from redrawing its taller canvas). `--perf-size` and `--cpu` choose the viewport and the throttle.
 
 Animation pauses in hidden tabs and respects `prefers-reduced-motion`.

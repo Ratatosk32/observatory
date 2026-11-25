@@ -1,5 +1,5 @@
 import * as K from './kit.js';
-import { sceneHtml, wireScene, openInstrument } from './scene.js';
+import { sceneHtml, wireScene, openInstrument, showCard } from './scene.js';
 import { dockHtml, makeDock, fmtSpeed } from './dock.js';
 import { cardHead } from './cardhead.js';
 import * as SL from './starlight.js';
@@ -190,9 +190,12 @@ function makeSprites() {
 
 const view = { k: 1, px: 0, py: 0 };
 const KMAX = 40;
+const phoneQ = matchMedia('(max-width: 699.98px)');
+const HUD_BAND = 96, FOOT_BAND = 48;
 function baseFrame(s) {
-  const sc = Math.min(s.w / (4 * Math.SQRT2), s.h / (2 * Math.SQRT2)) * 0.97;
-  return { sc, cx: s.w / 2, cy: s.h / 2 };
+  const sc = Math.min(s.w / (4 * Math.SQRT2), s.h / (2 * Math.SQRT2)) * 0.97, half = sc * Math.SQRT2, slack = s.h - 2 * half;
+  const top = phoneQ.matches ? Math.max(slack / 2, Math.min(HUD_BAND, slack - FOOT_BAND)) : slack / 2;
+  return { sc, cx: s.w / 2, cy: top + half };
 }
 function skyFrame(s, v = view) {
   const b = baseFrame(s), w2 = s.w / 2, h2 = s.h / 2;
@@ -619,7 +622,7 @@ function followLantern() {
 function lanternPts(ra) { return smallCircleEq(ra, lan.dec == null ? LAN_DEC : lan.dec, 60, 160); }
 let lanPainted = { ra: null, grid: null, dark: null }, lanCache = null;
 function paintLantern(ra) {
-  if (!lanGrid) return;
+  if (!lanGrid || !lanGrid.LW || !lanGrid.LH) return;
   if (lanPainted.ra === ra && lanPainted.dec === lan.dec && lanPainted.grid === lanGrid && lanPainted.dark === C().dark && lanPainted.dim === tonightOn()) return;
   lanPainted = { ra, dec: lan.dec, grid: lanGrid, dark: C().dark, dim: tonightOn() };
   const { LW, LH, vec } = lanGrid, z = { ra, dec: lan.dec == null ? LAN_DEC : lan.dec }, a = z.ra * DEG, dd = z.dec * DEG;
@@ -679,7 +682,7 @@ function zoomTo(l, b, k) {
 function resetView() { view.k = 1; view.px = 0; view.py = 0; view.cu = 0; view.cv = 0; viewChanged(); }
 
 function drawSky(s) {
-  if (!s.w || !entered) return;
+  if (!s.w || !s.h || !entered) return;
   if (cardPlots.length && Math.abs(st.t - cardT) > 0.2) { cardT = st.t; cardPlots.forEach((c) => c.draw(c)); }
   if (proj.anim || proj.cur !== 'sky') { drawProjected(s); return; }
   const t0 = performance.now();
@@ -717,7 +720,7 @@ function drawSky(s) {
   if (!lan.done) followLantern();
   paintLantern(lan.ra);
   g.imageSmoothingEnabled = true;
-  if (lanGrid) g.drawImage(lanCv, dx, dy, lanGrid.LW * LSTEP * r, lanGrid.LH * LSTEP * r);
+  if (lanGrid && lanCv.width && lanCv.height) g.drawImage(lanCv, dx, dy, lanGrid.LW * LSTEP * r, lanGrid.LH * LSTEP * r);
   if (!lanCache || lanCache.ra !== lan.ra || lanCache.dec !== lan.dec) lanCache = { ra: lan.ra, dec: lan.dec, pts: lanternPts(lan.ra) };
   lantern = lanCache.pts;
   polyLB(g, f, lantern);
@@ -1354,7 +1357,7 @@ function stageInsets(s) {
   const wrap = s.cv.parentElement, cr = s.cv.getBoundingClientRect();
   const hud = wrap.querySelector('.hud'), sw = wrap.querySelector('.proj-switch');
   const hb = hud && hud.getBoundingClientRect(), pb = sw && sw.getBoundingClientRect();
-  const top = hb && hb.height && hb.bottom > cr.top && hb.top < cr.top + 80 ? Math.ceil(hb.bottom - cr.top) + 8 : 20;
+  const top = hb && hb.height && hb.bottom > cr.top && hb.top < cr.top + 80 ? Math.ceil(hb.bottom - cr.top) + (phoneQ.matches ? 22 : 8) : 20;
   const bottom = pb && pb.height && pb.top < cr.bottom && pb.bottom > cr.bottom - 90 ? Math.ceil(cr.bottom - pb.top) + 6 : 8;
   s.__inset = { top, bottom, left: 4, right: 6, noteRoom: pb && pb.width ? pb.left - cr.left - 16 : s.w - 24 };
   s.__insetKey = key;
@@ -2189,9 +2192,7 @@ function build() {
     if (p.id === 'tonight') b.style.minWidth = '112px';
     b.addEventListener('click', () => {
       runPreset(p.id);
-      if (p.id !== 'tonight') return;
-      const c = $('#sCard'), r = c && c.getBoundingClientRect();
-      if (r && (r.top > innerHeight - 80 || r.bottom < 80)) c.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+      if (p.id === 'tonight') showCard('stars');
     });
     pnav.appendChild(b);
   }

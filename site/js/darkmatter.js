@@ -51,7 +51,13 @@ function hammer(l, b) {
   const phi = b * DEG, den = Math.sqrt(1 + Math.cos(phi) * Math.cos(lam / 2));
   return [2 * Math.SQRT2 * Math.cos(phi) * Math.sin(lam / 2) / den, Math.SQRT2 * Math.sin(phi) / den];
 }
-const frameOf = (s) => { const sc = Math.min(s.w / (4 * Math.SQRT2), s.h / (2 * Math.SQRT2)) * 0.97; return { sc, cx: s.w / 2, cy: s.h / 2 }; };
+const phoneQ = matchMedia('(max-width: 699.98px)');
+const HUD_BAND = 50;
+const frameOf = (s) => {
+  const sc = Math.min(s.w / (4 * Math.SQRT2), s.h / (2 * Math.SQRT2)) * 0.97, half = sc * Math.SQRT2, slack = s.h - 2 * half;
+  const top = phoneQ.matches ? Math.max(slack / 2, Math.min(HUD_BAND, slack - 4)) : slack / 2;
+  return { sc, cx: s.w / 2, cy: top + half };
+};
 
 const st = { t: T1, playing: false, speed: 2, amp: 1, shadow: 0, shadowTarget: 0, sel: -1, hover: -1, lan: null, lanR: 0.2, showAll: false };
 let built = false, entered = false;

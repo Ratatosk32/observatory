@@ -397,8 +397,9 @@ export function runById(id, q = '') { const it = collect(q).find((x) => x.id ===
 
 function keyRows() {
   const own = [[[MOD, 'K', 'or', '/'], 'Search and commands'], [['N'], 'Above you: one line per floor'], [['?'], 'This list of shortcuts'], [['Alt', '↑'], 'Climb a floor'], [['Alt', '↓'], 'Descend a floor'], [['Esc'], 'Close the topmost panel']];
-  const theirs = [...new Map((shell.keyHelp || []).filter((h) => h.keys && h.label).map((h) => [h.label, [h.keys, h.label]])).values()];
-  return { anywhere: [...own, ...theirs], floor: [[['Space'], 'Play or pause time (Stars, Dark matter, Earth)'], [['←', '→'], 'Step a night on the season ribbon, or 10 minutes on Earth; Shift for a week or an hour'], [['L'], 'Live space weather and aurora (Earth)'], [['+', '−', '0'], 'Zoom in, out and reset (sky, HR diagram, globe)'], [['↑', '↓'], 'Move between floors when the ladder has focus']], story: [[['←', '→'], 'Previous or next step'], [['Esc'], 'Leave the story']] };
+  const onFloor = new Set(['[', ']', 'Home', 'End']);
+  const theirs = [...new Map((shell.keyHelp || []).filter((h) => h.keys && h.label && !h.keys.every((k) => onFloor.has(k))).map((h) => [h.label, [h.keys, h.label]])).values()];
+  return { anywhere: [...own, ...theirs], floor: [[['Space'], 'Play or pause time on every floor'], [['←', '→'], 'Step a night on the time track, or 10 minutes on Earth; Shift for a week or an hour'], [['[', ']'], 'Play slower or faster'], [['Home', 'End'], 'Go to the start of the track or the latest data'], [['L'], 'Live space weather and aurora (Earth)'], [['+', '−', '0'], 'Zoom in, out and reset (sky, HR diagram, globe)'], [['↑', '↓'], 'Move between floors when the ladder has focus']], story: [[['←', '→'], 'Previous or next step'], [['Esc'], 'Leave the story']] };
 }
 function dl(rows) { return `<dl>${rows.map(([k, v]) => `<dt>${k.map((x) => (x === 'or' ? '<span>or</span>' : `<kbd>${esc(x)}</kbd>`)).join('')}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`; }
 function keysKey(e) { if (e.key === 'Escape' && keysEl && !keysEl.hidden) { e.preventDefault(); e.stopImmediatePropagation(); closeKeys(); } else if (e.key === 'Tab' && keysEl && !keysEl.hidden) { e.preventDefault(); keysEl.querySelector('.ky-close').focus(); } }

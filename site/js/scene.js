@@ -162,6 +162,10 @@ export function reveal(el) {
     return true;
   }
   if (body.classList.contains('zen')) setZen(false);
+  if (s.sheet && s.sheet.on() && s.sheet.contains(el)) {
+    s.sheet.raise(el.closest('.phead') ? 'half' : 'full');
+    requestAnimationFrame(() => el.scrollIntoView({ block: 'nearest' }));
+  }
   return s.main.contains(el);
 }
 
@@ -173,6 +177,145 @@ export function closeInstruments(m = body.dataset.mode, focus = false) {
   s.stage.classList.remove('drawer-open');
   s.inst.setAttribute('aria-expanded', 'false'); s.inst.classList.remove('on');
   if (focus || had) s.inst.focus({ preventScroll: true });
+  return true;
+}
+
+const SHEET = ['peek', 'half', 'full'];
+const SHEET_NAME = { peek: 'peek', half: 'half height', full: 'full height' };
+const PEEK_MIN = 76, PEEK_LOW = 48;
+const FLING = 0.45;
+const clampN = (x, a, b) => Math.max(a, Math.min(b, x));
+
+function makeSheet(s, card) {
+  const grab = card.querySelector('.grab'), inner = card.lastElementChild, title = card.querySelector('h2').textContent.trim();
+  const sh = { pos: 'peek', h: null, on: false, drag: null, moved: false, key: '' };
+  grab.setAttribute('aria-controls', inner.id);
+  grab.title = 'Drag, tap, or use the arrow keys';
+
+  const visible = () => card.getClientRects().length > 0;
+  function measure() {
+    const vh = innerHeight, full = Math.round(vh - Math.min(56, vh * 0.08));
+    const end = s.stage.getBoundingClientRect().bottom + scrollY, dock = s.stage.querySelector('.dock');
+    let peek = clampN(vh - end - 8, PEEK_MIN, vh * 0.5);
+    if (dock) peek = Math.min(peek, Math.max(PEEK_LOW, vh - (dock.getBoundingClientRect().bottom + scrollY) - 6));
+    peek = Math.round(peek);
+    const half = Math.round(Math.min(full, Math.max(vh * 0.58, peek + 140)));
+    sh.h = { peek, half, full };
+  }
+  function label() {
+    const next = sh.pos === 'full' ? 'lower it to peek' : `raise it to ${SHEET_NAME[SHEET[SHEET.indexOf(sh.pos) + 1]]}`;
+    grab.setAttribute('aria-label', `${title}: ${SHEET_NAME[sh.pos]}. Activate to ${next}`);
+  }
+  function apply(pos) {
+    sh.pos = pos;
+    grab.setAttribute('aria-expanded', String(pos !== 'peek'));
+    label();
+    if (!sh.on || !sh.h) return;
+    const h = sh.h[pos], key = `${pos}|${h}|${sh.h.full}`;
+    if (key !== sh.key || card.style.getPropertyValue('--sheet-h') !== `${h}px`) {
+      sh.key = key;
+      card.style.setProperty('--sheet-full', `${sh.h.full}px`);
+      card.style.setProperty('--sheet-h', `${h}px`);
+      card.style.setProperty('--sheet-body', `${Math.max(0, h - inner.offsetTop - 8)}px`);
+      card.dataset.sheet = pos;
+    }
+    const pad = `calc(${sh.h.peek}px + env(safe-area-inset-bottom))`;
+    if (body.style.paddingBottom !== pad) body.style.paddingBottom = pad;
+  }
+  function refresh() {
+    if (!sh.on || !visible()) return;
+    measure();
+    apply(sh.pos);
+  }
+  function enable(on) {
+    sh.on = on;
+    if (on) { refresh(); return; }
+    for (const p of ['--sheet-full', '--sheet-h', '--sheet-body']) card.style.removeProperty(p);
+    delete card.dataset.sheet;
+    sh.key = '';
+    body.style.removeProperty('padding-bottom');
+    grab.removeAttribute('aria-expanded');
+  }
+  function current() { return parseFloat(card.style.getPropertyValue('--sheet-h')) || sh.h[sh.pos]; }
+  function settle(v) {
+    const h = current(), hs = SHEET.map((p) => sh.h[p]);
+    let k = hs.reduce((b, x, i) => (Math.abs(x - h) < Math.abs(hs[b] - h) ? i : b), 0);
+    if (v < -FLING) { const up = hs.findIndex((x) => x > h + 1); if (up >= 0) k = up; }
+    else if (v > FLING) { for (let i = hs.length - 1; i >= 0; i--) if (hs[i] < h - 1) { k = i; break; } }
+    apply(SHEET[k]);
+  }
+
+  grab.addEventListener('pointerdown', (e) => {
+    if (!sh.on || !sh.h || e.button > 0) return;
+    sh.drag = { id: e.pointerId, y0: e.clientY, h0: sh.h[sh.pos], y: e.clientY, t: e.timeStamp, v: 0 };
+    sh.moved = false;
+    grab.setPointerCapture(e.pointerId);
+  });
+  grab.addEventListener('pointermove', (e) => {
+    const d = sh.drag;
+    if (!d || e.pointerId !== d.id) return;
+    const dy = e.clientY - d.y0;
+    if (!sh.moved && Math.abs(dy) < 6) return;
+    if (!sh.moved) { sh.moved = true; card.classList.add('dragging'); }
+    const dt = Math.max(1, e.timeStamp - d.t);
+    d.v = 0.6 * ((e.clientY - d.y) / dt) + 0.4 * d.v; d.y = e.clientY; d.t = e.timeStamp;
+    card.style.setProperty('--sheet-h', `${clampN(d.h0 - dy, sh.h.peek * 0.6, sh.h.full)}px`);
+  });
+  const release = (e) => {
+    const d = sh.drag;
+    if (!d || e.pointerId !== d.id) return;
+    sh.drag = null;
+    card.classList.remove('dragging');
+    if (sh.moved) settle(e.timeStamp - d.t > 120 ? 0 : d.v);
+  };
+  grab.addEventListener('pointerup', release);
+  grab.addEventListener('pointercancel', release);
+  grab.addEventListener('click', () => {
+    if (sh.moved) { sh.moved = false; return; }
+    if (!sh.on) return;
+    apply(SHEET[(SHEET.indexOf(sh.pos) + 1) % SHEET.length]);
+  });
+  grab.addEventListener('keydown', (e) => {
+    if (!sh.on) return;
+    const i = SHEET.indexOf(sh.pos);
+    const k = { ArrowUp: i + 1, ArrowRight: i + 1, PageUp: i + 1, ArrowDown: i - 1, ArrowLeft: i - 1, PageDown: i - 1, Home: 0, End: SHEET.length - 1 }[e.key];
+    if (k == null) return;
+    e.preventDefault(); e.stopPropagation();
+    apply(SHEET[clampN(k, 0, SHEET.length - 1)]);
+  });
+
+  const ro = new ResizeObserver(refresh);
+  ro.observe(s.stage);
+  ro.observe(body);
+  addEventListener('resize', refresh, { passive: true });
+  phoneQ.addEventListener('change', () => enable(phoneQ.matches));
+  enable(phoneQ.matches);
+  label();
+  return {
+    on: () => sh.on,
+    pos: () => sh.pos,
+    set: (p) => { if (SHEET.includes(p)) apply(p); },
+    raise: (p = 'half') => { if (sh.on && SHEET.indexOf(sh.pos) < SHEET.indexOf(p)) apply(p); },
+    contains: (el) => card.contains(el),
+    grab,
+  };
+}
+
+export function showCard(m = body.dataset.mode) {
+  const s = scenes[m];
+  if (!s) return false;
+  if (s.sheet.on()) { s.sheet.raise('half'); return true; }
+  const c = s.main.querySelector('.card'), r = c.getBoundingClientRect();
+  if (r.top > innerHeight - 80 || r.bottom < 80) c.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+  return true;
+}
+
+function lowerSheet() {
+  const s = scenes[body.dataset.mode];
+  if (!s || !s.sheet.on() || s.sheet.pos() === 'peek') return false;
+  const had = s.sheet.contains(document.activeElement);
+  s.sheet.set('peek');
+  if (had) s.sheet.grab.focus({ preventScroll: true });
   return true;
 }
 
@@ -220,13 +363,7 @@ export function wireScene(m, root) {
     try { if (v) localStorage.setItem('observatory-collapsed-' + card.querySelector('h2').id, '1'); else localStorage.removeItem('observatory-collapsed-' + card.querySelector('h2').id); } catch (e) { return; }
   });
   setCollapsed(card, stored);
-  const grab = card.querySelector('.grab');
-  grab.addEventListener('click', () => {
-    const o = card.classList.toggle('open');
-    grab.setAttribute('aria-expanded', String(o));
-    grab.setAttribute('aria-label', o ? 'Collapse the card' : 'Expand the card');
-    if (o) card.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
-  });
+  s.sheet = makeSheet(s, card);
   const v = stage.querySelector('.verdict');
   if (v) v.addEventListener('click', () => openInstrument(m, 0));
   sync();
@@ -266,6 +403,7 @@ new MutationObserver(() => { closePop(false); body.classList.remove('idle'); }).
 onKey('escape', () => {
   if (closePop()) return true;
   if (closeInstruments(body.dataset.mode, true)) return true;
+  if (lowerSheet()) return true;
   if (body.classList.contains('zen')) { setZen(false); return true; }
   return false;
 }, { typing: true });
@@ -302,6 +440,9 @@ shell.scene = {
   openInfo: (m = body.dataset.mode) => { const s = scenes[m]; if (s) showPop(document.getElementById(`${m}Info`), s.stage.querySelector('.hb-info')); },
   openView: (m = body.dataset.mode) => { const s = scenes[m]; if (s) showPop(document.getElementById(`${m}View`), s.stage.querySelector('.hb-view')); },
   openCredits,
+  showCard,
+  sheet: (m = body.dataset.mode) => (scenes[m] && scenes[m].sheet.on() ? scenes[m].sheet.pos() : null),
+  setSheet: (p, m = body.dataset.mode) => { if (scenes[m]) scenes[m].sheet.set(p); },
   zen: setZen,
   ready: (m) => !!scenes[m],
 };
