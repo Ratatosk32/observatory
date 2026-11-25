@@ -1,6 +1,7 @@
 import * as K from './kit.js';
 import { sceneHtml, wireScene, openInstrument } from './scene.js';
 import { dockHtml, makeDock, fmtSpeed } from './dock.js';
+import { cardHead } from './cardhead.js';
 import * as SL from './starlight.js';
 import * as SC from './showcase.js';
 import * as TN from './tonight.js';
@@ -1971,12 +1972,7 @@ function renderCard() {
   const prLine = pr ? (pr.vsGaia === 'agrees' ? `Rubin alone finds ${pr.period.toFixed(5)} d (agrees).` : pr.vsGaia === 'half' ? `Rubin alone finds ${pr.period.toFixed(5)} d, half the Gaia period: two eclipses per orbit.` : `Rubin alone finds ${pr.period.toFixed(5)} d, a different, probably aliased period.`) : '';
   const isTrans = ['sn', 'sncand', 'tde', 'cv', 'agn', 'unk'].includes(FKEY[Ob.fam[i]]);
   body.innerHTML = `
-    <h3>${esc(nameOf(i))}</h3>
-    <div class="cls"><span class="sw" style="background:${gcol[grp[i]]}"></span>${esc(famLabel(i))} <span style="color:var(--ink3)">· ${esc(catOf(i))}</span></div>
-    ${SC.chipsHtml(chipsFor(i))}
-    ${provRow(i)}
-    <p class="ladline">${ladderLine(i)}</p>
-    <p class="olinks">${outLinks(i)}</p>
+    ${cardHead({ name: nameOf(i), sw: gcol[grp[i]], cls: esc(famLabel(i)), note: esc(catOf(i)), chips: SC.chipsHtml(chipsFor(i)), how: howOf(i), prov: provText(i), ladder: ladderLine(i), links: outLinks(i) })}
     ${Ob.lc[i] >= 0 ? `<h4>Light curve</h4>
     <p class="cap">${st.lcMode === 'flux' ? 'Difference flux in nJy: how much brighter (above 0) or fainter (below) than the reference image; this is what Rubin alerts on.' : 'Apparent AB magnitude of the total (science-image) flux.'}${fe ? ' Hollow points: forced photometry, including nights without a detection.' : ''} The upright line is the date on the time track.</p>
     <div class="seg sm" role="group" aria-label="Light-curve units"><button class="btn${st.lcMode === 'flux' ? ' on' : ''}" type="button" data-lc="flux">Flux</button><button class="btn${st.lcMode === 'mag' ? ' on' : ''}" type="button" data-lc="mag">Magnitude</button></div>
@@ -1994,20 +1990,13 @@ function renderCard() {
   if (body.querySelector('.sfold')) cardPlots.push(setupCanvas(body.querySelector('.sfold'), (s) => drawFold(s, i, fe)));
   if (ext.story) ext.story.cardToys(body, i);
 }
-const HOW_MARK = {
-  measured: '<circle cx="6" cy="6" r="4" class="f"/>',
-  indirect: '<circle cx="6" cy="6" r="3.6" class="r"/>',
-  weak: '<circle cx="6" cy="6" r="3.6" class="r d"/>',
-  none: '<circle cx="6" cy="6" r="3.6" class="r n"/>',
-};
 const howOf = (i) => (hasDist(i) ? LADDER_HOW[METHODS[Ob.distMethod[i]]] || 'indirect' : 'none');
 const builtOn = () => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(S.meta.built || ''); return m ? `${+m[3]} ${MON[+m[2] - 1]} ${m[1]}` : ''; };
-function provRow(i) {
-  const how = howOf(i), method = hasDist(i) ? METHOD_WORDS[METHODS[Ob.distMethod[i]]] || '' : '';
-  const dist = how === 'none' ? 'no distance yet' : `${how === 'weak' ? 'weak' : how} distance${method ? ` · ${esc(method)}` : ''}`;
+function provText(i) {
+  const method = hasDist(i) ? METHOD_WORDS[METHODS[Ob.distMethod[i]]] || '' : 'no Gaia match, no redshift';
   const label = catOf(i) ? `label from ${esc(catOf(i).split(' ')[0])}, a crossmatch that can be wrong` : 'label from Fink tags, which can be wrong';
   const built = builtOn();
-  return `<div class="prov" aria-label="Provenance"><span class="pv"><svg class="pvm pv-${how}" viewBox="0 0 12 12" aria-hidden="true">${HOW_MARK[how]}</svg>${dist}</span><span class="pv">${label}</span><span class="pv"><span class="pvn" aria-hidden="true"></span>nightly · Rubin alerts via Fink${built ? ` · as of ${built}` : ''}</span></div>`;
+  return `${esc(method)} · ${label} · nightly, Rubin alerts via Fink${built ? `, as of ${built}` : ''}`;
 }
 function lightWords(i) {
   const lbi = Ob.lookbackGyr ? Ob.lookbackGyr[i] : null, ly = lbi != null ? lbi * 1e9 : Ob.dist[i] * 3.26156;
@@ -2017,17 +2006,17 @@ function lightWords(i) {
   return `${fmtN(Math.round(ly / q) * q)} years of light`;
 }
 function ladderLine(i) {
-  if (!hasDist(i)) return '<span class="how-none">Not on the ladder yet: no Gaia match, no redshift.</span>';
+  if (!hasDist(i)) return 'Not on the ladder yet.';
   const how = howOf(i), method = METHOD_WORDS[METHODS[Ob.distMethod[i]]] || '';
-  return `<b>${lightWords(i)}</b> <span class="ink3">(${fmtPc(Ob.dist[i])})</span> · ${how}${method ? `, ${esc(method)}` : ''}`;
+  return `<b>${lightWords(i)}</b> (${fmtPc(Ob.dist[i])}) · ${how}${method ? `, ${esc(method)}` : ''}`;
 }
 function outLinks(i) {
   const out = [];
   const tns = /^(?:SN|AT|TDE)\s?(\d{4}[a-z]+)$/.exec(Ob.name[i] || '');
-  if (tns) out.push(`<a href="https://www.wis-tns.org/object/${encodeURIComponent(tns[1])}" target="_blank" rel="noopener">TNS ↗</a>`);
-  if (Ob.ra[i] != null && Ob.dec[i] != null) out.push(`<a href="https://simbad.cds.unistra.fr/simbad/sim-coo?Coord=${Ob.ra[i].toFixed(5)}%20${Ob.dec[i] >= 0 ? '%2B' : '-'}${Math.abs(Ob.dec[i]).toFixed(5)}&amp;CooFrame=ICRS&amp;Radius=5&amp;Radius.unit=arcsec" target="_blank" rel="noopener">SIMBAD ↗</a>`);
-  out.push(`<a href="https://lsst.fink-broker.org/" target="_blank" rel="noopener" title="Fink portal; search for Rubin object ${esc(Ob.id[i])}">Fink ↗</a>`);
-  return out.join(' · ');
+  if (tns) out.push({ label: 'TNS', href: `https://www.wis-tns.org/object/${encodeURIComponent(tns[1])}` });
+  if (Ob.ra[i] != null && Ob.dec[i] != null) out.push({ label: 'SIMBAD', href: `https://simbad.cds.unistra.fr/simbad/sim-coo?Coord=${Ob.ra[i].toFixed(5)}%20${Ob.dec[i] >= 0 ? '%2B' : '-'}${Math.abs(Ob.dec[i]).toFixed(5)}&CooFrame=ICRS&Radius=5&Radius.unit=arcsec` });
+  out.push({ label: 'Fink', href: 'https://lsst.fink-broker.org/' });
+  return out;
 }
 function pctl(a, p) { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.max(0, Math.floor(p * (s.length - 1))))]; }
 function drawLc(s, i, fe, isTrans) {

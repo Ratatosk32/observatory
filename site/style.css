@@ -691,21 +691,24 @@ ul.watch small { display: block; color: var(--ink3); font-size: 12.5px; }
 .ecloud button.link { font-size: 12.5px; margin-left: 4px; }
 #cardBody .ast-more { margin: 4px 0 8px; }
 #cardBody .ast-more .picks { margin-top: 8px; }
-:is(#cardBody, #eCardBody) .cls-n { color: var(--ink3); }
-:is(#cardBody, #eCardBody) .chead { display: grid; gap: 4px; margin: 0 0 14px; font-size: 12.5px; line-height: 1.45; color: var(--ink2); }
-:is(#cardBody, #eCardBody) .chead p { margin: 0; }
-:is(#cardBody, #eCardBody) .ch-prov { display: flex; gap: 6px; }
-:is(#cardBody, #eCardBody) .ch-prov b, :is(#cardBody, #eCardBody) .ch-lad b { color: var(--ink); font-weight: 600; }
-:is(#cardBody, #eCardBody) .pv { flex: none; width: 22px; height: 9px; overflow: visible; align-self: flex-start; margin-top: 5px; }
-:is(#cardBody, #eCardBody) .pv .cv { fill: var(--gold); stroke: var(--gold); stroke-width: 1; stroke-linejoin: round; }
-:is(#cardBody, #eCardBody) .pv .ct { stroke: var(--gold); stroke-width: 1.6; }
-:is(#cardBody, #eCardBody) .pv .cd { stroke: var(--gold); stroke-width: 1.4; stroke-dasharray: 2 2; display: none; }
-:is(#cardBody, #eCardBody) .pv:is(.how-indirect, .how-typical, .how-model) .cv { fill: none; }
-:is(#cardBody, #eCardBody) .pv.how-weak .cv { fill: none; stroke-dasharray: 1.5 1.5; }
-:is(#cardBody, #eCardBody) .pv:is(.how-typical, .how-model) .cd { display: inline; }
-:is(#cardBody, #eCardBody) .ch-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 2px; }
-:is(#cardBody, #eCardBody) .ch-links a { font-weight: 600; font-size: 13px; text-decoration: none; }
-:is(#cardBody, #eCardBody) .ch-links a:hover { text-decoration: underline; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .cls-n { color: var(--ink3); }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .chead { display: grid; gap: 4px; margin: 0 0 14px; font-size: 12.5px; line-height: 1.45; color: var(--ink2); }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .chead p { margin: 0; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .ch-prov { display: flex; gap: 6px; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .ch-prov b, :is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .ch-lad b { color: var(--ink); font-weight: 600; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .pv { flex: none; width: 22px; height: 9px; overflow: visible; align-self: flex-start; margin-top: 5px; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .pv .cv { fill: var(--gold); stroke: var(--gold); stroke-width: 1; stroke-linejoin: round; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .pv .ct { stroke: var(--gold); stroke-width: 1.6; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .pv .cd { stroke: var(--gold); stroke-width: 1.4; stroke-dasharray: 2 2; display: none; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .pv:is(.how-indirect, .how-typical, .how-model) .cv { fill: none; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .pv.how-weak .cv { fill: none; stroke-dasharray: 1.5 1.5; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .pv.how-none :is(.cv, .ct) { fill: none; stroke: var(--ink3); stroke-dasharray: 2 2; }
+#dCardBody canvas.dhero { height: 70px; }
+#dCardBody .hero-cap { color: var(--ink3); margin: 2px 0 12px; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .pv:is(.how-typical, .how-model) .cd { display: inline; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .ch-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 2px; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .ch-links a { font-weight: 600; font-size: 13px; text-decoration: none; }
+:is(#cardBody, #eCardBody, #sCardBody, #dCardBody) .ch-links a:hover { text-decoration: underline; }
 #cardBody canvas.orbit { height: 230px; margin: 0 0 4px; }
 #cardBody .orbit-cap { color: var(--ink3); margin: 0 0 14px; }
 #eCardBody canvas.ehero { height: 132px; }
@@ -1111,20 +1114,6 @@ body.idle .proj-switch { opacity: 0.28; }
   .proj-switch button { height: 34px; padding: 0 10px; font-size: 12px; }
 }
 
-#sCardBody .prov { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 2px 0 8px; font-size: 12px; line-height: 1.4; color: var(--ink2); }
-#sCardBody .prov .pv { display: inline-flex; align-items: center; gap: 5px; }
-#sCardBody .pvm { width: 12px; height: 12px; flex: none; }
-#sCardBody .pvm .f { fill: var(--gold); }
-#sCardBody .pvm .r { fill: none; stroke: var(--gold); stroke-width: 1.4; }
-#sCardBody .pvm .r.d { stroke-dasharray: 1.4 1.6; }
-#sCardBody .pvm .r.n { stroke: var(--ink3); stroke-dasharray: 2 2; }
-#sCardBody .pvn { width: 8px; height: 8px; border-radius: 50%; border: 1.4px solid var(--ink2); flex: none; }
-#sCardBody .ladline { margin: 0 0 6px; font-size: 13px; color: var(--ink2); }
-#sCardBody .ladline b { color: var(--gold); font-weight: 650; }
-#sCardBody .ladline .ink3, #sCardBody .ladline .how-none { color: var(--ink3); }
-#sCardBody .olinks { margin: 0 0 10px; font-size: 12.5px; color: var(--ink3); }
-#sCardBody .olinks a { color: var(--gold); text-decoration: none; }
-#sCardBody .olinks a:hover, #sCardBody .olinks a:focus-visible { text-decoration: underline; }
 @media (max-width: 699.98px) {
   .scene { overflow-x: clip; }
 }

@@ -1,6 +1,6 @@
 import { esc } from './kit.js';
 
-const HOW = { measured: 'measured', indirect: 'indirect', weak: 'weak', typical: 'typical, not measured', model: 'model', live: 'live' };
+const HOW = { measured: 'measured', indirect: 'indirect', weak: 'weak', typical: 'typical, not measured', model: 'model', live: 'live', none: 'no distance yet' };
 
 export function provMark(how) {
   return `<svg class="pv how-${how}" viewBox="0 0 24 10" aria-hidden="true"><path class="cv" d="M1 0.5V9.5L7.5 5Z"/><path class="ct" d="M7 5H17"/><path class="cd" d="M18 5h6"/></svg>`;

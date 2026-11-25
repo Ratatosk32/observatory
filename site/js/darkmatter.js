@@ -4,6 +4,7 @@ import { dockHtml, makeDock, fmtSpeed } from './dock.js';
 import { register as registerData, fmtBytes } from './datapanel.js';
 import { openStore, post, pool, storageUsage } from './net.js';
 import * as SC from './showcase.js';
+import { cardHead } from './cardhead.js';
 
 const [D, SCD] = await Promise.all([K.loadJson('data/cmb.json'), SC.loadShowcase()]);
 const { $, fmtN, MON, clamp, esc, text, annotate } = K;
@@ -546,13 +547,34 @@ function renderCard() {
     ['RA, Dec', `${CL.ra[i].toFixed(3)}°, ${CL.dec[i].toFixed(3)}°`],
     ['Galactic l, b', `${CL.l[i].toFixed(1)}°, ${CL.b[i].toFixed(1)}°`],
   ];
-  body.innerHTML = `<h3>${esc(CL.name[i])}</h3>
-    <div class="cls"><span class="sw" style="background:var(--gold)"></span>${CL.catalogue} SZ galaxy cluster</div>
-    ${SC.chipsHtml(chipsFor(i))}
+  const lt = K.cosmo.lookbackGyr(CL.z[i]);
+  body.innerHTML = `${cardHead({
+    name: CL.name[i], sw: 'var(--gold)', cls: `${esc(CL.catalogue)} SZ galaxy cluster`, chips: SC.chipsHtml(chipsFor(i)), how: 'indirect',
+    prov: `${esc(CL.catalogue)} catalogue redshift and calibrated SZ mass · alerts inside: Rubin via Fink`,
+    ladder: `<b>${lt.toFixed(1)} Gyr of light</b> (z = ${CL.z[i].toFixed(2)}) · indirect, ${esc(CL.catalogue)} catalogue redshift`,
+    links: [{ label: 'ACT DR6 on LAMBDA', href: 'https://lambda.gsfc.nasa.gov/product/act/' }],
+  })}
+    <canvas class="dhero" aria-label="SN-like alerts inside R500 against the number expected from the 3 to 6 R500 ring"></canvas>
+    <p class="cap hero-cap">Inside R500 against what its own 3–6 R500 ring predicts for the same area; the whisker is the Poisson spread of the expectation.</p>
     ${scDm ? `<div class="note scoreline">Unusualness ${scDm.score[i]} of 100 · #${fmtN(RANKPOS[i] + 1)} of ${fmtN(NC)} · <details><summary>How it’s scored</summary><p>Each cluster gets 0–1 for mass (the top 10% by M500c), for SN-like alerts inside beyond what its own 3–6 R500 ring predicts, and 0.5 for Rubin coverage. Its best three count (full, half, quarter), plus a little for a new alert inside. At least 30% of the front places go to clusters with an excess.</p></details></div>` : ''}
     <p class="cap">Its hot gas scatters CMB photons (the Sunyaev–Zel’dovich effect); its mass, mostly dark matter, bends the CMB around it by a fraction of an arcminute.</p>
     <dl>${facts.map(([k, v]) => `<div style="grid-column:span ${v.length > 40 ? 3 : 1}"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
     <p class="note">R500 is the radius inside which the mean density is 500 times the critical density of the universe; here it spans ${CL.theta500[i].toFixed(1)} arcminutes.</p>`;
+  K.setupCanvas(body.querySelector('.dhero'), (s) => drawHero(s, i));
+}
+function drawHero(s, i) {
+  if (!s.w) return;
+  const g = s.ctx, n = CL.inside[i], e = CL.expect[i], sd = Math.sqrt(Math.max(e, 0)), top = Math.max(n, e + 2 * sd, 1) * 1.15;
+  g.clearRect(0, 0, s.w, s.h);
+  const L = 128, R = s.w - 44, X = (v) => L + v / top * (R - L), rows = [['inside R500', n, true], ['expected', e, false]];
+  rows.forEach(([lab, v, solid], k) => {
+    const y = 14 + k * 30;
+    text(g, lab, 0, y + 12, { size: 12, color: C().ink2 });
+    g.fillStyle = C().gold; g.strokeStyle = C().gold; g.lineWidth = 1.2; g.globalAlpha = solid ? 0.85 : 0.3;
+    g.fillRect(L, y, Math.max(1, X(v) - L), 16); g.globalAlpha = 1;
+    if (!solid) { g.strokeRect(L + 0.5, y + 0.5, Math.max(1, X(v) - L), 15); g.beginPath(); g.moveTo(X(Math.max(0, v - sd)), y + 8); g.lineTo(X(v + sd), y + 8); g.moveTo(X(Math.max(0, v - sd)), y + 4); g.lineTo(X(Math.max(0, v - sd)), y + 12); g.moveTo(X(v + sd), y + 4); g.lineTo(X(v + sd), y + 12); g.stroke(); }
+    text(g, solid ? fmtN(v) : v.toFixed(1), X(solid ? v : v + sd) + 6, y + 12, { size: 12, weight: 600, color: C().ink });
+  });
 }
 
 function drawMeter(s, opts) {
