@@ -1,4 +1,4 @@
-import { $, esc, ns, shell, setUrl, initTheme, applyTheme, panelControls, fullscreenPanel, exitFs, modeReady } from './kit.js';
+import { $, esc, ns, shell, setUrl, initTheme, applyTheme, panelControls, fullscreenPanel, exitFs, modeReady, onKey, onBrand, slot } from './kit.js';
 import { activate as activateData } from './datapanel.js';
 import { initLadder, MODES as FLOORS } from './ladder.js';
 import './health.js';
@@ -54,6 +54,24 @@ sList.addEventListener('click', (e) => { const li = e.target.closest('[role=opti
 sClear.addEventListener('click', () => { sIn.value = ''; sClear.hidden = true; sIn.focus(); openSuggestions(); });
 shell.setSearch = (p, placeholder) => { provider = p; sIn.placeholder = placeholder; };
 shell.search = () => provider;
+
+const palette = () => import('./palette.js'), brief = () => import('./brief.js');
+const LADDER = ['dm', 'stars', 'asteroids', 'earth'], MOD_KEY = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
+shell.keyHelp = shell.keyHelp || [];
+onKey('k', () => { palette().then((p) => p.togglePalette(document.activeElement === sIn ? sIn.value : '')); }, { mod: true, typing: true });
+onKey('/', () => { palette().then((p) => p.openPalette()); });
+onKey('?', () => { palette().then((p) => p.openKeys()); });
+onKey('n', () => { brief().then((b) => b.toggleBrief()); });
+onBrand((e) => { brief().then((b) => b.toggleBrief(e.currentTarget)); }, 'Above you: one line per floor (N)');
+slot('search')?.insertAdjacentHTML('beforeend', `<button type="button" class="pl-hint" data-ux="palette" aria-haspopup="dialog" aria-expanded="false" aria-label="Search and commands on every floor" title="Everything: objects, views, stories, tools (${MOD_KEY} K)"><kbd>${MOD_KEY}</kbd><kbd>K</kbd></button>`);
+slot('header')?.insertAdjacentHTML('afterbegin', '<button type="button" class="icon-btn pl-open" data-ux="palette" aria-haspopup="dialog" aria-expanded="false" aria-label="Search and commands" title="Search and commands"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></button>');
+document.addEventListener('mousedown', (e) => { if (e.target.closest('.pl-hint')) e.preventDefault(); });
+document.addEventListener('click', (e) => { const b = e.target.closest('[data-ux="palette"]'); if (b) palette().then((p) => p.togglePalette(sIn.value, b)); });
+document.addEventListener('keydown', (e) => {
+  if (!e.altKey || e.ctrlKey || e.metaKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || e.target.closest?.('input, select, textarea')) return;
+  const next = LADDER[LADDER.indexOf(mode) + (e.key === 'ArrowUp' ? -1 : 1)];
+  if (next) { e.preventDefault(); setMode(next); }
+});
 
 initTheme();
 panelControls();
