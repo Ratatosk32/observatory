@@ -12,6 +12,8 @@ There are four modes on one page:
 - **Dark matter:** the Planck CMB under a lensing magnifier, the 10,040 ACT DR6 clusters and Rubin's supernova-like alerts, with two meters that ask whether the explosions follow the dark matter yet.
 - **Earth:** the Earth at night on a WebGL globe with both polar caps, the OVATION aurora model, space weather from NOAA live in the browser, and last night's lightning from the GOES-East and GOES-West Geostationary Lightning Mappers and the Meteosat MTG Lightning Imager.
 
+The modes are floors of one sky, and the **altitude ladder** on the left (a strip under the search box on narrower screens) is how you move between them: a log scale of distance from the ground to the oldest light, which shows where you are and what is selected.
+
 ![Asteroid mode](docs/screenshot-asteroids.png)
 ![Stars mode](docs/screenshot-stars.png)
 ![A story: finding the period of a contact binary](docs/screenshot-story.png)
@@ -53,6 +55,21 @@ There are four modes on one page:
   6. what Rubin can't see.
 
 Each step drives the map, the stage and the timeline, and ends on one number with a "how sure are we?" line.
+
+### The ladder: everything above your head, floor by floor
+
+The ladder is one log axis of distance, from 1 km at the bottom to the cosmic microwave background at the top (23.7 decades). It is also the mode switch: one radiogroup, drawn as a 64 px rail on screens 1,200 px and wider and as a strip in the header below that.
+
+- **Distances.** Everything is in km on the axis; the labels switch units as they climb: km up to 10 million km, then AU, light-years from 0.05 ly, and Gyr of light from a billion light-years.
+  - **Main axis: light travel.** For distant objects the axis shows how long their light has been travelling (lookback time × c), because that is the light reaching you.
+  - **The fork: comoving distance.** Above z ≈ 0.03 (about 0.4 billion years of light) the line forks. The left branch stays light travel; the right branch is the comoving distance, where that matter is now. Hairlines join equal redshifts (z = 0.1, 0.5, 1, 2 and 1090). At the CMB the two read 13.5 billion years of light and about 44 billion light-years now.
+  - **Cosmology:** flat ΛCDM with H0 = 70 km/s/Mpc, Ωm = 0.3 and Ωr = 8.4 × 10⁻⁵, the same as the rest of the site (`site/js/cosmo.js`, checked by `scripts/test_cosmo.mjs` in CI). The often quoted 46 billion light-years to the CMB uses Planck's H0 = 67.7; with H0 = 70 it is 44.
+- **Floors:** lightning 10–15 km, aurora 100–300 km, the solar wind at L1 (1.5 million km), asteroids 0.02–6 AU from Earth, variable stars 30–100,000 ly, supernovae and AGN 0.1–11 Gyr of light, galaxy clusters 0.7–10 Gyr of light, the CMB. Landmarks (the Moon, Voyager 1, one light-year, the Galactic centre, Andromeda) give the empty stretches a sense of scale; the empty stretches are left empty.
+- **Marks.** A gold bar spans the distances of the objects in front now (5th to 95th percentile), a gold chevron marks the selected object, and a ring on the comoving branch marks where a cosmological selection is now. The chevron's style says how the distance is known: filled for measured (Gaia parallax, spectroscopic redshift, a fitted orbit), open for indirect (standard candles, host galaxies, cloud membership, catalogue redshifts), dotted for weak (photometric redshift), open with a dashed tick for typical values and models (storm tops, the aurora shell). With nothing selected the readout starts with "≈".
+- **Peek and sheet.** Hovering or focusing the rail opens a labelled copy of the scale beside it, with the selection's light travel, redshift and comoving distance. At 1,760 px and wider the labels stay on the rail. On the strip, tapping the track opens the same ladder as a sheet.
+- **Motion.** Switching modes, the chevron climbs or descends in log space over 600 ms + 35 ms per decade (at most 1.4 s), the floors it passes light up and the readout counts with changing units. The page switches at once; the climb never delays it. With reduced motion the marker cross-fades in 150 ms.
+- **Keyboard.** Arrow keys follow the picture: Up goes to a higher floor on the rail, Right on the strip; Home and End go to the ground and the CMB. The position is announced only when the mode or the selection changes.
+- **The contract.** Each mode module exports `ladder()`, which returns plain km: `{ band, view, also, rest, sel: { km, comovingKm, z, label, how, words, note } }`. `view` and `also` are the gold bar's segments (Earth adds L1 when its space-weather strip is in use or Live; Dark matter adds the CMB); `rest` is where the chevron sits with nothing selected. Modes dispatch a `ladder` event, at most four times a second, when either changes.
 
 ### The showcase: who is in front
 
@@ -144,7 +161,7 @@ Each nightly run also writes a snapshot of what the site computed (`scripts/buil
 
 - **Code:** MIT; see [LICENSE](LICENSE).
 - **Data files** in `site/data/` are derived from the sources above and stay under their licences; files derived from Gaia are CC BY-SA 3.0 IGO. See [site/data/LICENSE.md](site/data/LICENSE.md).
-- RR Lyrae distances use M_G = 0.63 (Muraveva et al. 2018). Cosmology is flat ΛCDM with H0 = 70 and Ωm = 0.3.
+- RR Lyrae distances use M_G = 0.63 (Muraveva et al. 2018). Cosmology is flat ΛCDM with H0 = 70 and Ωm = 0.3 (the ladder adds radiation, Ωr = 8.4 × 10⁻⁵, which matters only near the CMB).
 
 ## Run locally
 
@@ -195,10 +212,12 @@ Refetching changes the numbers. Data versions are pinned with a `?v=` query in `
 
 ## Architecture
 
-- **`site/index.html`** holds one shared shell: header, search, mode switch, theme and the panel components. `style.css` uses design tokens for night and day paper.
+- **`site/index.html`** holds one shared shell: header, search, the ladder, theme and the panel components. `style.css` uses design tokens for night and day paper.
 - **`site/js/`** contains the ES modules:
   - `kit.js`: tokens, the pencil drawing primitives, canvases, tooltips, panels, theme and URL helpers;
   - `main.js`: search, mode switching and start-up;
+  - `ladder.js`: the altitude ladder (rail, strip, peek and sheet), which is also the mode radiogroup;
+  - `cosmo.js`: the site's cosmology (lookback time, comoving distance and its inverse), re-exported by `kit.js` as `cosmo`;
   - `asteroids.js`: the asteroid mode;
   - `net.js`: the polite Fink client (retries, backoff, concurrency) and the IndexedDB wrapper;
   - `sync.js` and `starsync.js`: live updates for each mode, kept in separate IndexedDB databases;
