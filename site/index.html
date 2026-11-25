@@ -24,6 +24,7 @@
       <label class="sr" for="search">Search</label>
       <input id="search" type="search" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sugg" placeholder="Search" autocomplete="off" spellcheck="false">
       <button id="clear" class="icon-btn sm" type="button" aria-label="Clear search" title="Clear search" hidden><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <span class="slot search-slot" data-slot="search"></span>
     </div>
     <ul class="sugg" id="sugg" role="listbox" aria-label="Matching asteroids" hidden></ul>
   </div>
@@ -44,6 +45,7 @@
     </div>
   </nav>
   <div class="right">
+    <div class="slot hdr-slot" data-slot="header"></div>
     <button id="dataBtn" class="btn data-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="dataPanel" title="Data source and updates">
       <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6M5 12v6c0 1.4 3.1 2.6 7 2.6.6 0 1.2 0 1.7-.1M19 12v2.5M17.5 17.5l2 2 2-2M19.5 14.5v5"/></svg>
       <span class="long" id="dataLbl">Data</span>

@@ -1,4 +1,4 @@
-import { $, esc, ns, shell, setUrl, initTheme, applyTheme, panelControls, fullscreenPanel, exitFs } from './kit.js';
+import { $, esc, ns, shell, setUrl, initTheme, applyTheme, panelControls, fullscreenPanel, exitFs, modeReady } from './kit.js';
 import { activate as activateData } from './datapanel.js';
 import { initLadder, MODES as FLOORS } from './ladder.js';
 import './health.js';
@@ -53,6 +53,7 @@ sList.addEventListener('mousedown', (e) => e.preventDefault());
 sList.addEventListener('click', (e) => { const li = e.target.closest('[role=option]'); if (li) pick(sugg[+li.dataset.i]); });
 sClear.addEventListener('click', () => { sIn.value = ''; sClear.hidden = true; sIn.focus(); openSuggestions(); });
 shell.setSearch = (p, placeholder) => { provider = p; sIn.placeholder = placeholder; };
+shell.search = () => provider;
 
 initTheme();
 panelControls();
@@ -113,11 +114,13 @@ async function setMode(m, opts = {}) {
       setUrl({ mode: m, sel: null });
       mod.api.enter(opts.obj);
     }
+    modeReady(m);
   } catch (e) {
     if (sel) $(sel).textContent = `Could not load ${what}: ${e.message}`;
   }
 }
 shell.setMode = setMode;
+shell.mode = () => mode;
 if (params.get('theme')) applyTheme(params.get('theme'));
 const wanted = params.get('mode');
 const first = MODES.includes(wanted) ? wanted : params.has('sel') ? 'asteroids' : 'stars';

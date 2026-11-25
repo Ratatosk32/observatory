@@ -259,7 +259,35 @@ export function initTheme() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && fsPanel) exitFs(); });
 }
 
-export const shell = { setMode: null, setSearch: null };
+export const shell = { setMode: null, setSearch: null, mode: () => document.body.dataset.mode, search: () => ({ items: () => [], empty: '' }), scene: {} };
+
+const keyMap = new Map();
+const typingIn = (t) => t instanceof Element && !!t.closest('input, select, textarea, [contenteditable=""], [contenteditable="true"]');
+export function onKey(key, fn, { mod = false, typing = false } = {}) {
+  const id = (mod ? 'mod+' : '') + key.toLowerCase();
+  keyMap.set(id, { fn, typing });
+  return () => { if (keyMap.get(id)?.fn === fn) keyMap.delete(id); };
+}
+document.addEventListener('keydown', (e) => {
+  if (e.defaultPrevented || e.altKey || e.isComposing) return;
+  const mod = e.ctrlKey || e.metaKey;
+  const hit = keyMap.get((mod ? 'mod+' : '') + e.key.toLowerCase());
+  if (!hit || (typingIn(e.target) && !hit.typing && !mod)) return;
+  if (hit.fn(e) !== false) e.preventDefault();
+});
+export const slot = (name) => document.querySelector(`[data-slot="${name}"]`);
+const modeHooks = [];
+export const onModeReady = (fn) => { modeHooks.push(fn); };
+export const modeReady = (m) => modeHooks.forEach((f) => f(m));
+export function onBrand(fn, label) {
+  const h = document.querySelector('.brand h1');
+  if (!h) return;
+  h.setAttribute('role', 'button'); h.tabIndex = 0; h.classList.add('brand-act');
+  if (label) h.title = label;
+  h.addEventListener('click', fn);
+  h.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(e); } });
+}
+Object.assign(shell, { onKey, slot, onModeReady, onBrand });
 
 
 export { cosmo } from './cosmo.js';

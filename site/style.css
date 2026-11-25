@@ -951,3 +951,7 @@ h1 .arw { color: var(--gold); }
 @media (max-width: 379.98px) {
   .lad-group { gap: 2px; }
 }
+.slot { display: contents; }
+.brand-act { cursor: pointer; border-radius: 6px; }
+.brand-act:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.brand-act:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
