@@ -113,37 +113,38 @@ function vertical(svg, g) {
 }
 
 function horizontal(svg, g) {
-  const { W } = g, x0 = 6, x1 = W - 6, ty = 16.5;
+  const { W } = g, H = 16, ty = 8, x0 = 2, x1 = W - 2;
   const x = (u) => x0 + (u / U.max) * (x1 - x0);
-  const xf = x(U.fork);
-  let s = '';
-  for (const k in MODES) { const m = MODES[k], a = x(m.band[0]), b = x(m.band[1]); s += `<rect class="cap" data-mode="${k}" x="${a - 2}" y="${ty - 4}" width="${b - a + 4}" height="8" rx="4"/>`; }
-  s += `<path class="ax" d="M${x0} ${ty}H${x(U.cmbLt)}"/><path class="axc" d="M${xf} ${ty}L${xf + 7} ${ty + 6}H${x(U.cmbCm)}"/>`;
-  for (const [u] of DECADES) s += `<path class="dt" d="M${x(u)} ${ty - 3}v3"/>`;
-  FLOORS.forEach((f, i) => {
-    const a = x(f.a), b = Math.max(x(f.b), a + 2);
-    const d = `M${a} ${ty - 5}H${b}`;
-    s += `<path class="fl" d="${d}"/><path class="fl lit" data-i="${i}" d="${d}"/>`;
-  });
-  s += `<path class="h7 thin" d="M${x(U.hidden)} ${ty - 5}h1"/>`;
-  s += `<rect class="vb" y="${ty - 1.5}" height="3" x="0" width="0"/><rect class="vb" y="${ty - 1.5}" height="3" x="0" width="0"/>`;
-  s += `<path class="hair" d=""/><circle class="ring" cy="${ty + 6}" cx="0" r="2.5"/>`;
-  const chev = `<path class="cv" d="M-4.5 ${ty + 8}H4.5L0 ${ty + 1.5}Z"/>`;
-  s += `<g class="chev ghost">${chev}</g><g class="chev main">${chev}</g><text class="val" y="9" x="0"></text>`;
-  svg.setAttribute('viewBox', `0 0 ${W} 25`);
-  svg.setAttribute('width', W); svg.setAttribute('height', 25);
+  const xf = x(U.fork), yc = ty + 3.5;
+  const fade = `<linearGradient id="ladFade" gradientUnits="userSpaceOnUse" x1="${x0}" x2="${x1}" y1="0" y2="0"><stop offset="0" stop-color="currentColor" stop-opacity="0"/><stop offset="0.05" stop-color="currentColor"/><stop offset="0.975" stop-color="currentColor"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient>`;
+  const knock = `<mask id="ladKnock" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#fff"/><rect class="knock" x="0" y="0" width="0" height="${H}" fill="#000"/></mask>`;
+  let s = `<defs>${fade}${knock}</defs><g mask="url(#ladKnock)">`;
+  s += `<path class="hl" d="M${x0} ${ty}H${x(U.cmbLt)}"/><path class="hl hlc" d="M${xf} ${ty}Q${xf + 5} ${ty} ${xf + 8} ${yc}H${x(U.cmbCm)}"/>`;
+  s += `<rect class="vb" y="${ty - 0.75}" height="1.5" x="0" width="0"/><rect class="vb" y="${ty - 0.75}" height="1.5" x="0" width="0"/>`;
+  s += `<path class="h7" d="M${x(U.hidden)} ${ty - 3}v2"/></g>`;
+  s += `<path class="hair" d=""/><circle class="ring" cy="${yc}" cx="0" r="2"/>`;
+  const dot = `<circle class="halo" cx="0" cy="${ty}" r="6"/><circle class="cv" cx="0" cy="${ty}" r="2.6"/>`;
+  s += `<g class="chev ghost">${dot}</g><g class="chev main">${dot}</g><text class="val" y="${ty + 3.8}" x="0"><tspan class="vv"></tspan><tspan class="vm"></tspan></text>`;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', W); svg.setAttribute('height', H);
   svg.innerHTML = s;
-  const val = svg.querySelector('.val');
+  const val = svg.querySelector('.val'), vv = val.querySelector('.vv'), vm = val.querySelector('.vm'), hole = svg.querySelector('.knock');
+  let key = '', tw = 0;
   return finish(svg, {
     y: x, val,
     place: (el, p) => el.setAttribute('transform', `translate(${p} 0)`),
-    bar: (el, a, b) => { const xa = x(a), xb = x(b), w = Math.max(3, xb - xa); el.setAttribute('x', (xa + xb) / 2 - w / 2); el.setAttribute('width', w); },
+    bar: (el, a, b) => { const xa = x(a), xb = x(b), w = Math.max(2, xb - xa); el.setAttribute('x', (xa + xb) / 2 - w / 2); el.setAttribute('width', w); },
     ring: (el, hair, u, cu) => { el.setAttribute('cx', x(cu)); hair.setAttribute('d', ''); },
-    label: (u, text) => {
-      const p = x(u), anchor = p < x0 + 34 ? 'start' : p > x1 - 34 ? 'end' : 'middle';
-      val.setAttribute('x', anchor === 'start' ? x0 : anchor === 'end' ? x1 : p);
-      val.setAttribute('text-anchor', anchor);
-      if (val.textContent !== text) val.textContent = text;
+    label: (u, text, sub = '') => {
+      const p = Math.round(x(u) * 2) / 2, tail = sub ? ` · ${sub}` : '', k = `${p}|${text}|${tail}`;
+      if (k === key) return;
+      key = k;
+      if (vv.textContent !== text || vm.textContent !== tail) { vv.textContent = text; vm.textContent = tail; tw = text ? val.getComputedTextLength() : 0; }
+      const right = p + 11 + tw <= x1 || p - 11 - tw < x0, lx = right ? p + 11 : p - 11;
+      val.setAttribute('x', lx);
+      val.setAttribute('text-anchor', right ? 'start' : 'end');
+      const a = Math.min(p - 9, right ? lx : lx - tw) - 4, b = Math.max(p + 9, right ? lx + tw : lx) + 4;
+      hole.setAttribute('x', a); hole.setAttribute('width', b - a);
     },
   });
 }
@@ -306,7 +307,7 @@ export function initLadder({ onPick }) {
     const [v, m] = readoutText(S.info);
     if (readV.textContent !== v) readV.textContent = v;
     if (readM.textContent !== m) readM.textContent = m;
-    if (rail && rail.label) rail.label(S.u, v);
+    if (rail && rail.label) rail.label(S.u, v, m);
   }
 
   function paintMarker() {
@@ -363,7 +364,6 @@ export function initLadder({ onPick }) {
         FLOORS.forEach((f, i) => { if (u >= Math.min(f.a, f.b) - 0.15 && u <= Math.max(f.a, f.b) + 0.15) litAt[i] = t; });
         const [v, unit] = fmtParts(u);
         readV.textContent = v; readM.textContent = unit;
-        if (rail && rail.label) rail.label(u, `${v} ${unit}`);
         if (ns.ladderFrame) ns.ladderFrame(u, t);
       }
       if (p >= 1) {
@@ -373,8 +373,8 @@ export function initLadder({ onPick }) {
     } else if (!a && S.target != null && S.u != null) {
       const d = S.target - S.u;
       if (Math.abs(d) < 0.01) { S.u = S.target; S.target = null; } else { S.u += d * (1 - Math.exp(-dt / 250)); moving = true; }
-      if (rail && rail.label && S.info) rail.label(S.u, readV.textContent);
     }
+    if (rail && rail.label && S.info && S.u != null) { const c = S.anim && S.anim.climb; rail.label(S.u, c ? '' : readV.textContent, c ? '' : readM.textContent); }
     for (let k = 0; k < 2; k++) {
       const tg = S.segT[k], cur = S.segs[k];
       if (!tg) { S.segs[k] = null; continue; }
@@ -392,7 +392,7 @@ export function initLadder({ onPick }) {
         v.vbKey[k] = key; el.classList.toggle('on', !!s); if (s) v.bar(el, s[0], s[1]);
       });
       if (S.cm != null && S.u != null) v.ring(v.ringEl, v.hair, S.u, S.cm);
-      for (let i = 0; i < FLOORS.length; i++) {
+      for (let i = 0; i < v.lit.length; i++) {
         const op = reduceMotion ? 0 : clamp(1 - (t - litAt[i]) / 300, 0, 1);
         if (op > 0 && (t - litAt[i]) > 0) moving = true;
         if (Math.abs(op - v.litOp[i]) > 0.01) { v.litOp[i] = op; v.lit[i].style.opacity = op; }
