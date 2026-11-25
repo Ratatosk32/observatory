@@ -1,5 +1,6 @@
 import * as K from './kit.js';
 import { sceneHtml, wireScene, verdictHtml } from './scene.js';
+import { dockHtml, makeDock, fmtSpeed } from './dock.js';
 import { register as registerData, fmtBytes } from './datapanel.js';
 import { openStore, post, pool, storageUsage } from './net.js';
 import * as SC from './showcase.js';
@@ -363,7 +364,7 @@ function drawOverlay() {
   if (glFail) text(g, glFail, 16, 18, { size: 12, color: C().ink2, halo: true });
 }
 
-let raf = 0, lastTs = 0;
+let raf = 0, lastTs = 0, dock = null;
 function frame(ts) {
   raf = 0;
   if (!entered) return;
@@ -392,17 +393,35 @@ function frame(ts) {
 }
 function loop() { if (!raf && entered) { lastTs = 0; raf = requestAnimationFrame(frame); } }
 
-function syncTime() {
-  const sl = $('#dSlider'); if (sl) sl.value = ((st.t - T0) / (T1 - T0) * 1000).toFixed(2);
-  const dd = $('#dDate'); if (dd) dd.textContent = fmtD(st.t);
-}
+function syncTime() { if (dock) dock.update(); }
 function setPlay(p) {
   st.playing = p;
   if (!p) { wrapAt = 0; wrapAlpha = 1; }
-  const b = $('#dPlay');
-  b.querySelector('span').textContent = p ? 'Pause' : 'Play';
-  b.querySelector('path.pl').setAttribute('d', p ? 'M8 5.5v13M16 5.5v13' : 'M8 5.5v13l10.5-6.5z');
-  b.setAttribute('aria-label', p ? 'Pause' : 'Play'); b.classList.toggle('on', p);
+  if (dock) dock.sync();
+}
+function setT(t) { wrapAt = 0; wrapAlpha = 1; st.t = clamp(t, T0, T1); if (dock) dock.update(true); }
+let nightsKey = -1, nightsV = [];
+function alertNights() {
+  if (nightsKey === NA) return nightsV;
+  const m = new Map();
+  for (let k = 0; k < NA; k++) { const d = Math.floor(aT[k]); m.set(d, (m.get(d) || 0) + 1); }
+  nightsKey = NA; nightsV = [...m].sort((a, b) => a[0] - b[0]);
+  return nightsV;
+}
+function alertGaps() {
+  const n = alertNights(), out = [];
+  for (let k = 1; k < n.length; k++) if (n[k][0] - n[k - 1][0] > 10) out.push([n[k - 1][0] + 1, n[k][0]]);
+  return out;
+}
+function makeTimeDock() {
+  dock = makeDock('dm', {
+    t0: () => T0, t1: () => T1, get: () => st.t, set: setT,
+    playing: () => st.playing, play: setPlay,
+    speeds: [1, 2, 5, 15], speed: () => st.speed, setSpeed: (v) => { st.speed = v; }, speedText: fmtSpeed('day', 'days'),
+    unit: 1, big: 7, snap: (t) => Math.floor(t) + 0.5, fmt: fmtD,
+    tip: (t) => { const d = Math.floor(t), n = alertNights().find((x) => x[0] === d); return t >= T0 && t <= T1 ? `<b>${fmtD(d)}</b><br>${n ? `${fmtN(n[1])} SN-like alert${n[1] === 1 ? '' : 's'}` : 'no SN-like alerts this night'}` : ''; },
+    paint: { domain: () => [T0, T1], bars: alertNights, scale: 'sqrt', gaps: alertGaps, ticks: 'month', barColor: () => K.C.gold, key: () => `${NA}|${T0}|${T1}` },
+  });
 }
 
 function nearestCluster(x, y, r) {
@@ -536,13 +555,7 @@ function buildDom() {
     canvas: '<div class="e-stage dm-stage"><canvas id="dmGl" aria-label="CMB sky with a lensing magnifier. Drag to move the lens."></canvas><canvas id="dmOv" aria-hidden="true"></canvas></div>',
     overlay: `<div class="lensbar" id="lensbar" role="group" aria-label="Lens controls"><label class="lbl" for="dAmp">Amplify bending</label><input type="range" id="dAmp" min="0" max="1000" step="1" value="0"><output id="dAmpV" class="sval">×1</output><button class="btn" type="button" id="dShadow" aria-pressed="false">Show the shadow</button><span class="scnt" id="dAmpNote" aria-live="polite"></span></div>${verdictHtml(verdict())}`,
     views: { nav: 'dPresets', label: 'Guided views of the lensing sky', first: 'True bending' },
-    dock: `<button id="dPlay" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
-        <output id="dDate" class="date"></output>
-        <div class="slider-wrap">
-          <input id="dSlider" type="range" min="0" max="1000" step="0.01" aria-label="Date">
-          <div class="slider-scale" aria-hidden="true"><span>${MON[dateOf(T0).getUTCMonth()]} ${dateOf(T0).getUTCFullYear()}</span><span class="win">SN-like alerts</span><span>${MON[dateOf(T1 - 1).getUTCMonth()]} ${dateOf(T1 - 1).getUTCFullYear()}</span></div>
-        </div>
-        <label class="speed"><span>Speed</span><select id="dSpeed" aria-label="Days per second"><option value="1">1 day/s</option><option value="2" selected>2 days/s</option><option value="5">5 days/s</option><option value="15">15 days/s</option></select></label>`,
+    dock: dockHtml({ play: 'dPlay', date: 'dDate', track: 'dTrack', speed: 'dSpeed', label: 'Time track: Rubin’s SN-like alerts per night. Left and right arrows step a night, Shift a week.' }),
     info: {
       cap: 'The cosmic microwave background from Planck, in Galactic coordinates. The gold lens magnifies the sky 3× and bends it, and a gold grid, by the lensing deflection Planck measured, amplified by the lens control; the projected mass glows faintly underneath. Gold sparks: Rubin’s supernova-like alerts, night by night. Rings: ACT galaxy clusters.',
       about: `<p>Temperature: Planck SMICA, smoothed to 12′, shown as a muted warm–cool weave rather than the usual rainbow; the dimmer band is where Planck trusts the map less. Bending: the lensing potential from Planck PR4 (ℓ ≤ 400), turned into a deflection field. The true deflection is about ${M.deflectionRmsArcmin.toFixed(1)}′ rms in this reconstruction, smaller than one pixel here, so at ×1 the lens shows nothing: the bending is real but invisible. “Show the shadow” fades into the convergence κ, the projected mass itself, smoothed to 1.5°. Clusters: ${CL.catalogue}, ${fmtN(NC)} clusters as a faint lace, the ${nFront()} heaviest and busiest in front (doubled when unusually many SN-like alerts sit inside), rings drawn far larger than life so they can be seen. Alerts: ${fmtN(NA)} Fink “most likely SN” objects, at the time each was first seen. Cluster meter: “most likely SN” objects that do not look like stars (Legacy Survey p_star ≤ 0.5) at |b| > 20°, counted inside R500 against a 3–6 R500 ring, over clusters with any object within 6 R500; the error is a 2,000-draw bootstrap over those clusters.</p>`,
@@ -625,20 +638,13 @@ function wire() {
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
   cv.addEventListener('pointerleave', () => { st.hover = -1; K.hideTip(); });
   cv.addEventListener('dblclick', () => { st.pinned = !st.pinned; });
-  $('#dPlay').addEventListener('click', () => setPlay(!st.playing));
-  $('#dSpeed').addEventListener('change', (e) => { st.speed = +e.target.value; });
-  $('#dSlider').addEventListener('input', (e) => { wrapAt = 0; wrapAlpha = 1; st.t = T0 + +e.target.value / 1000 * (T1 - T0); syncTime(); });
+  makeTimeDock();
   const amp = $('#dAmp'), ampV = $('#dAmpV');
   const setAmp = () => { const x = +amp.value; st.amp = Math.round(Math.pow(300, x / 1000)); ampV.textContent = `×${st.amp}`; $('#dAmpNote').textContent = st.amp === 1 ? `At ×1 the bending is real but about ${M.deflectionRmsArcmin.toFixed(1)}′, too small to see.` : `Bending breathes up to ×${st.amp}: ${(M.deflectionRmsArcmin * st.amp / 60).toFixed(1)}° typical shift. The gold grid bends with it.`; st.glDirty = true; };
   amp.addEventListener('input', setAmp); setAmp();
   $('#dShadow').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); e.currentTarget.classList.toggle('on', on); st.shadowTarget = on ? 1 : 0; if (reduceMotion) { st.shadow = st.shadowTarget; st.glDirty = true; } });
   new ResizeObserver(() => { if (entered) sizeSky(); }).observe(cv);
   K.onTheme(() => { if (!built) return; buildRings(); emberCv = null; legend(); st.glDirty = true; meterS && meterS.draw(meterS); ctestS && ctestS.draw(ctestS); });
-  document.addEventListener('keydown', (e) => {
-    if (!entered || document.body.dataset.mode !== 'dm') return;
-    const tg = e.target instanceof Element ? e.target : document.body;
-    if (e.key === ' ' && !tg.closest('input, select, button, textarea')) { e.preventDefault(); setPlay(!st.playing); }
-  });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loop(); });
 }
 
@@ -686,7 +692,7 @@ async function enter(objId) {
   if (!reduceMotion && params.has('play')) { st.t = T0; emberN = 0; emberCv = null; setPlay(true); } else syncTime();
   loop();
 }
-function leave() { entered = false; if ($('#dPlay')) setPlay(false); K.hideTip(); }
+function leave() { entered = false; if (dock) setPlay(false); K.hideTip(); }
 
 const idb = openStore('observatory-dm', ['points', 'meta']);
 let lastInfo = null;

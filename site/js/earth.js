@@ -1,5 +1,6 @@
 import * as K from './kit.js';
 import { sceneHtml, wireScene } from './scene.js';
+import { dockHtml, makeDock } from './dock.js';
 import * as SC from './showcase.js';
 import * as SKY from './skycalc.js';
 import * as EG from './earthgl.js';
@@ -760,6 +761,7 @@ function frame(ts) {
   drawOverlay(performance.now());
   const cost = performance.now() - c0;
   K.pushPerf(K.perf.draw, cost);
+  if (dock && (st.playing || st.live)) dock.update();
   if (ts - (frame.lastUi || 0) > 120) { frame.lastUi = ts; syncTime(); }
   while (drawnLog.length && drawnLog[0] < performance.now() - 1000) drawnLog.shift();
   stats.drawnPerSec = drawnLog.length;
@@ -780,12 +782,9 @@ export function ladder() {
   return { band: [5, 1.6e6], view: auroraOnly ? [100, 300] : [8, 300], also: l1 ? [1.4e6, 1.6e6] : null, rest: 110, sel };
 }
 
-let lastHourUi = -1;
+let lastHourUi = -1, dock = null;
 function syncTime() {
-  const sl = $('#eSlider');
-  if (sl && !st.live) sl.value = ((st.t - T0) / (T1 - T0) * 1000).toFixed(2);
-  $('#eDate').textContent = st.live ? `Live · ${fmtUtc(nowS(), true)}` : fmtUtc(st.t, true);
-  $('#eLive').classList.toggle('on', st.live); $('#eLive').setAttribute('aria-pressed', String(st.live));
+  if (dock) dock.update();
   pillText();
   if (stripS) drawStrip(stripS);
   const h = st.live ? -2 : hourOf(st.t);
@@ -795,11 +794,41 @@ function setPlay(p) {
   if (p && st.live) setLive(false);
   st.playing = p;
   if (!p) { wrapAt = 0; wrapAlpha = 1; glDirty = true; }
-  const b = $('#ePlay');
-  b.querySelector('span').textContent = p ? 'Pause' : 'Play';
-  b.querySelector('path.pl').setAttribute('d', p ? 'M8 5.5v13M16 5.5v13' : 'M8 5.5v13l10.5-6.5z');
-  b.setAttribute('aria-label', p ? 'Pause' : 'Play'); b.classList.toggle('on', p);
+  if (dock) dock.sync();
   if (p) { drawnLog = []; loop(); } else syncTime();
+}
+const flashBins = () => {
+  const n = HOURS * 4, out = [];
+  for (let i = 0; i < n; i++) { let v = 0; for (const r of REGIONS) v += (r.q15 && r.q15[i]) || 0; out.push([T0 + i * 900, v]); }
+  return out;
+};
+let binsV = null;
+function makeTimeDock() {
+  const tEnd = () => Math.max(Math.ceil(nowS() / 60) * 60, T1 + 1800);
+  const bzAt = (t) => { const v = valueAt(allSeries().bz, t, 900); return v == null ? '' : `<br>Bz ${v < 0 ? '−' : '+'}${Math.abs(v).toFixed(1)} nT${v < 0 ? ', south' : ''}`; };
+  dock = makeDock('earth', {
+    t0: () => T0, t1: () => T1, end: () => T1, get: () => (st.live ? nowS() : st.t), set: setT,
+    playing: () => st.playing, play: setPlay,
+    speeds: SPEEDS.map((x) => x[0]), speed: () => st.speed, setSpeed: (v) => { st.speed = v; },
+    speedText: (v) => { const k = SPEEDS.find((x) => x[0] === v); return k ? k[1] : v >= 3600 ? `${+(v / 3600).toFixed(1)} h/s` : `${Math.round(v / 60)} min/s`; },
+    step: (dir, big) => setT((st.live ? T1 : st.t) + dir * (big ? 3600 : 600)),
+    scrub: (t) => { if (t > T1 + 600) setLive(true); else setT(t); },
+    live: { on: () => st.live, set: setLive },
+    fmt: (t) => (st.live ? `Live · ${fmtUtc(nowS(), true)}` : fmtUtc(t, true)),
+    valueText: (t) => (st.live ? `Live, ${fmtUtc(nowS())}` : `${fmtUtc(t)}${t >= T1 ? ', end of the nightly lightning' : ''}`),
+    tip: (t) => {
+      if (t < T0) return '';
+      if (t > T1) return `<b>${fmtUtc(Math.min(t, nowS()), true)}</b><br>No lightning yet: it arrives with tonight’s update${bzAt(t)}`;
+      const i = Math.floor((t - T0) / 900), b = (binsV || [])[i];
+      return `<b>${fmtUtc(t, true)}</b><br>${b ? `${fmtN(b[1])} flashes in 15 minutes` : 'no flashes'}${bzAt(t)}`;
+    },
+    paint: {
+      domain: () => [T0, tEnd()], solid: () => [T0, T1], outAfter: 'after the nightly update',
+      bars: () => (binsV = binsV || flashBins()), bin: 900, scale: 'sqrt', barColor: () => tokens.ember || K.C.ink3, cursorColor: () => K.C.gold, ticks: 'hour',
+      lane: () => ({ pts: allSeries().bz, gap: 900, step: 300, label: 'Bz', lim: (pts) => (pts.some((p) => Math.abs(p[1]) > 10) ? 30 : 10) }),
+      key: () => `${Math.floor(nowS() / 60)}|${allSeries() && seriesCache.key}|${tokens.ember}`,
+    },
+  });
 }
 function setT(t) {
   if (st.live) setLive(false);
@@ -916,18 +945,7 @@ function wire() {
   $('#eZoomOut').addEventListener('click', () => zoomAt(box.cx, box.cy, 1 / 1.5));
   $('#eZoomReset').addEventListener('click', resetView);
   $('#eClouds').addEventListener('click', () => setClouds(!clouds.on));
-  $('#ePlay').addEventListener('click', () => setPlay(!st.playing));
-  $('#eSpeed').addEventListener('change', (e) => { st.speed = +e.target.value; });
-  $('#eSlider').addEventListener('input', (e) => setT(T0 + +e.target.value / 1000 * (T1 - T0)));
-  $('#eLive').addEventListener('click', () => setLive(!st.live));
-  document.addEventListener('keydown', (e) => {
-    if (!entered || document.body.dataset.mode !== 'earth') return;
-    const tg = e.target instanceof Element ? e.target : document.body;
-    if (tg.closest('input, select, textarea') || tg.id === 'earthGl') return;
-    if (e.key === ' ' && !tg.closest('button')) { e.preventDefault(); setPlay(!st.playing); }
-    else if (e.key === 'l' || e.key === 'L') setLive(!st.live);
-    else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !tg.closest('button, [role=radio]')) { e.preventDefault(); setT((st.live ? T1 : st.t) + (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 3600 : 600)); }
-  });
+  makeTimeDock();
   document.addEventListener('visibilitychange', () => {
     if (!entered) return;
     if (document.hidden && st.playing) { st.wasPlaying = true; setPlay(false); }
@@ -1394,7 +1412,7 @@ function presetList() {
   if (CELLS.length) list.push({ id: 'night', label: 'A storm’s night', emph: { others: 0.4, focus: 0 }, run: () => {
     const c = CELLS[0];
     st.sel = { type: 'storm', i: 0 };
-    flyTo(c.lat, c.lon, 4, () => { setT(T0 + c.h0 * 3600); st.speed = 300; $('#eSpeed').value = '300'; st.stopAt = T0 + (c.h1 + 1) * 3600; setPlay(true); });
+    flyTo(c.lat, c.lon, 4, () => { setT(T0 + c.h0 * 3600); st.speed = 300; st.stopAt = T0 + (c.h1 + 1) * 3600; setPlay(true); });
   } });
   const fl = flaresM()[0];
   if (fl) list.push({ id: 'flare', label: 'When the Sun flared', emph: { dayTint: 0.1 }, run: () => { const [sd, sl] = sunLL(fl[0]); setT(fl[0]); flyTo(sd, sl, 1); } });
@@ -1444,12 +1462,12 @@ function onUpdate(id, ok) {
   scalesRow();
   if (!st.sel || st.sel.type === 'aurora') renderCard();
   if (stripS) drawStrip(stripS);
+  if (dock) dock.update(true);
   refreshData();
   loop();
 }
 
 function buildDom() {
-  const fr = (T1 - T0) / (Math.max(nowS(), T1 + 1800) - T0);
   const root = $('#earthRoot');
   root.innerHTML = sceneHtml('earth', {
     qid: 'h-emap', stageCls: 'e-map', mainCls: 'emain', wrapCls: 'e-wrap', pillId: 'eTools',
@@ -1459,13 +1477,7 @@ function buildDom() {
     overlay: '<p class="note ecloud" id="eCloudNote" aria-live="polite" hidden></p>',
     views: { nav: 'ePresets', label: 'Guided views of the Earth', first: 'Everything' },
     dockCls: 'etime',
-    dock: `<button id="ePlay" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
-        <output id="eDate" class="date"></output>
-        <div class="slider-wrap etrack" style="--fr:${(fr * 100).toFixed(1)}%">
-          <div class="erail"><input id="eSlider" type="range" min="0" max="1000" step="0.01" aria-label="Time in the 24 hours of nightly lightning"><span class="ehatch" aria-hidden="true"></span><button id="eLive" class="elive" type="button" aria-pressed="false" aria-label="Live: now" title="Live: now (L)"></button></div>
-          <div class="escale" aria-hidden="true"><span>${fmtDayHour(T0)}</span><span class="t1">nightly lightning ends ${hhmm(T1)}</span><span class="lv">Live</span></div>
-        </div>
-        <label class="speed"><span>Speed</span><select id="eSpeed" aria-label="Playback speed">${SPEEDS.map(([v, l]) => `<option value="${v}"${v === 900 ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`,
+    dock: dockHtml({ play: 'ePlay', date: 'eDate', track: 'eTrack', speed: 'eSpeed', live: 'eLive', label: 'Time track: lightning flashes in the 24 hours of nightly data, hatched after the nightly update, with the solar wind’s Bz below. Left and right arrows step 10 minutes, Shift an hour; L goes live.' }),
     info: {
       cap: `The Earth at night from NASA’s Black Marble, the aurora the OVATION model expects, and the lightning the ${LI_ON ? 'GOES and Meteosat' : 'GOES'} satellites saw. Gold line: dusk and dawn.${LI_ON ? ' Contains modified EUMETSAT Meteosat data 2026.' : ''}`,
       about: '<p>City lights are NASA’s Black Marble 2016 composite, not tonight’s lights. The aurora is OVATION Prime, a model: a 30–90 minute forecast from the solar wind measured at L1, not an observation. One model run is kept each night; for other hours it is turned with the Sun. Live shows the newest run. The aurora is drawn on two shells about 1.7% and 3.4% above the surface (110 and 220 km), true to scale, so it pokes past the limb. GLM (and, over Europe and Africa, MTG’s Lightning Imager) sees total lightning, cloud-to-ground and in-cloud, from geostationary orbit, and detects fewer flashes by day; where two satellites overlap, each flash is kept from the one whose point below is nearer. Hatched: nobody shares open lightning data there yet. GLM flash areas are optical footprints, not channel lengths. City lights and aurora are styled into the site’s palette. Geomagnetic poles: the 2025 IGRF dipole. Tags: <span class="prov live"></span> live, <span class="prov nightly"></span> nightly copy, <span class="prov model">◆</span> model.</p>',

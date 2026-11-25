@@ -7,6 +7,7 @@ import { createSync } from './sync.js';
 import { register as registerData, refresh as refreshData, fmtBytes } from './datapanel.js';
 import * as SC from './showcase.js';
 import { sceneHtml, wireScene, openInstrument } from './scene.js';
+import { dockHtml, makeDock, fmtSpeed } from './dock.js';
 
 function buildDom() {
   const root = $('#astRoot');
@@ -26,21 +27,7 @@ function buildDom() {
   <p class="note">D = 1329 km / √p × 10<sup>−H/5</sup>, from the absolute magnitude H measured here. Albedo p = 0.15, except 0.40 for Hungarias and 0.06 for Cybeles, Hildas and Trojans. Real sizes can differ by about 2×.</p>
 </div>`]],
     },
-    dock: `<button id="play" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
-      <output id="date" class="date"></output>
-      <div class="slider-wrap">
-        <input id="slider" type="range" min="0" max="1000" step="0.01" aria-label="Date">
-        <div class="slider-scale" aria-hidden="true"><span>Jan 2026</span><span class="win">dates with detections</span><span>Dec 2027</span></div>
-      </div>
-      <label class="speed"><span>Speed</span>
-        <select id="speed" aria-label="Days per second">
-          <option value="1">1 day/s</option>
-          <option value="5">5 days/s</option>
-          <option value="15" selected>15 days/s</option>
-          <option value="60">60 days/s</option>
-          <option value="200">200 days/s</option>
-        </select>
-      </label>`,
+    dock: dockHtml({ play: 'play', date: 'date', track: 'aTrack', speed: 'speed', label: 'Time track: Rubin alerts per night, hatched outside the data window where positions are extrapolated. Left and right arrows step a day, Shift a week.' }),
     info: {
       cap: 'The Solar System from above, to scale. Bright: the most unusual asteroids; the soft haze is everyone else. Glowing: detected by Rubin within two days; the gold fan from Earth is where it looked.',
       about: '<p>Each asteroid moves on its own orbit; the fan from Earth is brighter where Rubin looked more often. The ring is the ecliptic, marked in heliocentric longitude from the vernal equinox. <span id="timenote"></span></p>',
@@ -779,16 +766,36 @@ function drawMap(s) {
 }
 
 
-const slider = $('#slider');
-const tToS = (t) => (t - T0) / (T1 - T0) * 1000;
-const sToT = (v) => T0 + v / 1000 * (T1 - T0);
 function syncTime() {
-  slider.value = tToS(state.t);
-  $('#date').textContent = fmtDate(state.t);
+  dock.update(true);
   cadS.draw(cadS);
 }
-slider.addEventListener('input', () => { endWrap(); state.t = sToT(+slider.value); $('#date').textContent = fmtDate(state.t); mapS.draw(mapS); cadS.draw(cadS); });
-$('#speed').addEventListener('change', (e) => { state.speed = +e.target.value; });
+function setTime(t) { endWrap(); state.t = clamp(t, T0, T1); syncTime(); mapS.draw(mapS); }
+function cadenceGaps() {
+  const ts = R.nights.map((n) => nightMjd(n[0])).sort((a, b) => a - b), out = [];
+  for (let k = 1; k < ts.length; k++) if (ts[k] - ts[k - 1] > 20) out.push([ts[k - 1] + 1, ts[k]]);
+  return out;
+}
+const dock = makeDock('asteroids', {
+  t0: () => T0, t1: () => T1, end: () => Math.floor(META.tmax) + 0.5, get: () => state.t, set: setTime,
+  playing: () => state.playing, play: (p) => setPlaying(p),
+  speeds: [1, 5, 15, 60, 200], speed: () => state.speed, setSpeed: (v) => { state.speed = v; }, speedText: fmtSpeed('day', 'days'),
+  unit: 1, big: 7, snap: (t) => Math.floor(t) + 0.5, fmt: fmtDate,
+  valueText: (t) => `${fmtDate(t)}${t < META.tmin - 1 || t > META.tmax + 1 ? ', outside the data window: positions are extrapolated' : ''}`,
+  tip: (t) => {
+    if (t < T0 || t > T1) return '';
+    const day = Math.floor(t), n = R.nights.find((x) => Math.floor(nightMjd(x[0])) === day), dn = nightDet.get(day) || 0;
+    const out = t < META.tmin - 1 || t > META.tmax + 1;
+    return `<b>${fmtDate(day)}</b><br>${n ? `${fmtN(n[1])} Rubin alerts, ${fmtN(n[2])} matched to known Solar System objects` : out ? 'outside the data window: positions are extrapolated' : 'no Fink statistics for this night'}${dn ? `<br>${dn} detections in this sample` : ''}`;
+  },
+  paint: {
+    domain: () => [T0, T1], solid: () => [META.tmin, META.tmax + 1], outBefore: 'extrapolated', outAfter: 'extrapolated',
+    bars: () => R.nights.map(([n, a]) => [nightMjd(n), a]), scale: 'log',
+    marks: () => [...(nightDetF || nightDet)].map(([t, v]) => [t, v]), gaps: cadenceGaps, ticks: 'month',
+    sel: () => (state.sel ? state.sel.det.map((d) => Math.floor(d[0] + MJD_OFF)) : null),
+    key: () => `${R.nights.length}|${META.tmin}|${META.tmax}|${nightDet.size}|${nVis}|${state.preset}|${state.dLo}|${state.dHi}`,
+  },
+});
 
 let lastTs = 0, raf = 0;
 function frame(ts) {
@@ -808,8 +815,7 @@ function frame(ts) {
     if (state.t > T1) { state.t = T1; wrapAt = ts; }
   }
   drawMap(mapS);
-  slider.value = tToS(state.t);
-  $('#date').textContent = fmtDate(state.t);
+  dock.update();
   if (++frameCount % 15 === 0) cadS.draw(cadS);
   raf = requestAnimationFrame(frame);
 }
@@ -817,15 +823,10 @@ let frameCount = 0;
 function setPlaying(p) {
   state.playing = p;
   if (!p) endWrap();
-  const pl = $('#play');
-  pl.querySelector('span').textContent = p ? 'Pause' : 'Play';
-  pl.querySelector('path.pl').setAttribute('d', p ? 'M8 5.5v13M16 5.5v13' : 'M8 5.5v13l10.5-6.5z');
-  pl.setAttribute('aria-label', p ? 'Pause' : 'Play');
-  pl.classList.toggle('on', p);
   lastTs = 0;
   if (p && !raf) raf = requestAnimationFrame(frame);
+  dock.sync();
 }
-$('#play').addEventListener('click', () => setPlaying(!state.playing));
 let wasPlaying = false;
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { wasPlaying = state.playing; setPlaying(false); } else if (wasPlaying) setPlaying(true);
@@ -1337,6 +1338,7 @@ function select(o, opts = {}) {
 function redrawAll() {
   staticKey = '';
   mapS.draw(mapS); elS.draw(elS); colS.draw(colS); cadS.draw(cadS);
+  dock.update(true);
   cardPlots.forEach((p) => p.draw(p));
 }
 
@@ -1344,11 +1346,11 @@ const PRESETS = [
   { id: 'all', label: 'Whole sample', run: () => { state.pfilter = null; select(null); setZoom(3.9); } },
   { id: 'cz10', label: 'Follow 2026 CZ10', run: () => {
     state.pfilter = null; const o = byName.get(norm('2026 CZ10'));
-    select(o, { zoom: true }); state.t = Math.floor(Math.min(...o.det.map((d) => d[0] + MJD_OFF))) - 10; state.speed = 5; $('#speed').value = '5'; syncTime(); if (!reduceMotion) setPlaying(true);
+    select(o, { zoom: true }); state.t = Math.floor(Math.min(...o.det.map((d) => d[0] + MJD_OFF))) - 10; state.speed = 5; syncTime(); if (!reduceMotion) setPlaying(true);
   } },
   { id: 'hj4', label: '2020 HJ4 close pass', run: () => {
     state.pfilter = null; const o = byName.get(norm('2020 HJ4'));
-    select(o); setZoom(1.8); state.t = dateMjd(2026, 9, 25); state.speed = 1; $('#speed').value = '1'; syncTime(); if (!reduceMotion) setPlaying(true);
+    select(o); setZoom(1.8); state.t = dateMjd(2026, 9, 25); state.speed = 1; syncTime(); if (!reduceMotion) setPlaying(true);
   } },
   { id: 'neo', label: 'Near-Earth & Mars-crossers', run: () => { state.pfilter = (o) => o.cls === 'NEO' || o.cls === 'MC'; select(null); setZoom(3.2); } },
   { id: 'hun', label: 'Hungarias', run: () => { state.pfilter = (o) => o.cls === 'HUN'; select(null); setZoom(2.4); } },
@@ -1409,9 +1411,8 @@ function metaText() {
   if (document.body.dataset.mode && document.body.dataset.mode !== 'asteroids') return;
   $('#search').placeholder = `Search ${fmtN(META.nobj)} asteroids, e.g. 2026 CZ10`;
   $('#colnote').textContent = colNote();
-  $('#timenote').textContent = `Detections run ${fmtDate(META.tmin)} – ${fmtDate(META.tmax)} (the highlighted stretch of the slider). Each orbit is a simple Sun-only ellipse fixed at the asteroid's last detection, so far outside that window the dots are extrapolations. Zoom with the buttons, the mouse wheel or a pinch; Space plays and pauses.`;
-  const w0 = tToS(META.tmin) / 10, w1 = tToS(META.tmax) / 10;
-  slider.style.setProperty('--w0', w0.toFixed(2) + '%'); slider.style.setProperty('--w1', w1.toFixed(2) + '%');
+  $('#timenote').textContent = `Detections run ${fmtDate(META.tmin)} – ${fmtDate(META.tmax)} (the solid stretch of the time track; outside it the track is hatched). Each orbit is a simple Sun-only ellipse fixed at the asteroid's last detection, so far outside that window the dots are extrapolations. Zoom with the buttons, the mouse wheel or a pinch; Space plays and pauses.`;
+  dock.invalidate();
 }
 function rebuild() {
   const selKey = state.sel ? state.sel.key : null, hadFilter = state.preset;
@@ -1484,12 +1485,6 @@ sync.ready.then((res) => {
   refreshData(dataProvider);
 });
 
-document.addEventListener('keydown', (e) => {
-  if (document.body.dataset.mode && document.body.dataset.mode !== 'asteroids') return;
-  const tg = e.target instanceof Element ? e.target : document.body;
-  if (e.key !== ' ' || tg.closest('input, select, button, textarea')) return;
-  e.preventDefault(); setPlaying(!state.playing);
-});
 $('#dMin').addEventListener('input', () => onSize('lo'));
 $('#dMax').addEventListener('input', () => onSize('hi'));
 $('#sizeReset').addEventListener('click', () => { state.dLo = 0; state.dHi = 1000; applyFilters(); renderCard(); redrawAll(); });

@@ -1,5 +1,6 @@
 import * as K from './kit.js';
 import { sceneHtml, wireScene, openInstrument } from './scene.js';
+import { dockHtml, makeDock, fmtSpeed } from './dock.js';
 import * as SL from './starlight.js';
 import * as SC from './showcase.js';
 import * as TN from './tonight.js';
@@ -150,10 +151,7 @@ function buildDom() {
     },
     stories: true,
     dockCls: 'track-dock',
-    dock: `<button id="sPlay" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
-        <output id="sDate" class="date"></output>
-        <canvas id="ribbon" class="track" tabindex="0" aria-label="Season ribbon and time scrubber: alerts per night by filter. Left and right arrows step a night, Shift a week."></canvas>
-        <label class="speed"><span>Speed</span><select id="sSpeed" aria-label="Days per second"><option value="1">1 day/s</option><option value="2" selected>2 days/s</option><option value="5">5 days/s</option><option value="15">15 days/s</option></select></label>`,
+    dock: dockHtml({ play: 'sPlay', date: 'sDate', track: 'ribbon', speed: 'sSpeed', label: 'Season ribbon and time scrubber: alerts per night by filter. Left and right arrows step a night, Shift a week.' }),
     info: {
       cap: 'Gaia’s Milky Way in Galactic coordinates, centre in the middle. Bright: the most unusual objects tonight; the soft haze is everyone else. Sparks: a night on which an object changed.',
       about: '<p>Embers stay where something has changed so far. Clusters are deep drilling fields, where Rubin returns night after night. In this first season the sample’s alerts come mostly from high Galactic latitudes, looking out of the Milky Way: its stars are halo stars, and the plane and the Magellanic Clouds have almost no alerts here. The soft gold disc is the sky more than 30° above Cerro Pachón at local midnight (computed, not data); north of the gold dec +30° line Rubin cannot see. Gaps with no data are skipped while playing.</p><p>The time track under the map is the season ribbon: every night Fink has statistics for, all alerts that night (log scale), coloured by filter; dots below are this sample’s alerts per night. Hatched: no data. Click or drag it to move in time; ← → step a night, Shift a week.</p>',
@@ -1888,23 +1886,31 @@ function frame(ts) {
   drawSky(skyS); drawLadder(ladS); drawRibbon(ribS);
   perf.draw.push(performance.now() - c0);
   if (perf.draw.length > 600) perf.draw.shift();
-  if (++frameN % 10 === 0) { $('#sDate').textContent = fmtD(st.t); }
+  if (++frameN % 10 === 0) dock.update();
   raf = requestAnimationFrame(frame);
 }
 function setPlay(p) {
   st.playing = p;
   if (!p) { st.tween = null; endWrap(); }
-  const b = $('#sPlay');
-  b.querySelector('span').textContent = p ? 'Pause' : 'Play';
-  b.querySelector('path.pl').setAttribute('d', p ? 'M8 5.5v13M16 5.5v13' : 'M8 5.5v13l10.5-6.5z');
-  b.setAttribute('aria-label', p ? 'Pause' : 'Play'); b.classList.toggle('on', p);
   lastTs = 0;
   if (p && !raf) raf = requestAnimationFrame(frame);
-  if (!p) $('#sDate').textContent = fmtD(st.t);
+  if (dock) dock.sync();
 }
-function setT(t) { st.tween = null; endWrap(); st.t = clamp(t, T0, T1); $('#sDate').textContent = fmtD(st.t); redraw(); }
+function setT(t) { st.tween = null; endWrap(); st.t = clamp(t, T0, T1); if (dock) dock.sync(); redraw(); }
+const latestNight = () => Math.min(T1, Math.max(T0, Ob.t1.reduce((a, b) => Math.max(a, b), -1e9)));
+let dock = null;
+function makeTimeDock() {
+  dock = makeDock('stars', {
+    t0: () => T0, t1: () => T1, end: latestNight, get: () => st.t, set: setT,
+    playing: () => st.playing, play: setPlay,
+    speeds: [1, 2, 5, 15], speed: () => st.speed, setSpeed: (v) => { st.speed = v; }, speedText: fmtSpeed('day', 'days'),
+    unit: 1, big: 7, snap: (t) => Math.floor(t) + 0.5,
+    fmt: fmtD, trackState: () => ribS,
+  });
+}
 function redraw() {
   if (!entered) return;
+  if (dock) dock.update();
   drawSky(skyS); drawLadder(ladS); drawRibbon(ribS); drawHr(hrS);
   cardPlots.forEach((p) => p.draw(p));
 }
@@ -1954,13 +1960,6 @@ function searchItems(q) {
 }
 function item(i) { return { label: nameOf(i), des: Ob.name[i] ? null : null, color: gcol[grp[i]], meta: `${famLabel(i)} · ${catOf(i)}`, pick: () => select(i) }; }
 
-function onKey(e) {
-  const tg = e.target instanceof Element ? e.target : document.body;
-  if (!entered || tg.closest('input, select, textarea')) return;
-  if (e.key === ' ' && !tg.closest('button')) { e.preventDefault(); setPlay(!st.playing); }
-  if (tg.id === 'ribbon' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); setT(Math.floor(st.t) + (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 7 : 1) + 0.5); }
-}
-
 function build() {
   buildDom();
   readColors(); makeSprites();
@@ -1986,21 +1985,13 @@ function build() {
   pill = SC.makePill($('#skyTools'), { onToggle: toggleShowAll, onBack: () => runPreset('all') });
   wireCanvas($('#ladder'), (x, y, r) => nearest(lx, ly, x, y, r, (i) => Ob.distMethod[i] >= 0 && Ob.dist[i] != null));
   wireHr();
-  const rib = $('#ribbon');
-  let drag = false;
-  const scrub = (e) => { if (!ribS.__inv) return; const r = rib.getBoundingClientRect(); setT(ribS.__inv(e.clientX - r.left)); };
-  rib.addEventListener('pointerdown', (e) => { drag = true; rib.setPointerCapture(e.pointerId); scrub(e); });
-  rib.addEventListener('pointermove', (e) => { if (drag) scrub(e); });
-  rib.addEventListener('pointerup', () => { drag = false; });
-  $('#sPlay').addEventListener('click', () => setPlay(!st.playing));
-  $('#sSpeed').addEventListener('change', (e) => { st.speed = +e.target.value; });
+  makeTimeDock();
   $('#dropBtn').addEventListener('click', dropToDistance);
   const sp = $('#sPulse');
   if (reduceMotion) sp.disabled = true;
   sp.addEventListener('change', () => { st.secPerDay = +sp.value; pulseCaption(); redraw(); startPulses(); });
   const io = new IntersectionObserver((es) => { for (const e of es) onScreen[e.target.id === 'sky' ? 'sky' : e.target.id === 'ladder' ? 'ladder' : 'hr'] = e.isIntersecting; startPulses(); });
   ['#sky', '#ladder', '#hr'].forEach((q) => io.observe($(q)));
-  document.addEventListener('keydown', onKey);
   document.addEventListener('visibilitychange', () => { if (document.hidden && st.playing) { st.wasPlaying = true; setPlay(false); } else if (!document.hidden && st.wasPlaying) { st.wasPlaying = false; if (entered) setPlay(true); } if (!document.hidden) startPulses(); });
   K.onTheme(() => { if (!entered) { skyKey = ''; return; } readColors(); makeSprites(); skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1; legend(); census(); renderCard(); redraw(); });
   legend(); census(); scaleText(); pulseCaption(); tonightChip();
@@ -2020,7 +2011,7 @@ function rebuildData() {
   skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1;
   if (skyS) skyS.__w = 0;
   if (built) { legend(); census(); scaleText(); pulseCaption(); }
-  if (entered) { headerText(); renderCard(); $('#sDate').textContent = fmtD(st.t); redraw(); }
+  if (entered) { headerText(); renderCard(); dock.sync(); redraw(); }
 }
 function enter(objId) {
   K.ns.debug = Object.assign(K.ns.debug || {}, { weights: () => Float32Array.from(W.w) });
@@ -2031,7 +2022,7 @@ function enter(objId) {
   skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1;
   headerText();
   if (objId) { const i = Ob.id.indexOf(objId); if (i >= 0) st.sel = i; }
-  $('#sDate').textContent = fmtD(st.t);
+  dock.sync();
   [skyS, ladS, ribS, hrS].forEach((s) => s.resize());
   legend(); census(); renderCard();
   requestAnimationFrame(() => { [skyS, ladS, ribS, hrS].forEach((s) => s.resize()); redraw(); });
