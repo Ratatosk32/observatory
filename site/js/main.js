@@ -3,6 +3,7 @@ import './scene.js';
 import { activate as activateData } from './datapanel.js';
 import { initLadder, MODES as FLOORS } from './ladder.js';
 import './health.js';
+import { floorTransition } from './transition.js';
 
 const sIn = $('#search'), sBox = $('#searchbox'), sList = $('#sugg'), sClear = $('#clear');
 let provider = { items: () => [], empty: '' };
@@ -109,6 +110,7 @@ async function leaveMode(m) {
 async function setMode(m, opts = {}) {
   if (m === mode && !opts.force) return;
   const prev = mode;
+  floorTransition(prev, m);
   mode = m;
   document.body.dataset.mode = m;
   syncModeUi();

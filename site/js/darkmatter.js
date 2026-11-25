@@ -169,10 +169,13 @@ function uploadTextures() {
   g.uniform1i(gl.U.uSky, 0); g.uniform1i(gl.U.uLens, 1);
 }
 
-const skyBox = { w: 0, h: 0, dpr: 1 };
+const skyBox = { w: 0, h: 0, dpr: 1, key: '' };
 function sizeSky() {
   const cv = $('#dmGl'), r = cv.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, r.width < 700 ? 1.5 : 2);
+  const key = `${r.width}x${r.height}@${dpr}`;
+  if (key === skyBox.key && emberCv && r.width) { st.glDirty = true; drawOverlay(); return; }
+  skyBox.key = r.width ? key : '';
   skyBox.w = r.width; skyBox.h = r.height; skyBox.dpr = dpr;
   cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
   const o = $('#dmOv'); o.width = cv.width; o.height = cv.height;
@@ -232,11 +235,19 @@ function drawFallback(f, P) {
   ctx.putImageData(im, 0, 0);
 }
 
+let aU = new Float32Array(0), aV = new Float32Array(0), aUVof = null;
+function alertUV() {
+  if (aUVof === aL && aU.length === NA) return;
+  aU = new Float32Array(NA); aV = new Float32Array(NA);
+  for (let k = 0; k < NA; k++) { const [u, v] = hammer(aL[k], aB[k]); aU[k] = u; aV[k] = v; }
+  aUVof = aL;
+}
 function project() {
   const f = frameOf(skyBox);
   for (let i = 0; i < NC; i++) { const [u, v] = hammer(CL.l[i], CL.b[i]); cx[i] = f.cx + u * f.sc; cy[i] = f.cy - v * f.sc; }
+  alertUV();
   ax = new Float32Array(NA); ay = new Float32Array(NA);
-  for (let k = 0; k < NA; k++) { const [u, v] = hammer(aL[k], aB[k]); ax[k] = f.cx + u * f.sc; ay[k] = f.cy - v * f.sc; }
+  for (let k = 0; k < NA; k++) { ax[k] = f.cx + aU[k] * f.sc; ay[k] = f.cy - aV[k] * f.sc; }
   sx = new Float32Array(SNE.length); sy = new Float32Array(SNE.length);
   SNE.forEach((r, k) => { const [u, v] = hammer(r[0], r[1]); sx[k] = f.cx + u * f.sc; sy[k] = f.cy - v * f.sc; });
 }
@@ -315,6 +326,65 @@ function lensWindow(g, R) {
   g.restore();
   g.globalAlpha = 1;
 }
+function stampEmbers(eg, from, to) {
+  const W = emberCv.width, H = emberCv.height, d = skyBox.dpr, side = Math.max(1, Math.round(d));
+  const img = from ? eg.getImageData(0, 0, W, H) : new ImageData(W, H), px = new Uint32Array(img.data.buffer);
+  const [r, gg, b] = hexRgb(C().gold).map((x) => Math.round(x * 255)), a = Math.round(255 * (C().dark ? 0.1 : 0.16));
+  const col = ((a << 24) | (b << 16) | (gg << 8) | r) >>> 0;
+  for (let k = from; k < to; k++) {
+    const x0 = Math.round((ax[k] - 0.5) * d), y0 = Math.round((ay[k] - 0.5) * d);
+    if (x0 < 0 || y0 < 0 || x0 + side > W || y0 + side > H) continue;
+    for (let yy = 0; yy < side; yy++) { const row = (y0 + yy) * W + x0; for (let xx = 0; xx < side; xx++) if (!px[row + xx]) px[row + xx] = col; }
+  }
+  eg.putImageData(img, 0, 0);
+}
+const DIAL = { a0: -Math.PI / 3, a1: Math.PI / 3, max: 300 }, KAPPA_AT = Math.PI * 0.75;
+let ampX = 0;
+const onRim = (R, a) => [st.lan[0] + Math.cos(a) * R, st.lan[1] + Math.sin(a) * R];
+const dialAt = (x) => DIAL.a0 + (DIAL.a1 - DIAL.a0) * x;
+function ringLabel(wide) {
+  const rms = M.deflectionRmsArcmin.toFixed(1);
+  if (st.amp === 1) return `×1 · true bending, about ${rms}′${wide ? ', too small to see' : ''}`;
+  return `×${st.amp} · amplified${wide ? `, up to ${(M.deflectionRmsArcmin * st.amp / 60).toFixed(1)}° typical shift` : ''}`;
+}
+function lensRing(g, R) {
+  const [lx, ly] = st.lan, gold = C().gold, wide = skyBox.w >= 600, tr = R + 6;
+  g.strokeStyle = gold; g.lineWidth = 1.2; g.globalAlpha = 0.9;
+  g.beginPath(); g.arc(lx, ly, R, 0, 6.283); g.stroke();
+  g.lineCap = 'round'; g.lineWidth = 3;
+  g.globalAlpha = 0.22; g.beginPath(); g.arc(lx, ly, tr, DIAL.a0, DIAL.a1); g.stroke();
+  g.globalAlpha = 0.85; g.beginPath(); g.arc(lx, ly, tr, DIAL.a0, Math.max(DIAL.a0 + 0.001, dialAt(ampX))); g.stroke();
+  g.lineCap = 'butt'; g.lineWidth = 1; g.globalAlpha = 0.7;
+  for (const v of [1, 3, 10, 30, 100, 300]) {
+    const a = dialAt(Math.log(v) / Math.log(DIAL.max)), major = v === 1 || v === 10 || v === 100 || v === 300;
+    const [x0, y0] = onRim(tr + 3, a), [x1, y1] = onRim(tr + (major ? 9 : 6), a);
+    g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+    if (major && wide && v > 1) { const [tx, ty] = onRim(tr + 20, a); text(g, `×${v}`, tx, ty + 4, { size: 10.5, color: C().ink2, align: 'center', halo: true }); }
+  }
+  g.globalAlpha = 1;
+  const [kx, ky] = onRim(tr, dialAt(ampX));
+  g.fillStyle = gold; g.strokeStyle = C().bg; g.lineWidth = 1.5;
+  g.beginPath(); g.arc(kx, ky, wide ? 6 : 7, 0, 6.283); g.fill(); g.stroke();
+  const [qx, qy] = onRim(R, KAPPA_AT), on = st.shadowTarget > 0, kr = wide ? 10 : 12;
+  g.fillStyle = on ? gold : C().bg; g.strokeStyle = gold; g.lineWidth = 1.2;
+  g.beginPath(); g.arc(qx, qy, kr, 0, 6.283); g.fill(); g.stroke();
+  text(g, 'κ', qx, qy + 4.5, { size: 13, weight: 650, color: on ? C().bg : gold, align: 'center' });
+  if (wide) text(g, on ? 'the shadow' : 'shadow', qx - kr - 4, qy + 4, { size: 10.5, color: C().ink2, align: 'right', halo: true });
+  const lab = ringLabel(wide);
+  g.font = K.font(12, 600);
+  const lw2 = g.measureText(lab).width / 2 + 6;
+  text(g, lab, clamp(lx, lw2, skyBox.w - lw2), Math.max(14, ly - R - 9), { size: 12, weight: 600, color: gold, align: 'center', halo: true });
+  if (wide && ly + R + 18 < skyBox.h - 40) text(g, `the lens magnifies ${LENS_ZOOM}×`, lx, ly + R + 18, { size: 11, color: C().ink2, align: 'center', halo: true });
+}
+function ringHit(p, touch) {
+  const R = lanRadius(), [qx, qy] = onRim(R, KAPPA_AT);
+  if (Math.hypot(p[0] - qx, p[1] - qy) < (touch ? 20 : 13)) return 'kappa';
+  const [kx, ky] = onRim(R + 6, dialAt(ampX));
+  if (Math.hypot(p[0] - kx, p[1] - ky) < (touch ? 20 : 11)) return 'rim';
+  const d = Math.hypot(p[0] - st.lan[0], p[1] - st.lan[1]);
+  if (Math.abs(d - R - 3) < (touch ? 14 : 8)) return 'rim';
+  return d < R ? 'inside' : null;
+}
 function drawOverlay() {
   if (!skyBox.w || !entered) return;
   const g = ov, s = skyBox, f = frameOf(s), now = performance.now() / 1000;
@@ -328,6 +398,7 @@ function drawOverlay() {
   const eg = emberCv.getContext('2d');
   eg.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
   if (nNow < emberN) { eg.clearRect(0, 0, s.w, s.h); emberN = 0; }
+  if (nNow - emberN > 4000) { stampEmbers(eg, emberN, nNow); emberN = nNow; }
   if (nNow > emberN) {
     eg.fillStyle = C().gold; eg.globalAlpha = C().dark ? 0.1 : 0.16;
     eg.beginPath();
@@ -347,13 +418,7 @@ function drawOverlay() {
   drawSne(g);
   const R = lanRadius();
   lensWindow(g, R);
-  g.strokeStyle = C().gold; g.lineWidth = 1.2; g.globalAlpha = 0.9;
-  g.beginPath(); g.arc(st.lan[0], st.lan[1], R, 0, 6.283); g.stroke();
-  g.globalAlpha = 1;
-  const lensLab = st.amp > 1 ? `magnified ${LENS_ZOOM}× · bending ×${Math.round(ampNow())}` : `magnified ${LENS_ZOOM}× · true bending`;
-  g.font = K.font(12, 600);
-  const lw2 = g.measureText(lensLab).width / 2 + 6;
-  text(g, lensLab, clamp(st.lan[0], lw2, s.w - lw2), Math.max(14, st.lan[1] - R - 8), { size: 12, weight: 600, color: C().gold, align: 'center', halo: true });
+  lensRing(g, R);
   for (const [i, col, w] of [[st.hover, C().ink, 1.5], [st.sel, C().hi, 2]]) {
     if (i < 0) continue;
     g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.arc(cx[i], cy[i], ringR(i) + 5, 0, 6.283); g.stroke();
@@ -552,8 +617,8 @@ function buildDom() {
   root.innerHTML = sceneHtml('dm', {
     qid: 'h-dsky', stageCls: 's-sky d-sky', mainCls: 'dmain', wrapCls: 'dm-wrap',
     question: 'The oldest light, bent by everything in between',
-    canvas: '<div class="e-stage dm-stage"><canvas id="dmGl" aria-label="CMB sky with a lensing magnifier. Drag to move the lens."></canvas><canvas id="dmOv" aria-hidden="true"></canvas></div>',
-    overlay: `<div class="lensbar" id="lensbar" role="group" aria-label="Lens controls"><label class="lbl" for="dAmp">Amplify bending</label><input type="range" id="dAmp" min="0" max="1000" step="1" value="0"><output id="dAmpV" class="sval">×1</output><button class="btn" type="button" id="dShadow" aria-pressed="false">Show the shadow</button><span class="scnt" id="dAmpNote" aria-live="polite"></span></div>${verdictHtml(verdict())}`,
+    canvas: '<div class="e-stage dm-stage"><canvas id="dmGl" aria-label="CMB sky with a lensing magnifier. Drag to move the lens; drag its rim to amplify the bending; κ on the rim shows the shadow."></canvas><canvas id="dmOv" aria-hidden="true"></canvas></div>',
+    overlay: `<div class="lensbar on-ring" id="lensbar" role="group" aria-label="Lens controls"><label class="lbl" for="dAmp">Amplify bending</label><input type="range" id="dAmp" min="0" max="1000" step="1" value="0"><output id="dAmpV" class="sval">×1</output><button class="btn" type="button" id="dShadow" aria-pressed="false">Show the shadow</button><span class="scnt" id="dAmpNote" aria-live="polite"></span></div>${verdictHtml(verdict())}`,
     views: { nav: 'dPresets', label: 'Guided views of the lensing sky', first: 'True bending' },
     dock: dockHtml({ play: 'dPlay', date: 'dDate', track: 'dTrack', speed: 'dSpeed', label: 'Time track: Rubin’s SN-like alerts per night. Left and right arrows step a night, Shift a week.' }),
     info: {
@@ -583,7 +648,7 @@ function buildDom() {
 
 function aim(l, b, amp, shadow) {
   const f = frameOf(skyBox), [u, v] = hammer(l, b);
-  st.lan = [f.cx + u * f.sc, f.cy - v * f.sc]; st.pinned = true;
+  st.lan = [f.cx + u * f.sc, f.cy - v * f.sc];
   const x = Math.round(Math.log(amp) / Math.log(300) * 1000);
   $('#dAmp').value = String(x); $('#dAmp').dispatchEvent(new Event('input'));
   const sb = $('#dShadow'); if ((sb.getAttribute('aria-pressed') === 'true') !== shadow) sb.click();
@@ -593,7 +658,7 @@ function presets() {
   const busiest = [...Array(NC).keys()].sort((a, b) => CL.inside[b] - CL.inside[a])[0];
   const heaviest = [...Array(NC).keys()].sort((a, b) => CL.m500[b] - CL.m500[a])[0];
   const list = [
-    { id: 'all', label: 'True bending', run: () => { st.pinned = false; aim(240, -35, 1, false); st.pinned = false; } },
+    { id: 'all', label: 'True bending', run: () => aim(240, -35, 1, false) },
     { id: 'bend', label: 'Bend it ×50', run: () => aim(240, -35, 50, false) },
     { id: 'shadow', label: 'The shadow', run: () => aim(240, -35, 1, true) },
     { id: 'busy', label: 'Busiest cluster', run: () => { aim(CL.l[busiest], CL.b[busiest], 100, false); select(busiest); } },
@@ -612,13 +677,17 @@ function legend() {
 }
 
 function wire() {
-  const cv = $('#dmGl');
+  const cv = $('#dmGl'), amp = $('#dAmp'), ampV = $('#dAmpV');
   let drag = false;
   const toLocal = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
   const moveLan = (p) => { st.lan = p; st.glDirty = true; };
+  let dial = null;
+  const angleOf = (p) => Math.atan2(p[1] - st.lan[1], p[0] - st.lan[0]);
   cv.addEventListener('pointerdown', (e) => {
-    const p = toLocal(e);
-    const onLens = Math.hypot(p[0] - st.lan[0], p[1] - st.lan[1]) < lanRadius();
+    const p = toLocal(e), ring = ringHit(p, e.pointerType !== 'mouse');
+    if (ring === 'kappa') { $('#dShadow').click(); return; }
+    if (ring === 'rim') { dial = { a: angleOf(p), x: ampX }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; K.hideTip(); return; }
+    const onLens = ring === 'inside';
     const hit = nearestCluster(p[0], p[1], e.pointerType === 'mouse' ? 8 : 14);
     if (hit >= 0 && !onLens) { select(hit); return; }
     drag = true; cv.setPointerCapture(e.pointerId); moveLan(p);
@@ -626,21 +695,26 @@ function wire() {
   });
   cv.addEventListener('pointermove', (e) => {
     const p = toLocal(e);
+    if (dial) {
+      const a = angleOf(p), da = ((a - dial.a + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
+      dial.a = a; dial.x = clamp(dial.x + da / (DIAL.a1 - DIAL.a0), 0, 1);
+      amp.value = String(Math.round(dial.x * 1000)); amp.dispatchEvent(new Event('input'));
+      return;
+    }
     if (drag) { moveLan(p); return; }
     if (e.pointerType !== 'mouse') return;
-    if (!st.pinned) moveLan(p);
+    const ring = ringHit(p, false);
+    cv.style.cursor = ring === 'kappa' ? 'pointer' : ring === 'rim' ? 'grab' : ring === 'inside' ? 'move' : '';
     const i = nearestCluster(p[0], p[1], 8);
     st.hover = i;
     cv.classList.toggle('hot', i >= 0);
     if (i >= 0) K.showTip(tipFor(i), e.clientX, e.clientY); else K.hideTip();
   });
-  const end = () => { drag = false; };
+  const end = () => { drag = false; if (dial) { dial = null; cv.style.cursor = ''; } };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
   cv.addEventListener('pointerleave', () => { st.hover = -1; K.hideTip(); });
-  cv.addEventListener('dblclick', () => { st.pinned = !st.pinned; });
   makeTimeDock();
-  const amp = $('#dAmp'), ampV = $('#dAmpV');
-  const setAmp = () => { const x = +amp.value; st.amp = Math.round(Math.pow(300, x / 1000)); ampV.textContent = `×${st.amp}`; $('#dAmpNote').textContent = st.amp === 1 ? `At ×1 the bending is real but about ${M.deflectionRmsArcmin.toFixed(1)}′, too small to see.` : `Bending breathes up to ×${st.amp}: ${(M.deflectionRmsArcmin * st.amp / 60).toFixed(1)}° typical shift. The gold grid bends with it.`; st.glDirty = true; };
+  const setAmp = () => { const x = +amp.value; ampX = x / 1000; st.amp = Math.round(Math.pow(300, x / 1000)); ampV.textContent = `×${st.amp}`; $('#dAmpNote').textContent = st.amp === 1 ? `At ×1 the bending is real but about ${M.deflectionRmsArcmin.toFixed(1)}′, too small to see.` : `Bending breathes up to ×${st.amp}: ${(M.deflectionRmsArcmin * st.amp / 60).toFixed(1)}° typical shift. The gold grid bends with it.`; st.glDirty = true; };
   amp.addEventListener('input', setAmp); setAmp();
   $('#dShadow').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); e.currentTarget.classList.toggle('on', on); st.shadowTarget = on ? 1 : 0; if (reduceMotion) { st.shadow = st.shadowTarget; st.glDirty = true; } });
   new ResizeObserver(() => { if (entered) sizeSky(); }).observe(cv);

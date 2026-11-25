@@ -10,7 +10,9 @@ import { register as registerData, refresh as refreshData, fmtBytes } from './da
 const [S, SCD, TND] = await Promise.all([K.loadJson('data/stars.json'), SC.loadShowcase(), TN.loadTonight()]);
 const sync = createStarSync(S);
 let lastInfo = (await sync.loadStored()).info;
-const { $, pencilLine, pencilCircle, hatch, text, annotate, setupCanvas, fmtN, MON, clamp, esc } = K;
+const { $, pencilLine, pencilCircle, hatch, text, annotate, setupCanvas, MON, clamp, esc } = K;
+const fmtMemo = new Map();
+const fmtN = (n) => { let v = fmtMemo.get(n); if (v === undefined) { if (fmtMemo.size > 4000) fmtMemo.clear(); v = K.fmtN(n); fmtMemo.set(n, v); } return v; };
 const reduceMotion = K.reduceMotion;
 const DEG = Math.PI / 180;
 const OFF = S.meta.mjdOffset;
@@ -128,10 +130,10 @@ const st = {
 };
 function applyFilter() {
   for (let i = 0; i < N; i++) vis[i] = st.groupsOn.has(grp[i]) && (!st.pred || st.pred(i)) ? 1 : 0;
-  emberN = -1; ladderKey = ''; hrKey = '';
+  emberN = -1; ladderKey = stageLad.key = ''; hrKey = '';
 }
 
-let built = false, entered = false;
+let built = false, entered = false, themeStale = false;
 let skyS, ladS, ribS, hrS, cardPlots = [];
 let emberN = -1, emberCv = null, ladderKey = '', ladderCv = null, hrKey = '', hrCv = null, ribKey = '', ribCv = null;
 let skyStatic = null, skyKey = '', lantern = null;
@@ -143,7 +145,7 @@ function buildDom() {
   root.innerHTML = sceneHtml('stars', {
     qid: 'h-sky', stageCls: 's-sky', pillId: 'skyTools',
     question: 'Where in the sky does something change?',
-    canvas: '<canvas id="sky" tabindex="0" aria-label="All-sky map in Galactic coordinates. Plus and minus zoom, 0 resets."></canvas>',
+    canvas: `<canvas id="sky" tabindex="0" aria-label="${PROJ_LABEL.sky}"></canvas><div class="proj-switch" id="projSwitch" role="radiogroup" aria-label="Show the same objects on the sky, by distance or on the HR diagram (D)">${PROJS.map((k) => `<button type="button" role="radio" data-proj="${k}" aria-checked="${k === 'sky'}" tabindex="${k === 'sky' ? 0 : -1}">${PROJ_WORDS[k]}</button>`).join('')}</div>`,
     zoom: '<div class="zoom"><button class="btn sm" type="button" id="zoomIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="zoomOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="zoomReset" hidden>Reset view</button></div>',
     views: {
       nav: 'sPresets', label: 'Guided views of the stars sample', first: 'Everything', legend: 'sLegend',
@@ -172,13 +174,15 @@ function buildDom() {
 function makeSprites() {
   sprites.length = 0;
   for (const col of gcol) {
-    const c = document.createElement('canvas'); c.width = c.height = 64;
-    const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    const work = document.createElement('canvas'); work.width = work.height = 64;
+    const g = work.getContext('2d', { willReadFrequently: true }), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
     gr.addColorStop(0, 'rgba(255,250,235,1)'); gr.addColorStop(0.2, col); gr.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = gr; g.globalAlpha = 1; g.fillRect(0, 0, 64, 64);
     const g2 = g.getImageData(0, 0, 64, 64);
     for (let i = 0; i < g2.data.length; i += 4) { const d = Math.hypot((i / 4) % 64 - 31.5, Math.floor(i / 256) - 31.5) / 32; if (d > 0.2) g2.data[i + 3] = Math.round(g2.data[i + 3] * Math.max(0, 1 - (d - 0.2) / 0.8) * 0.6 + 0); }
     g.putImageData(g2, 0, 0);
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    c.getContext('2d').drawImage(work, 0, 0);
     sprites.push(c);
   }
 }
@@ -242,7 +246,7 @@ function mwAt(l, b) {
   const a = (xx, yy) => mwD[yy * 720 + ((xx % 720) + 720) % 720];
   return (a(x0, y0) * (1 - fx) + a(x0 + 1, y0) * fx) * (1 - fy) + (a(x0, y0 + 1) * (1 - fx) + a(x0 + 1, y0 + 1) * fx) * fy;
 }
-let mwF = null, mwLoading = null;
+let mwF = null, mwLoading = null, mwFailed = false;
 const MWW = 1440, MWH = 720;
 function mwFineAt(l, b) {
   const x = l * 4 - 0.5, y = (90 - b) * 4 - 0.5;
@@ -254,14 +258,15 @@ function loadMilkyWay() {
   if (mwLoading) return mwLoading;
   mwLoading = new Promise((res) => {
     const im = new Image();
-    im.onload = () => {
+    im.onload = async () => {
+      try { await im.decode(); } catch {}
       const c = document.createElement('canvas'); c.width = MWW; c.height = MWH;
       const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0);
       const px = x.getImageData(0, 0, MWW, MWH).data, out = new Uint8Array(MWW * MWH);
       for (let i = 0; i < out.length; i++) out[i] = px[i * 4];
       mwF = out; skyKey = ''; if (entered) drawSky(skyS); res(true);
     };
-    im.onerror = () => res(false);
+    im.onerror = () => { mwFailed = true; skyKey = ''; if (entered) drawSky(skyS); res(false); };
     im.src = 'data/milkyway.png';
   });
   return mwLoading;
@@ -297,25 +302,39 @@ function galToEqVec(l, b) {
 }
 const LSTEP = 4;
 let lanGrid = null, lanCv = null, staticView = null, skyFade = null, fadeRaf = 0, skyLabels = null;
+let skyJob = null;
 function buildSkyStatic(s) {
-  const key = [s.w, s.h, s.dpr, C().dark, view.k.toFixed(4), view.px.toFixed(1), view.py.toFixed(1)].join('|');
+  const key = [s.w, s.h, s.dpr, C().dark, view.k.toFixed(4), view.px.toFixed(1), view.py.toFixed(1), mwF ? 1 : 0].join('|');
   if (key === skyKey && skyStatic) return;
-  skyKey = key;
-  if (skyStatic && staticView && !reduceMotion) skyFade = { cv: skyStatic, lab: skyLabels, view: staticView, t0: performance.now() };
-  staticView = { ...view };
+  if (skyJob && skyJob.key === key) return;
+  skyJob = { key, steps: skyStaticSteps(s, key) };
+  runSkyJob(skyJob);
+}
+function runSkyJob(job) {
+  const t0 = performance.now();
+  for (;;) {
+    if (skyJob !== job) return;
+    if (job.steps.next().done) { skyJob = null; if (entered && !st.playing) drawSky(skyS); return; }
+    if (performance.now() - t0 > 8) { setTimeout(() => runSkyJob(job), 0); return; }
+  }
+}
+function* skyStaticSteps(s, key) {
+  const atView = { ...view };
   const cv = document.createElement('canvas');
   cv.width = Math.round(s.w * s.dpr); cv.height = Math.round(s.h * s.dpr);
   const g = cv.getContext('2d');
   g.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
-  const f = skyFrame(s), dark = C().dark, k = view.k;
+  const f = skyFrame(s, atView), dark = C().dark, k = view.k;
   const res = k > 2 ? Math.min(2, s.dpr) : 1;
   const W = Math.max(1, Math.round(s.w * res)), H = Math.max(1, Math.round(s.h * res));
   const wash = document.createElement('canvas'); wash.width = W; wash.height = H;
   const wg = wash.getContext('2d'), img = wg.createImageData(W, H), d = img.data;
   const lut = washLut(dark);
   const tw = clamp((k - 6) / 4, 0, 1), tl = tw > 0 ? visibleTiles(s, f) : [];
+  const washing = !!mwF || mwFailed;
   let grainy = false;
-  for (let y = 0; y < H; y++) {
+  for (let y = 0; washing && y < H; y++) {
+    if (y % 6 === 5) yield;
     for (let x = 0; x < W; x++) {
       const [u, v] = f.inv((x + 0.5) / res, (y + 0.5) / res);
       const lb2 = invHammer(u, v);
@@ -334,6 +353,7 @@ function buildSkyStatic(s) {
       d[p] = lut[q]; d[p + 1] = lut[q + 1]; d[p + 2] = lut[q + 2]; d[p + 3] = lut[q + 3];
     }
   }
+  yield;
   wg.putImageData(img, 0, 0);
   g.imageSmoothingEnabled = true;
   if (grainy) g.filter = 'blur(1px)';
@@ -345,15 +365,17 @@ function buildSkyStatic(s) {
     g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.4; g.drawImage(sm, 0, 0, s.w, s.h);
     g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   }
+  yield;
   const LW = Math.ceil(s.w / LSTEP), LH = Math.ceil(s.h / LSTEP), vec = new Float32Array(LW * LH * 3).fill(NaN);
   for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
+    if (!x && y % 24 === 23) yield;
     const [u, v] = f.inv((x + 0.5) * LSTEP, (y + 0.5) * LSTEP), lb2 = invHammer(u, v);
     if (!lb2) continue;
     const e = galToEqVec(lb2[0], lb2[1]), p = (y * LW + x) * 3;
     vec[p] = e[0]; vec[p + 1] = e[1]; vec[p + 2] = e[2];
   }
-  lanGrid = { LW, LH, vec };
-  lanCv = document.createElement('canvas'); lanCv.width = LW; lanCv.height = LH;
+  const nextLanGrid = { LW, LH, vec }, nextLanCv = document.createElement('canvas'); nextLanCv.width = LW; nextLanCv.height = LH;
+  yield;
   const gold = C().gold;
   polyLB(g, f, (() => { const p = []; for (let b = -90; b <= 90; b += 1) p.push([180.001, b]); for (let b = 90; b >= -90; b -= 1) p.push([179.999, b]); return p; })(), 2);
   g.strokeStyle = C().goldSoft; g.lineWidth = 1.2; g.stroke();
@@ -361,7 +383,8 @@ function buildSkyStatic(s) {
   const grid = fine ? fineGrid() : smoothGrid();
   const levels = fine ? [[120, 0.12], [140, 0.16], [160, 0.2], [180, 0.26], [200, 0.32], [220, 0.4]] : [[150, 0.15], [175, 0.25], [200, 0.35]];
   g.lineWidth = 1;
-  levels.forEach(([lev, a]) => { contour(g, f, grid, lev, s); g.strokeStyle = gold; g.globalAlpha = a * (mwF ? 0.45 : 1); g.stroke(); });
+  for (const [lev, a] of levels) { yield; contour(g, f, grid, lev, s); g.strokeStyle = gold; g.globalAlpha = a * (mwF ? 0.45 : 1); g.stroke(); }
+  yield;
   g.globalAlpha = 1;
   const BS = S.brightStars, rk = Math.min(3, Math.sqrt(k));
   for (let i = 0; i < BS.l.length; i++) {
@@ -377,6 +400,7 @@ function buildSkyStatic(s) {
   for (let b0 = -90 + bStep; b0 < 90; b0 += bStep) { const p = []; for (let l = -179.9; l <= 179.9; l += db) p.push([(l + 360) % 360, b0]); polyLB(g, f, p); g.stroke(); }
   for (let l0 = 0; l0 < 360; l0 += lStep) { if (l0 === 180) continue; const p = []; for (let b = -90; b <= 90; b += db) p.push([l0, b]); polyLB(g, f, p); g.stroke(); }
   g.globalAlpha = 1;
+  yield;
   const lcv = document.createElement('canvas');
   lcv.width = cv.width; lcv.height = cv.height;
   const lg = lcv.getContext('2d');
@@ -414,9 +438,13 @@ function buildSkyStatic(s) {
     const t = tl[0], cell = t.step;
     text(lg, `fine Gaia tile: ${t.name}, ${cell}° cells, ${fmtN(Math.round(t.countMin / cell / cell))}–${fmtN(Math.round(t.countMax / cell / cell))} stars per deg²${t.grainy ? ' (grain is real counting noise, drawn softened)' : ''}`, 12, 34, { size: 11, color: C().ink3, halo: true });
   }
+  lanGrid = nextLanGrid; lanCv = nextLanCv;
   if (hooks.staticOverlay) hooks.staticOverlay(g, s, f);
+  if (!reduceMotion) skyFade = { cv: skyStatic, lab: skyLabels, view: staticView, t0: performance.now() };
+  staticView = atView;
   skyStatic = cv;
   skyLabels = lcv;
+  skyKey = key;
 }
 let TILES = null, tilesLoading = null;
 function loadTiles() {
@@ -651,6 +679,8 @@ function resetView() { view.k = 1; view.px = 0; view.py = 0; view.cu = 0; view.c
 
 function drawSky(s) {
   if (!s.w || !entered) return;
+  if (cardPlots.length && Math.abs(st.t - cardT) > 0.2) { cardT = st.t; cardPlots.forEach((c) => c.draw(c)); }
+  if (proj.anim || proj.cur !== 'sky') { drawProjected(s); return; }
   const t0 = performance.now();
   if (!gesturing) buildSkyStatic(s);
   const g = s.ctx, f = skyFrame(s);
@@ -660,17 +690,19 @@ function drawSky(s) {
   let fa = 1;
   if (skyFade) {
     const p = (performance.now() - skyFade.t0) / 220;
-    if (p >= 1 || skyFade.cv.width !== skyStatic.width) skyFade = null;
+    if (p >= 1 || !skyStatic || (skyFade.cv && skyFade.cv.width !== skyStatic.width)) skyFade = null;
     else {
       fa = p * p * (3 - 2 * p);
-      const [ox, oy, orr] = place(skyFade.view);
-      g.globalAlpha = hooks.skyAlpha * (1 - fa);
-      g.drawImage(skyFade.cv, ox, oy, s.w * orr, s.h * orr);
+      if (skyFade.cv) {
+        const [ox, oy, orr] = place(skyFade.view);
+        g.globalAlpha = hooks.skyAlpha * (1 - fa);
+        g.drawImage(skyFade.cv, ox, oy, s.w * orr, s.h * orr);
+      }
       if (!st.playing && !fadeRaf) fadeRaf = requestAnimationFrame(() => { fadeRaf = 0; drawSky(skyS); });
     }
   }
   g.globalAlpha = hooks.skyAlpha * fa;
-  g.drawImage(skyStatic, dx, dy, s.w * r, s.h * r);
+  if (skyStatic) g.drawImage(skyStatic, dx, dy, s.w * r, s.h * r);
   g.globalAlpha = 1;
   if (s.__w !== s.w || s.__h !== s.h) {
     const b = baseFrame(s);
@@ -684,7 +716,7 @@ function drawSky(s) {
   if (!lan.done) followLantern();
   paintLantern(lan.ra);
   g.imageSmoothingEnabled = true;
-  g.drawImage(lanCv, dx, dy, lanGrid.LW * LSTEP * r, lanGrid.LH * LSTEP * r);
+  if (lanGrid) g.drawImage(lanCv, dx, dy, lanGrid.LW * LSTEP * r, lanGrid.LH * LSTEP * r);
   if (!lanCache || lanCache.ra !== lan.ra || lanCache.dec !== lan.dec) lanCache = { ra: lan.ra, dec: lan.dec, pts: lanternPts(lan.ra) };
   lantern = lanCache.pts;
   polyLB(g, f, lantern);
@@ -747,7 +779,7 @@ function drawSky(s) {
   if (tonightOn()) tn.drawSky(g, (ra, dec) => { const [l, b] = eq2gal(ra, dec), [u, v] = hammer(l, b); const x = f.X(u), y = f.Y(v); return x < -20 || y < -20 || x > s.w + 20 || y > s.h + 20 ? null : [x, y]; }, now / 1000, Math.min(2, Math.sqrt(view.k)));
   if (tonightOn() && tn.pulsing() && !reduceMotion && !st.playing && !weightRaf && !pulseRaf && !inPulse) weightRaf = requestAnimationFrame(() => { weightRaf = 0; drawSky(skyS); });
   if (skyLabels) {
-    if (skyFade && skyFade.lab) { const [ox, oy, orr] = place(skyFade.view); g.globalAlpha = hooks.skyAlpha * (1 - fa); g.drawImage(skyFade.lab, ox, oy, s.w * orr, s.h * orr); }
+    if (skyFade && skyFade.lab && skyFade.view) { const [ox, oy, orr] = place(skyFade.view); g.globalAlpha = hooks.skyAlpha * (1 - fa); g.drawImage(skyFade.lab, ox, oy, s.w * orr, s.h * orr); }
     g.globalAlpha = hooks.skyAlpha * fa; g.drawImage(skyLabels, dx, dy, s.w * r, s.h * r); g.globalAlpha = 1;
   }
   if (tonightOn()) siteLabel(g, s);
@@ -769,7 +801,7 @@ function drawSky(s) {
 }
 function wireSkyZoom() {
   const cv = $('#sky');
-  cv.addEventListener('wheel', (e) => { e.preventDefault(); const r = cv.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+  cv.addEventListener('wheel', (e) => { e.preventDefault(); if (proj.cur !== 'sky') return; const r = cv.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
   const ptrs = new Map();
   let start = null, pinch = null, moved = false, lastTap = 0;
   cv.addEventListener('pointerdown', (e) => {
@@ -783,12 +815,13 @@ function wireSkyZoom() {
     if (!ptrs.has(e.pointerId)) return;
     ptrs.set(e.pointerId, [e.clientX, e.clientY]);
     if (ptrs.size === 2 && pinch) {
+      if (proj.cur !== 'sky') return;
       const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
       moved = true; zoomAt(pinch.k * d / pinch.d / view.k, pinch.mx, pinch.my);
     } else if (ptrs.size === 1 && start) {
       const dx = e.clientX - start.x, dy = e.clientY - start.y;
       if (!moved && Math.hypot(dx, dy) < 5) return;
-      if (view.k <= 1.001) return;
+      if (view.k <= 1.001 || proj.cur !== 'sky') return;
       moved = true; cv.style.cursor = 'grabbing';
       view.px = start.px + dx; view.py = start.py + dy; clampView(skyS); viewChanged();
     }
@@ -801,6 +834,7 @@ function wireSkyZoom() {
     if (e.type !== 'pointerup' || wasMoved) return;
     const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
     const now = performance.now();
+    if (proj.cur !== 'sky') { select(projNearest(x, y, e.pointerType === 'mouse' ? 9 : 16)); return; }
     if (e.pointerType !== 'mouse' && now - lastTap < 300) { zoomAt(2, x, y); lastTap = 0; return; }
     lastTap = now;
     if (tonightOn()) { const f = skyFrame(skyS), k = tn.hit(x, y, (ra, dec) => { const [l, b] = eq2gal(ra, dec), [u, v] = hammer(l, b); return [f.X(u), f.Y(v)]; }); if (k >= 0) { st.selT = k; const r = TND.recent[k]; st.sel = r.inSample != null && r.inSample < N ? r.inSample : -1; lodKey = ''; renderCard(); redraw(); return; } }
@@ -808,10 +842,11 @@ function wireSkyZoom() {
   };
   cv.addEventListener('pointerup', end);
   cv.addEventListener('pointercancel', end);
-  cv.addEventListener('dblclick', (e) => { const r = cv.getBoundingClientRect(); zoomAt(2, e.clientX - r.left, e.clientY - r.top); });
+  cv.addEventListener('dblclick', (e) => { if (proj.cur !== 'sky') return; const r = cv.getBoundingClientRect(); zoomAt(2, e.clientX - r.left, e.clientY - r.top); });
   cv.addEventListener('pointermove', (e) => {
-    if (e.pointerType !== 'mouse' || ptrs.size) return;
-    const r = cv.getBoundingClientRect(), i = nearest(qx, qy, e.clientX - r.left, e.clientY - r.top, 8);
+    if (e.pointerType !== 'mouse' || ptrs.size || proj.anim) return;
+    const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    const i = proj.cur === 'sky' ? nearest(qx, qy, x, y, 8) : projNearest(x, y, 9);
     setHover(i);
     if (i >= 0) K.showTip(tipFor(i), e.clientX, e.clientY); else K.hideTip();
   });
@@ -820,6 +855,7 @@ function wireSkyZoom() {
   $('#zoomOut').addEventListener('click', () => zoomAt(0.5, skyS.w / 2, skyS.h / 2));
   $('#zoomReset').addEventListener('click', resetView);
   cv.addEventListener('keydown', (e) => {
+    if (proj.cur !== 'sky') return;
     if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomAt(1.5, skyS.w / 2, skyS.h / 2); }
     if (e.key === '-') { e.preventDefault(); zoomAt(1 / 1.5, skyS.w / 2, skyS.h / 2); }
     if (e.key === '0') { e.preventDefault(); resetView(); }
@@ -879,7 +915,7 @@ function drawLadder(s) {
       const y = f.lane(gi) + 4, h = f.laneH - 8;
       g.fillStyle = hatch(g, C().line, 5, 45, 1); g.fillRect(f.pileX, y, f.pileW, h);
       g.strokeStyle = C().line; g.lineWidth = 1; g.strokeRect(f.pileX + 0.5, y + 0.5, f.pileW - 1, h - 1);
-      text(g, pile[gi] ? `no distance: ${fmtN(pile[gi])}` : 'none', f.pileX + f.pileW / 2, y + h / 2 + 4, { size: 11, weight: 600, color: C().ink, align: 'center', halo: true });
+      text(g, pile[gi] ? (f.pileW < 110 ? fmtN(pile[gi]) : `no distance: ${fmtN(pile[gi])}`) : 'none', f.pileX + f.pileW / 2, y + h / 2 + 4, { size: 11, weight: 600, color: C().ink, align: 'center', halo: true });
     }
     for (let gi = 0; gi < GROUPS.length; gi++) {
       for (const kind of ['fill', 'ring', 'dot']) {
@@ -947,12 +983,22 @@ function drawRibbon(s) {
     const pm = Math.max(...perDay.values());
     g.fillStyle = C().gold;
     perDay.forEach((v, d) => { const r = 0.8 + Math.sqrt(v / pm) * 3; g.beginPath(); g.arc(X(d + 0.5), base + 8, r, 0, 6.283); g.fill(); });
+    const months = [];
     for (let y = 2025, m = 10; y < 2027 || m <= 11; m === 11 ? (y++, m = 0) : m++) {
       const t = Date.UTC(y, m, 1) / 864e5 + 40587 - OFF;
       if (t < T0 || t > T1) { if (t > T1) break; continue; }
       const x = X(t);
       g.strokeStyle = C().line; g.lineWidth = 1; g.beginPath(); g.moveTo(x, base + 14); g.lineTo(x, base + 18); g.stroke();
-      if (s.w > 560 || m % 2 === 0) text(g, m === 0 ? `${MON[m]} ${y}` : MON[m], x + 2, s.h - 2, { size: 11, color: C().ink3 });
+      months.push({ x: x + 2, label: m === 0 ? `${MON[m]} ${y}` : MON[m], first: m === 0 || !months.length });
+    }
+    g.font = K.font(11, 400);
+    const placed = [];
+    for (const pass of [true, false]) for (const mo of months) {
+      if (mo.first !== pass) continue;
+      const w = g.measureText(mo.label).width, a = mo.x - 4, b = mo.x + w + 4;
+      if (b > s.w || placed.some(([l, r]) => a < r && b > l)) continue;
+      placed.push([a, b]);
+      text(g, mo.label, mo.x, s.h - 2, { size: 11, color: C().ink3 });
     }
   }
   const g = s.ctx;
@@ -994,22 +1040,25 @@ function buildHrGrid() {
   const ker = [0.0545, 0.2442, 0.4026, 0.2442, 0.0545];
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let s = 0; for (let j = -2; j <= 2; j++) s += ker[j + 2] * d[y * W + clamp(x + j, 0, W - 1)]; tmp[y * W + x] = s; }
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let s = 0; for (let j = -2; j <= 2; j++) s += ker[j + 2] * tmp[clamp(y + j, 0, H - 1) * W + x]; d[y * W + x] = s; }
-  const UW = W * UP, UH = H * UP, u = new Float32Array(UW * UH), glow = new Float32Array(UW * UH);
+  const UW = W * UP, UH = H * UP, u = new Float32Array(UW * UH), glow = new Float32Array(UW * UH), coarse = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    const m = HR.absGMin + (y + 0.5) * HR.absGStep;
+    for (let x = 0; x < W; x++) { const c = HR.bpRpMin + (x + 0.5) * HR.bpRpStep; coarse[y * W + x] = Math.max(Math.exp(-(lineDist(MS_LINE, c, m) ** 2)), 0.9 * Math.exp(-(lineDist(RGB_LINE, c, m) ** 2))); }
+  }
+  const glowAt = (gx, gy) => {
+    const x0 = clamp(Math.floor(gx), 0, W - 2), y0 = clamp(Math.floor(gy), 0, H - 2), fx = clamp(gx - x0, 0, 1), fy = clamp(gy - y0, 0, 1);
+    return (coarse[y0 * W + x0] * (1 - fx) + coarse[y0 * W + x0 + 1] * fx) * (1 - fy) + (coarse[(y0 + 1) * W + x0] * (1 - fx) + coarse[(y0 + 1) * W + x0 + 1] * fx) * fy;
+  };
   const cub = (p0, p1, p2, p3, t) => p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
   const at = (x, y) => d[clamp(y, 0, H - 1) * W + clamp(x, 0, W - 1)];
   for (let y = 0; y < UH; y++) {
     const gy = (y + 0.5) / UP - 0.5, y0 = Math.floor(gy), ty = gy - y0;
-    const m = HR.absGMin + (gy + 0.5) * HR.absGStep;
     for (let x = 0; x < UW; x++) {
       const gx = (x + 0.5) / UP - 0.5, x0 = Math.floor(gx), tx = gx - x0;
       const r = [-1, 0, 1, 2].map((j) => cub(at(x0 - 1, y0 + j), at(x0, y0 + j), at(x0 + 1, y0 + j), at(x0 + 2, y0 + j), tx));
       const v = clamp(cub(r[0], r[1], r[2], r[3], ty), 0, 1);
       u[y * UW + x] = v;
-      if (v > 0.02) {
-        const c = HR.bpRpMin + (gx + 0.5) * HR.bpRpStep;
-        const w = Math.max(Math.exp(-(lineDist(MS_LINE, c, m) ** 2)), 0.9 * Math.exp(-(lineDist(RGB_LINE, c, m) ** 2)));
-        glow[y * UW + x] = w * Math.min(1, v * 2.2);
-      }
+      if (v > 0.02) glow[y * UW + x] = glowAt(gx, gy) * Math.min(1, v * 2.2);
     }
   }
   hrGrid = { UW, UH, u, glow };
@@ -1285,6 +1334,173 @@ function wireHr() {
   $('#hrIn').addEventListener('click', () => hrZoomAt(2, hrS.w / 2, hrS.h / 2));
   $('#hrOut').addEventListener('click', () => hrZoomAt(0.5, hrS.w / 2, hrS.h / 2));
   $('#hrReset').addEventListener('click', () => hrZoomTo(2, 6.5, 1));
+}
+const PROJS = ['sky', 'dist', 'hr'];
+const PROJ_WORDS = { sky: 'Sky', dist: 'Distance', hr: 'HR diagram' };
+const PROJ_LABEL = {
+  sky: 'All-sky map in Galactic coordinates. Plus and minus zoom, 0 resets.',
+  dist: 'The same objects placed by distance on a log scale, one lane per family; objects without a distance wait in the hatched pile.',
+  hr: 'The same stars on the Hertzsprung-Russell diagram: Gaia colour against absolute magnitude, for stars with a parallax better than 5 sigma.',
+};
+const MORPH_MS = 950;
+const proj = { cur: 'sky', anim: null, raf: 0, ticking: false };
+const stageLad = { key: '', cv: null, x: new Float32Array(0), y: new Float32Array(0) };
+const stageHr = { static: null, key: '', pts: [], snap: null, view: { k: 1, cc: (HR_BASE.c0 + HR_BASE.c1) / 2, mc: (HR_BASE.m0 + HR_BASE.m1) / 2 } };
+let cardT = 0;
+function stageInsets(s) {
+  const key = `${s.w}x${s.h}`;
+  if (s.__insetKey === key) return s.__inset;
+  const wrap = s.cv.parentElement, cr = s.cv.getBoundingClientRect();
+  const hud = wrap.querySelector('.hud'), sw = wrap.querySelector('.proj-switch');
+  const hb = hud && hud.getBoundingClientRect(), pb = sw && sw.getBoundingClientRect();
+  const top = hb && hb.height && hb.bottom > cr.top && hb.top < cr.top + 80 ? Math.ceil(hb.bottom - cr.top) + 8 : 20;
+  const bottom = pb && pb.height && pb.top < cr.bottom && pb.bottom > cr.bottom - 90 ? Math.ceil(cr.bottom - pb.top) + 6 : 8;
+  s.__inset = { top, bottom, left: 4, right: 6, noteRoom: pb && pb.width ? pb.left - cr.left - 16 : s.w - 24 };
+  s.__insetKey = key;
+  return s.__inset;
+}
+const subState = (s, ins) => ({ ctx: s.ctx, cv: s.cv, w: Math.max(10, s.w - ins.left - ins.right), h: Math.max(10, s.h - ins.top - ins.bottom), dpr: s.dpr });
+function onStageLadder(fn) {
+  if (stageLad.x.length !== N) { stageLad.x = new Float32Array(N); stageLad.y = new Float32Array(N); stageLad.key = ''; }
+  const saved = [lx, ly, ladderKey, ladderCv];
+  [lx, ly, ladderKey, ladderCv] = [stageLad.x, stageLad.y, stageLad.key, stageLad.cv];
+  try { fn(); } finally { stageLad.key = ladderKey; stageLad.cv = ladderCv; [lx, ly, ladderKey, ladderCv] = saved; }
+}
+function onStageHr(fn) {
+  const saved = [hrStatic, hrKey, hrPts, hrSnap, hrGesture], savedView = { ...hrView };
+  [hrStatic, hrKey, hrPts, hrSnap, hrGesture] = [stageHr.static, stageHr.key, stageHr.pts, stageHr.snap, false];
+  Object.assign(hrView, stageHr.view);
+  try { fn(); } finally {
+    Object.assign(stageHr, { static: hrStatic, key: hrKey, pts: hrPts, snap: hrSnap });
+    [hrStatic, hrKey, hrPts, hrSnap, hrGesture] = saved;
+    Object.assign(hrView, savedView);
+  }
+}
+function projNote(g, s, ins, which) {
+  let n = 0, all = 0;
+  for (let i = 0; i < N; i++) { if (!vis[i]) continue; all++; if (which === 'dist' ? hasDist(i) : onHr(i)) n++; }
+  const lines = which === 'dist'
+    ? [`${fmtN(n)} of ${fmtN(all)} have a distance`, 'filled: measured · ring: indirect · dotted: weak']
+    : [`${fmtN(n)} of ${fmtN(all)} have a Gaia parallax better than 5σ;`, 'only they are on this diagram'];
+  const room = ins.noteRoom;
+  g.font = K.font(11, 400);
+  if (room >= Math.max(...lines.map((l) => g.measureText(l).width)) + 8) lines.forEach((l, k) => text(g, l, 12, s.h - ins.bottom + 16 + k * 14, { size: 11, color: C().ink2, halo: true }));
+  else text(g, which === 'dist' ? lines[0] : `${fmtN(n)} of ${fmtN(all)} placed (Gaia parallax ≥ 5σ)`, 12, ins.top - 6, { size: 11, color: C().ink2, halo: true });
+}
+function drawProjView(s, which) {
+  const ins = stageInsets(s), sub = subState(s, ins), g = s.ctx;
+  g.clearRect(0, 0, s.w, s.h);
+  g.save(); g.translate(ins.left, ins.top);
+  if (which === 'dist') onStageLadder(() => drawLadder(sub)); else onStageHr(() => drawHr(sub));
+  g.restore();
+  projNote(g, s, ins, which);
+}
+function projPositions(which, s) {
+  const x = new Float32Array(N), y = new Float32Array(N), a = new Float32Array(N);
+  if (which === 'sky') {
+    for (let i = 0; i < N; i++) { x[i] = qx[i]; y[i] = qy[i]; a[i] = vis[i] && Ob.t0[i] != null && Ob.t0[i] <= st.t ? 0.3 + 0.7 * W.w[i] : 0; }
+    return { x, y, a };
+  }
+  const ins = stageInsets(s);
+  if (which === 'dist') {
+    for (let i = 0; i < N; i++) { x[i] = stageLad.x[i] + ins.left; y[i] = stageLad.y[i] + ins.top; a[i] = vis[i] && hasDist(i) ? 0.9 : 0; }
+    return { x, y, a };
+  }
+  x.fill(NaN);
+  for (const [px, py, i] of stageHr.pts) { x[i] = px + ins.left; y[i] = py + ins.top; a[i] = 0.95; }
+  return { x, y, a };
+}
+function projNearest(x, y, rad) {
+  const ins = stageInsets(skyS);
+  if (proj.cur === 'dist') return nearest(stageLad.x, stageLad.y, x - ins.left, y - ins.top, rad, hasDist);
+  let best = -1, bd = rad * rad;
+  for (const [px, py, i] of stageHr.pts) { const d = (px + ins.left - x) ** 2 + (py + ins.top - y) ** 2; if (d < bd) { bd = d; best = i; } }
+  return best;
+}
+function copyCanvas(cv) {
+  const c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height;
+  c.getContext('2d').drawImage(cv, 0, 0);
+  return c;
+}
+const easeIO = (x) => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2);
+const smooth01 = (x) => { const c = clamp(x, 0, 1); return c * c * (3 - 2 * c); };
+function drawMorph(s, m) {
+  const p = clamp((performance.now() - m.t0) / m.ms, 0, 1), g = s.ctx, phone = s.w < 600;
+  g.clearRect(0, 0, s.w, s.h);
+  const fa = 1 - smooth01(p / 0.35), ta = smooth01((p - 0.72) / 0.28);
+  if (fa > 0) { g.globalAlpha = fa; g.drawImage(m.fromCv, 0, 0, m.fromW, m.fromH); }
+  if (ta > 0) { g.globalAlpha = ta; g.drawImage(m.toCv, 0, 0, m.toW, m.toH); }
+  const fly = (1 - smooth01((p - 0.86) / 0.14)) * smooth01(p / 0.06), A = m.A, B = m.B, r = phone ? 1.6 : 2.1, d = 2 * r;
+  if (fly > 0) for (let gi = 0; gi < GROUPS.length; gi++) {
+    const bands = [[], [], []];
+    for (const i of m.ids[gi]) {
+      const e = easeIO(clamp((p - jit[i] * 0.22) / 0.78, 0, 1)), al = A.a[i] + (B.a[i] - A.a[i]) * e;
+      if (al < 0.05) continue;
+      const x0 = A.x[i], y0 = A.y[i], x1 = B.x[i] === B.x[i] ? B.x[i] : x0, y1 = B.y[i] === B.y[i] ? B.y[i] : y0;
+      const bow = Math.sin(Math.PI * e) * (jit[i] - 0.5) * 60 / (Math.abs(x1 - x0) + Math.abs(y1 - y0) + 1);
+      bands[al > 0.67 ? 2 : al > 0.34 ? 1 : 0].push(x0 + (x1 - x0) * e - (y1 - y0) * bow, y0 + (y1 - y0) * e + (x1 - x0) * bow);
+    }
+    g.fillStyle = gcol[gi];
+    for (let b = 0; b < 3; b++) {
+      const pts = bands[b]; if (!pts.length) continue;
+      g.globalAlpha = fly * (0.35 + b * 0.3);
+      g.beginPath();
+      if (phone) for (let k = 0; k < pts.length; k += 2) g.rect(pts[k] - r, pts[k + 1] - r, d, d);
+      else for (let k = 0; k < pts.length; k += 2) { g.moveTo(pts[k] + r, pts[k + 1]); g.arc(pts[k], pts[k + 1], r, 0, 6.283); }
+      g.fill();
+    }
+  }
+  g.globalAlpha = 1;
+  if (p >= 1) { proj.anim = null; drawSky(s); }
+}
+function drawProjected(s) {
+  if (ext.story && ext.story.chapter && proj.cur !== 'sky') { setProjection('sky', true); return; }
+  if (!proj.anim) drawProjView(s, proj.cur);
+  else if (proj.ticking || st.playing) drawMorph(s, proj.anim);
+}
+function markProj() {
+  document.querySelectorAll('#projSwitch [data-proj]').forEach((b) => { const on = b.dataset.proj === proj.cur; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; });
+  const z = document.querySelector('#zoomIn')?.parentElement; if (z) z.hidden = proj.cur !== 'sky';
+  const wrap = document.querySelector('#sky')?.parentElement; if (wrap) wrap.classList.toggle('proj-tall', proj.cur !== 'sky');
+  const cv = $('#sky'); if (cv) cv.setAttribute('aria-label', PROJ_LABEL[proj.cur]);
+  K.hideTip();
+}
+function morphTick() {
+  proj.raf = 0;
+  if (!proj.anim || !entered) return;
+  proj.ticking = true;
+  if (!st.playing) drawSky(skyS);
+  proj.ticking = false;
+  if (proj.anim) proj.raf = requestAnimationFrame(morphTick);
+}
+function setProjection(to, instant = false) {
+  if (!PROJS.includes(to)) return;
+  if (proj.anim) proj.anim = null;
+  if (to === proj.cur) { markProj(); return; }
+  const s = skyS;
+  if (instant || reduceMotion || !entered || !s || !s.w) { proj.cur = to; markProj(); if (entered && s) { if (s.cv.getBoundingClientRect().height !== s.h) s.resize(); else drawSky(s); } return; }
+  const fromCv = copyCanvas(s.cv), A = projPositions(proj.cur, s), fromW = s.w, fromH = s.h;
+  proj.cur = to; markProj();
+  if (s.cv.getBoundingClientRect().height !== s.h) s.resize(); else drawSky(s);
+  const B = projPositions(to, s), ids = GROUPS.map(() => []);
+  for (let i = 0; i < N; i++) if (A.a[i] > 0.04 || B.a[i] > 0.04) ids[grp[i]].push(i);
+  proj.anim = { t0: performance.now(), ms: MORPH_MS, A, B, ids, fromCv, fromW, fromH, toCv: copyCanvas(s.cv), toW: s.w, toH: s.h };
+  proj.ticking = true; drawSky(s); proj.ticking = false;
+  if (!proj.raf) proj.raf = requestAnimationFrame(morphTick);
+}
+function cycleProjection(dir) { setProjection(PROJS[(PROJS.indexOf(proj.cur) + dir + PROJS.length) % PROJS.length]); }
+function wireProjSwitch() {
+  const box = $('#projSwitch');
+  box.addEventListener('click', (e) => { const b = e.target.closest('[data-proj]'); if (b) setProjection(b.dataset.proj); });
+  box.addEventListener('keydown', (e) => {
+    const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!d) return;
+    e.preventDefault(); cycleProjection(d);
+    box.querySelector(`[data-proj="${proj.cur}"]`).focus();
+  });
+  K.onKey('d', (e) => { if (!entered || document.body.dataset.mode !== 'stars') return false; cycleProjection(e.shiftKey ? -1 : 1); });
+  K.shell.keyHelp = K.shell.keyHelp || [];
+  K.shell.keyHelp.push({ keys: ['D'], label: 'Sky, distance, HR diagram: the same stars', kw: 'projection drop distance hr diagram morph', mode: 'stars', run: () => cycleProjection(1) });
 }
 const SPIKE_MAG = 18.8;
 const pulsesOn = () => st.secPerDay > 0 && !reduceMotion;
@@ -1612,6 +1828,7 @@ function runPreset(id) {
   if (p.top) { const idx = Array.from({ length: N }, (_, i) => i).filter((i) => Ob.dist[i] != null && Ob.distMethod[i] >= 0).sort(p.top).slice(0, 20); const set = new Set(idx); st.pred = (i) => set.has(i); }
   else st.pred = p.pred;
   markPresets(); applyFilter(); legend(); census();
+  if (id === 'tour' || id === 'tonight') setProjection('sky', true);
   if (id === 'tour') startTour();
   renderCard(); redraw();
 }
@@ -1756,21 +1973,61 @@ function renderCard() {
   body.innerHTML = `
     <h3>${esc(nameOf(i))}</h3>
     <div class="cls"><span class="sw" style="background:${gcol[grp[i]]}"></span>${esc(famLabel(i))} <span style="color:var(--ink3)">· ${esc(catOf(i))}</span></div>
-    ${SC.chipsHtml(chipsFor(i))}${scoreLine(i)}
-    <p class="cap">${esc(FAM[Ob.fam[i]].blurb)}. Rubin object ${esc(Ob.id[i])}.</p>
-    <dl>${facts.map(([k, v]) => `<div style="grid-column:span ${v.length > 40 ? 3 : 1}"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+    ${SC.chipsHtml(chipsFor(i))}
+    ${provRow(i)}
+    <p class="ladline">${ladderLine(i)}</p>
+    <p class="olinks">${outLinks(i)}</p>
     ${Ob.lc[i] >= 0 ? `<h4>Light curve</h4>
-    <p class="cap">${st.lcMode === 'flux' ? 'Difference flux in nJy: how much brighter (above 0) or fainter (below) than the reference image; this is what Rubin alerts on.' : 'Apparent AB magnitude of the total (science-image) flux.'}${fe ? ' Hollow points: forced photometry, including nights without a detection.' : ''}</p>
+    <p class="cap">${st.lcMode === 'flux' ? 'Difference flux in nJy: how much brighter (above 0) or fainter (below) than the reference image; this is what Rubin alerts on.' : 'Apparent AB magnitude of the total (science-image) flux.'}${fe ? ' Hollow points: forced photometry, including nights without a detection.' : ''} The upright line is the date on the time track.</p>
     <div class="seg sm" role="group" aria-label="Light-curve units"><button class="btn${st.lcMode === 'flux' ? ' on' : ''}" type="button" data-lc="flux">Flux</button><button class="btn${st.lcMode === 'mag' ? ' on' : ''}" type="button" data-lc="mag">Magnitude</button></div>
     <canvas class="slc"></canvas>` : '<p class="cap">No light curve was fetched for this object; only its sample alerts (sparks) are on the map.</p>'}
+    ${scoreLine(i)}
+    <p class="cap">${esc(FAM[Ob.fam[i]].blurb)}. Rubin object ${esc(Ob.id[i])}.</p>
+    <dl>${facts.map(([k, v]) => `<div style="grid-column:span ${v.length > 40 ? 3 : 1}"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
     ${Ob.period[i] && Ob.lc[i] >= 0 ? `<h4>Folded on the period</h4><p class="cap">Folded on ${Ob.period[i].toFixed(5)} d from ${esc(Ob.periodSrc[i] || 'Gaia DR3')} (2014–2017 data); one stave per band, each scaled to its own range, two cycles shown. Rubin's 2026 points still line up. ${prLine}</p><canvas class="sfold"></canvas>` : ''}
     ${fe ? `<h4>Stamps</h4><p class="cap">Alert ${esc(fe.diaSourceId)}, ${fmtD(fe.stampT)}, ${fe.stampPx[0]} × ${fe.stampPx[1]} px at 0.2″/px.</p>
     <div class="stamps sm"><figure><span class="im"><img src="${fe.stamps.science}" alt="Science stamp"></span><figcaption><b>Science</b></figcaption></figure><div class="op">−</div><figure><span class="im"><img src="${fe.stamps.template}" alt="Template stamp"></span><figcaption><b>Template</b></figcaption></figure><div class="op">=</div><figure><span class="im"><img src="${fe.stamps.difference}" alt="Difference stamp"></span><figcaption><b>Difference</b></figcaption></figure></div>` : ''}
     <div class="legend">${BANDS.map((b) => `<span class="k"><span class="sw" style="background:${C().band[b]}"></span>${b}</span>`).join('')}</div>`;
   body.querySelectorAll('[data-lc]').forEach((b) => b.addEventListener('click', () => { st.lcMode = b.dataset.lc; renderCard(); }));
   if (Ob.lc[i] >= 0) cardPlots.push(setupCanvas(body.querySelector('.slc'), (s) => drawLc(s, i, fe, isTrans)));
+  cardT = st.t;
   if (body.querySelector('.sfold')) cardPlots.push(setupCanvas(body.querySelector('.sfold'), (s) => drawFold(s, i, fe)));
   if (ext.story) ext.story.cardToys(body, i);
+}
+const HOW_MARK = {
+  measured: '<circle cx="6" cy="6" r="4" class="f"/>',
+  indirect: '<circle cx="6" cy="6" r="3.6" class="r"/>',
+  weak: '<circle cx="6" cy="6" r="3.6" class="r d"/>',
+  none: '<circle cx="6" cy="6" r="3.6" class="r n"/>',
+};
+const howOf = (i) => (hasDist(i) ? LADDER_HOW[METHODS[Ob.distMethod[i]]] || 'indirect' : 'none');
+const builtOn = () => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(S.meta.built || ''); return m ? `${+m[3]} ${MON[+m[2] - 1]} ${m[1]}` : ''; };
+function provRow(i) {
+  const how = howOf(i), method = hasDist(i) ? METHOD_WORDS[METHODS[Ob.distMethod[i]]] || '' : '';
+  const dist = how === 'none' ? 'no distance yet' : `${how === 'weak' ? 'weak' : how} distance${method ? ` · ${esc(method)}` : ''}`;
+  const label = catOf(i) ? `label from ${esc(catOf(i).split(' ')[0])}, a crossmatch that can be wrong` : 'label from Fink tags, which can be wrong';
+  const built = builtOn();
+  return `<div class="prov" aria-label="Provenance"><span class="pv"><svg class="pvm pv-${how}" viewBox="0 0 12 12" aria-hidden="true">${HOW_MARK[how]}</svg>${dist}</span><span class="pv">${label}</span><span class="pv"><span class="pvn" aria-hidden="true"></span>nightly · Rubin alerts via Fink${built ? ` · as of ${built}` : ''}</span></div>`;
+}
+function lightWords(i) {
+  const lbi = Ob.lookbackGyr ? Ob.lookbackGyr[i] : null, ly = lbi != null ? lbi * 1e9 : Ob.dist[i] * 3.26156;
+  if (ly >= 1e9) return `${(ly / 1e9).toFixed(1)} Gyr of light`;
+  if (ly >= 1e6) return `${fmtN(Math.round(ly / 1e6))} million years of light`;
+  const q = ly >= 1e4 ? 1000 : ly >= 100 ? 10 : 1;
+  return `${fmtN(Math.round(ly / q) * q)} years of light`;
+}
+function ladderLine(i) {
+  if (!hasDist(i)) return '<span class="how-none">Not on the ladder yet: no Gaia match, no redshift.</span>';
+  const how = howOf(i), method = METHOD_WORDS[METHODS[Ob.distMethod[i]]] || '';
+  return `<b>${lightWords(i)}</b> <span class="ink3">(${fmtPc(Ob.dist[i])})</span> · ${how}${method ? `, ${esc(method)}` : ''}`;
+}
+function outLinks(i) {
+  const out = [];
+  const tns = /^(?:SN|AT|TDE)\s?(\d{4}[a-z]+)$/.exec(Ob.name[i] || '');
+  if (tns) out.push(`<a href="https://www.wis-tns.org/object/${encodeURIComponent(tns[1])}" target="_blank" rel="noopener">TNS ↗</a>`);
+  if (Ob.ra[i] != null && Ob.dec[i] != null) out.push(`<a href="https://simbad.cds.unistra.fr/simbad/sim-coo?Coord=${Ob.ra[i].toFixed(5)}%20${Ob.dec[i] >= 0 ? '%2B' : '-'}${Math.abs(Ob.dec[i]).toFixed(5)}&amp;CooFrame=ICRS&amp;Radius=5&amp;Radius.unit=arcsec" target="_blank" rel="noopener">SIMBAD ↗</a>`);
+  out.push(`<a href="https://lsst.fink-broker.org/" target="_blank" rel="noopener" title="Fink portal; search for Rubin object ${esc(Ob.id[i])}">Fink ↗</a>`);
+  return out.join(' · ');
 }
 function pctl(a, p) { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.max(0, Math.floor(p * (s.length - 1))))]; }
 function drawLc(s, i, fe, isTrans) {
@@ -1799,6 +2056,12 @@ function drawLc(s, i, fe, isTrans) {
   const span = tB - tA, step = span > 200 ? 60 : span > 60 ? 30 : span > 20 ? 7 : 2;
   for (let t = Math.ceil(tA / step) * step; t <= tB; t += step) text(g, fmtDs(t), X(t), s.h - Bm + 14, { size: 10.5, color: C().ink3, align: 'center' });
   text(g, mag ? 'mag (AB), brighter ↑' : 'difference flux (nJy)', L, s.h - 4, { size: 11, color: C().ink2 });
+  if (st.t >= tA && st.t <= tB) {
+    const cx = X(st.t);
+    g.strokeStyle = C().hi; g.globalAlpha = 0.75; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(cx, T); g.lineTo(cx, s.h - Bm); g.stroke(); g.globalAlpha = 1;
+    g.fillStyle = C().hi; g.beginPath(); g.moveTo(cx - 4, T - 1); g.lineTo(cx + 4, T - 1); g.lineTo(cx, T + 5); g.fill();
+  }
   for (const p of inT) {
     const x = X(p[0]), y = Y(p[1]), col = C().band[BANDS[p[2]]];
     if (p[3] && !mag) { g.strokeStyle = col; g.globalAlpha = 0.5; g.lineWidth = 1; g.beginPath(); g.moveTo(x, Y(p[1] - p[3])); g.lineTo(x, Y(p[1] + p[3])); g.stroke(); g.globalAlpha = 1; }
@@ -1915,39 +2178,6 @@ function redraw() {
   cardPlots.forEach((p) => p.draw(p));
 }
 
-function dropToDistance() {
-  const sky = $('#sky'), lad = $('#ladder');
-  openInstrument('stars', 'Distances');
-  ladS.resize();
-  if (reduceMotion || window.innerWidth < 700) return;
-  const rs = sky.getBoundingClientRect(), rl = lad.getBoundingClientRect();
-  const ov = document.createElement('canvas');
-  ov.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:45';
-  const dpr = Math.min(devicePixelRatio || 1, 2);
-  ov.width = innerWidth * dpr; ov.height = innerHeight * dpr;
-  document.body.appendChild(ov);
-  const g = ov.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const nNow = lb(t0Sorted, st.t + 1e-9), list = [];
-  for (let k = 0; k < nNow; k++) { const i = byT0[k]; if (vis[i]) list.push(i); }
-  const t0 = performance.now();
-  const ease = (x) => x < 0.5 ? 2 * x * x : 1 - (-2 * x + 2) ** 2 / 2;
-  const step = (ts) => {
-    const p = Math.min(1, (ts - t0) / 900), e = ease(p);
-    g.clearRect(0, 0, innerWidth, innerHeight);
-    for (let gi = 0; gi < GROUPS.length; gi++) {
-      g.fillStyle = gcol[gi]; g.globalAlpha = 0.75; g.beginPath();
-      for (const i of list) {
-        if (grp[i] !== gi) continue;
-        const x = rs.left + qx[i] + (rl.left + lx[i] - rs.left - qx[i]) * e, y = rs.top + qy[i] + (rl.top + ly[i] - rs.top - qy[i]) * e;
-        g.moveTo(x + 1.6, y); g.arc(x, y, 1.6, 0, 6.283);
-      }
-      g.fill();
-    }
-    if (p < 1) requestAnimationFrame(step); else setTimeout(() => ov.remove(), 250);
-  };
-  requestAnimationFrame(step);
-}
-
 function searchItems(q) {
   const v = q.trim().toLowerCase();
   const out = [];
@@ -1986,14 +2216,15 @@ function build() {
   wireCanvas($('#ladder'), (x, y, r) => nearest(lx, ly, x, y, r, (i) => Ob.distMethod[i] >= 0 && Ob.dist[i] != null));
   wireHr();
   makeTimeDock();
-  $('#dropBtn').addEventListener('click', dropToDistance);
+  $('#dropBtn').addEventListener('click', () => setProjection('dist'));
+  wireProjSwitch();
   const sp = $('#sPulse');
   if (reduceMotion) sp.disabled = true;
   sp.addEventListener('change', () => { st.secPerDay = +sp.value; pulseCaption(); redraw(); startPulses(); });
   const io = new IntersectionObserver((es) => { for (const e of es) onScreen[e.target.id === 'sky' ? 'sky' : e.target.id === 'ladder' ? 'ladder' : 'hr'] = e.isIntersecting; startPulses(); });
   ['#sky', '#ladder', '#hr'].forEach((q) => io.observe($(q)));
   document.addEventListener('visibilitychange', () => { if (document.hidden && st.playing) { st.wasPlaying = true; setPlay(false); } else if (!document.hidden && st.wasPlaying) { st.wasPlaying = false; if (entered) setPlay(true); } if (!document.hidden) startPulses(); });
-  K.onTheme(() => { if (!entered) { skyKey = ''; return; } readColors(); makeSprites(); skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1; legend(); census(); renderCard(); redraw(); });
+  K.onTheme(() => { if (!entered) { themeStale = true; return; } readColors(); makeSprites(); skyKey = ''; ladderKey = stageLad.key = ''; ribKey = ''; hrKey = ''; emberN = -1; legend(); census(); renderCard(); redraw(); });
   legend(); census(); scaleText(); pulseCaption(); tonightChip();
   built = true;
 }
@@ -2008,7 +2239,7 @@ function rebuildData() {
   buildRank();
   applyFilter();
   st.t = clamp(st.t, T0, T1);
-  skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1;
+  skyKey = ''; ladderKey = stageLad.key = ''; ribKey = ''; hrKey = ''; emberN = -1;
   if (skyS) skyS.__w = 0;
   if (built) { legend(); census(); scaleText(); pulseCaption(); }
   if (entered) { headerText(); renderCard(); dock.sync(); redraw(); }
@@ -2018,8 +2249,7 @@ function enter(objId) {
   if (!built) build();
   loadMilkyWay();
   entered = true;
-  readColors(); makeSprites();
-  skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1;
+  if (themeStale) { themeStale = false; readColors(); makeSprites(); skyKey = ''; ladderKey = stageLad.key = ''; ribKey = ''; hrKey = ''; emberN = -1; legend(); census(); }
   headerText();
   if (objId) { const i = Ob.id.indexOf(objId); if (i >= 0) st.sel = i; }
   dock.sync();
@@ -2052,7 +2282,7 @@ function zoomAnim(l, b, k, ms = 1200, done) {
   requestAnimationFrame(step);
 }
 export const api = (K.ns.stars = { enter, leave, zoomTo, zoomAnim, resetView, hrZoomTo, hrView, eq2gal, hammer, hooks, loadTiles, setPlay, redraw, renderCard, applyFilter, humanName, hookOf, fmtPer, fmtAgo, fmtPc, fmtD, nameOf, catOf, famLabel,
-  S, Ob, get N() { return N; }, get lanternRa() { return lan.ra; }, zenithRa: (t) => zenith(t).ra, GROUPS, FKEY, get grp() { return grp; }, get vis() { return vis; }, rebuildData, get gcol() { return gcol; }, get sprites() { return sprites; }, get view() { return view; }, get skyS() { return skyS; }, get ribS() { return ribS; }, get lanGrid() { return lanGrid; }, invalidateSky: () => { skyKey = ''; emberN = -1; }, get entered() { return entered; }, get state() { return st; }, select, setT, runPreset, perf});
+  S, Ob, get N() { return N; }, get lanternRa() { return lan.ra; }, zenithRa: (t) => zenith(t).ra, GROUPS, FKEY, get grp() { return grp; }, get vis() { return vis; }, rebuildData, get gcol() { return gcol; }, get sprites() { return sprites; }, get view() { return view; }, get skyS() { return skyS; }, get ribS() { return ribS; }, get lanGrid() { return lanGrid; }, invalidateSky: () => { skyKey = ''; emberN = -1; }, get entered() { return entered; }, get state() { return st; }, select, setT, runPreset, perf, get projection() { return { cur: proj.cur, animating: !!proj.anim }; }, setProjection });
 
 const dataProvider = {
   title: 'Stars & beyond data', short: 'stars', noun: 'objects', unit: 'sample alerts', bundled: sync.BUNDLED,
