@@ -115,9 +115,9 @@ if (existsSync(earthPath)) {
   }
   const tdir = join(site, 'data', 'earth-tiles');
   if (existsSync(tdir)) for (const t of readdirSync(tdir)) budgets.push([`earth-tiles/${t}`, gzipSync(readFileSync(join(tdir, t))).length, 300]);
-  const foot = (readFileSync(index, 'utf8').match(/<p class="earth-only">[\s\S]*?<\/p>/) || [''])[0];
+  const foot = (readFileSync(join(site, 'js', 'scene.js'), 'utf8').match(/\n {2}earth: \{[\s\S]*?\n {2}\},/) || [''])[0];
   for (const credit of ['NOAA Space Weather Prediction Center', 'OVATION', 'GOES-R Geostationary Lightning Mapper', 'NOAA Open Data Dissemination', 'Black Marble', 'NASA GIBS', 'Natural Earth', 'Contains modified EUMETSAT Meteosat data']) {
-    if (!foot.includes(credit)) problems.push(`site/index.html: the Earth credits lack "${credit}"`);
+    if (!foot.includes(credit)) problems.push(`site/js/scene.js: the Earth credits lack "${credit}"`);
   }
 }
 const briefPath = join(site, 'data', 'brief.json');

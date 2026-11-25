@@ -1,4 +1,5 @@
 import * as K from './kit.js';
+import { sceneHtml, wireScene, verdictHtml } from './scene.js';
 import { register as registerData, fmtBytes } from './datapanel.js';
 import { openStore, post, pool, storageUsage } from './net.js';
 import * as SC from './showcase.js';
@@ -524,50 +525,47 @@ function ctestNote() {
   if (!G) return `${CT.observed} alerts inside R500 of ${CT.clusters} clusters, ${CT.expected} expected from their surroundings: ${CT.sigma.toFixed(1)}σ. Forecast: ${esc(CT.forecast)}.`;
   return `${fmtN(CT.observed)} alerts inside R500 of ${fmtN(CT.clusters)} ACT DR6 clusters, ${fmtN(Math.round(CT.expected))} expected from their surroundings: ${sig(CT.sigma)}${Math.abs(CT.sigma) < 3 ? ', no significant excess yet' : ''}. Dashed: the same test on DR5’s ${fmtN(G.of)} clusters, ${sig(G.sigma)}. Forecast: ${esc(CT.forecast)}.`;
 }
+function verdict() {
+  return { lens: LT.sigma, control: LT.controlSigma, nObjects: LT.nObjects, clusters: CT.sigma, dr5: CT.dr5Ghost ? CT.dr5Ghost.sigma : null, observed: CT.observed, expected: CT.expected, nClusters: CT.clusters, forecast: LT.forecast };
+}
 function buildDom() {
-  $('#dmRoot').innerHTML = `
-<main class="smain dmain">
-  <div class="stack">
-    <section class="panel map-panel s-sky d-sky" aria-labelledby="h-dsky">
-      <div class="phead"><div class="pbar"><h2 id="h-dsky">The oldest light, bent by everything in between</h2></div>
-      <p class="cap">The cosmic microwave background from Planck, in Galactic coordinates. The gold lens magnifies the sky 3× and bends it, and a gold grid, by the lensing deflection Planck measured, amplified by the slider above; the projected mass glows faintly underneath. Gold sparks: Rubin’s supernova-like alerts, night by night. Rings: ACT galaxy clusters.</p></div>
-      <div class="map-wrap dm-wrap"><canvas id="dmGl" aria-label="CMB sky with a lensing magnifier. Drag to move the lens."></canvas><canvas id="dmOv" aria-hidden="true"></canvas></div>
-      <div class="time">
-        <button id="dPlay" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
+  const root = $('#dmRoot');
+  root.innerHTML = sceneHtml('dm', {
+    qid: 'h-dsky', stageCls: 's-sky d-sky', mainCls: 'dmain', wrapCls: 'dm-wrap',
+    question: 'The oldest light, bent by everything in between',
+    canvas: '<div class="e-stage dm-stage"><canvas id="dmGl" aria-label="CMB sky with a lensing magnifier. Drag to move the lens."></canvas><canvas id="dmOv" aria-hidden="true"></canvas></div>',
+    overlay: `<div class="lensbar" id="lensbar" role="group" aria-label="Lens controls"><label class="lbl" for="dAmp">Amplify bending</label><input type="range" id="dAmp" min="0" max="1000" step="1" value="0"><output id="dAmpV" class="sval">×1</output><button class="btn" type="button" id="dShadow" aria-pressed="false">Show the shadow</button><span class="scnt" id="dAmpNote" aria-live="polite"></span></div>${verdictHtml(verdict())}`,
+    views: { nav: 'dPresets', label: 'Guided views of the lensing sky', first: 'True bending' },
+    dock: `<button id="dPlay" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
+        <output id="dDate" class="date"></output>
         <div class="slider-wrap">
           <input id="dSlider" type="range" min="0" max="1000" step="0.01" aria-label="Date">
           <div class="slider-scale" aria-hidden="true"><span>${MON[dateOf(T0).getUTCMonth()]} ${dateOf(T0).getUTCFullYear()}</span><span class="win">SN-like alerts</span><span>${MON[dateOf(T1 - 1).getUTCMonth()]} ${dateOf(T1 - 1).getUTCFullYear()}</span></div>
         </div>
-        <output id="dDate" class="date"></output>
-        <label class="speed"><span>Speed</span><select id="dSpeed" aria-label="Days per second"><option value="1">1 day/s</option><option value="2" selected>2 days/s</option><option value="5">5 days/s</option><option value="15">15 days/s</option></select></label>
-      </div>
-      <details class="about"><summary>About this view</summary><p>Temperature: Planck SMICA, smoothed to 12′, shown as a muted warm–cool weave rather than the usual rainbow; the dimmer band is where Planck trusts the map less. Bending: the lensing potential from Planck PR4 (ℓ ≤ 400), turned into a deflection field. The true deflection is about ${M.deflectionRmsArcmin.toFixed(1)}′ rms in this reconstruction, smaller than one pixel here, so at ×1 the lens shows nothing: the bending is real but invisible. “Show the shadow” fades into the convergence κ, the projected mass itself, smoothed to 1.5°. Clusters: ${CL.catalogue}, ${fmtN(NC)} clusters as a faint lace, the ${nFront()} heaviest and busiest in front (doubled when unusually many SN-like alerts sit inside), rings drawn far larger than life so they can be seen. Alerts: ${fmtN(NA)} Fink “most likely SN” objects, at the time each was first seen. Cluster meter: “most likely SN” objects that do not look like stars (Legacy Survey p_star ≤ 0.5) at |b| > 20°, counted inside R500 against a 3–6 R500 ring, over clusters with any object within 6 R500; the error is a 2,000-draw bootstrap over those clusters.</p></details>
-      <div class="legend" id="dLegend"></div>
-    </section>
-    <section class="panel d-meter" aria-labelledby="h-dmeter">
-      <div class="phead"><div class="pbar"><h2 id="h-dmeter">Do Rubin’s explosions follow the dark matter?</h2></div>
-      <p class="cap">Left: the Planck κ averaged at ${fmtN(LT.nObjects)} supernova-like alerts, against 300 copies of the same pattern rotated around the sky (faint ticks). Right: supernova-like alerts inside ACT clusters against the surroundings. The dashed line is 3σ.</p></div>
+        <label class="speed"><span>Speed</span><select id="dSpeed" aria-label="Days per second"><option value="1">1 day/s</option><option value="2" selected>2 days/s</option><option value="5">5 days/s</option><option value="15">15 days/s</option></select></label>`,
+    info: {
+      cap: 'The cosmic microwave background from Planck, in Galactic coordinates. The gold lens magnifies the sky 3× and bends it, and a gold grid, by the lensing deflection Planck measured, amplified by the lens control; the projected mass glows faintly underneath. Gold sparks: Rubin’s supernova-like alerts, night by night. Rings: ACT galaxy clusters.',
+      about: `<p>Temperature: Planck SMICA, smoothed to 12′, shown as a muted warm–cool weave rather than the usual rainbow; the dimmer band is where Planck trusts the map less. Bending: the lensing potential from Planck PR4 (ℓ ≤ 400), turned into a deflection field. The true deflection is about ${M.deflectionRmsArcmin.toFixed(1)}′ rms in this reconstruction, smaller than one pixel here, so at ×1 the lens shows nothing: the bending is real but invisible. “Show the shadow” fades into the convergence κ, the projected mass itself, smoothed to 1.5°. Clusters: ${CL.catalogue}, ${fmtN(NC)} clusters as a faint lace, the ${nFront()} heaviest and busiest in front (doubled when unusually many SN-like alerts sit inside), rings drawn far larger than life so they can be seen. Alerts: ${fmtN(NA)} Fink “most likely SN” objects, at the time each was first seen. Cluster meter: “most likely SN” objects that do not look like stars (Legacy Survey p_star ≤ 0.5) at |b| > 20°, counted inside R500 against a 3–6 R500 ring, over clusters with any object within 6 R500; the error is a 2,000-draw bootstrap over those clusters.</p>`,
+      key: 'dLegend',
+      honest: `At ×1 the bending is real but about ${M.deflectionRmsArcmin.toFixed(1)}′, too small to see; anything larger is amplified. Cluster rings are drawn far larger than life.`,
+    },
+    instruments: [
+      { label: 'Meters', cls: 'd-meter', html: `<h3 id="h-dmeter">Do Rubin’s explosions follow the dark matter?</h3><p class="cap">Left: the Planck κ averaged at ${fmtN(LT.nObjects)} supernova-like alerts, against 300 copies of the same pattern rotated around the sky (faint ticks). Right: supernova-like alerts inside ACT clusters against the surroundings. The dashed line is 3σ.</p>
       <div class="meters"><div><canvas id="dMeter" aria-label="Lensing significance meter"></canvas><p class="note">b = ${LT.bias.toFixed(1).replace('-', '−')} ± ${LT.biasSigma.toFixed(1)} over about ${fmtN(LT.areaDeg2)} deg². What a detection looks like: ACT clusters through the same pipeline give +${LT.controlSigma.toFixed(1)}σ. Forecast: ${esc(LT.forecast)}.</p></div>
       <div><canvas id="dCtest" aria-label="Cluster supernova excess meter"></canvas><p class="note">${ctestNote()}</p></div></div>
-      <p class="note dupd">${updatedLine()}</p>
-    </section>
-    <section class="panel d-story" aria-labelledby="h-dstory">
-      <div class="phead"><div class="pbar"><h2 id="h-dstory">The story so far</h2></div></div>
+      <p class="note dupd">${updatedLine()}</p>` },
+      { label: 'The story so far', cls: 'd-story', html: `<h3 id="h-dstory">The story so far</h3>
       <ol class="dbeats">
         <li><b>The oldest light.</b> The CMB left the young universe 13.8 billion years ago. Its warm and cool spots are sound waves frozen in the first plasma.</li>
         <li><b>Bent on the way.</b> Every clump of matter between us and that light, mostly dark matter, bends it by a couple of arcminutes. Planck turned those tiny bends back into a map of the mass: the shadow.</li>
         <li><b>Rubin’s explosions.</b> Supernovae go off in galaxies, and galaxies sit where the dark matter is. If Rubin’s explosions trace the same mass, they should crowd where the shadow is darkest.</li>
         <li><b>Not yet.</b> Today the needle sits at ${LT.sigma.toFixed(1).replace('-', '−')}σ, inside the cloud of rotated skies: no signal, because Rubin has so far looked hard at a few patches only.</li>
         <li><b>How the needle should move.</b> As the wide survey fills the southern sky, the noise shrinks; if explosions follow dark matter like ordinary galaxies, the needle should cross 3σ around late 2027. ${CT.catalogue === 'ACT DR6' ? 'The cluster test, now on ten thousand ACT DR6 clusters, should get there about as soon.' : 'The cluster test should follow around mid-2028.'}</li>
-      </ol>
-    </section>
-  </div>
-  <aside class="panel card" id="dCard" aria-labelledby="h-dcard">
-    <div class="phead"><div class="pbar"><h2 id="h-dcard">Object card</h2></div></div>
-    <div id="dCardBody" aria-live="polite"></div>
-  </aside>
-</main>`;
-  K.panelControls($('#dmRoot'));
+      </ol>` },
+    ],
+    card: { id: 'dCard', hid: 'h-dcard', body: 'dCardBody', title: 'Object card' },
+  });
+  wireScene('dm', root);
 }
 
 function aim(l, b, amp, shadow) {
@@ -658,8 +656,7 @@ async function build() {
   if (gl) uploadTextures();
   meterS = K.setupCanvas($('#dMeter'), (s) => drawMeter(s, { range: [-4, 8], every: 2, nulls: LT.nulls, value: LT.sigma, ref: LT.controlSigma, refLabel: `ACT clusters +${LT.controlSigma.toFixed(1)}σ`, big: `${LT.sigma > 0 ? '+' : '−'}${Math.abs(LT.sigma).toFixed(1)}σ`, small: 'κ at SN-like alerts vs 300 rotated skies' }));
   ctestS = K.setupCanvas($('#dCtest'), (s) => drawMeter(s, { range: [-2, 5], every: 1, value: CT.sigma, ghost: CT.dr5Ghost ? CT.dr5Ghost.sigma : null, ghostLabel: 'DR5', big: sig(CT.sigma), small: `${CT.observed} seen vs ${CT.expected} expected in ${fmtN(CT.clusters)} clusters` }));
-  const tools = document.createElement('div'); tools.className = 'maptools dm-tools'; $('.dm-wrap').appendChild(tools);
-  pill = SC.makePill(tools, { onToggle: toggleShowAll, onBack: toggleShowAll });
+  pill = SC.makePill($('#dmRoot .pill-host'), { onToggle: toggleShowAll, onBack: toggleShowAll });
   wire();
   presets();
   legend();
@@ -686,7 +683,7 @@ async function enter(objId) {
   K.pingLadder();
   requestAnimationFrame(() => { sizeSky(); syncTime(); pillText(); K.pingLadder(); [meterS, ctestS].forEach((s) => s.resize()); });
   const params = new URLSearchParams(location.search);
-  if (!reduceMotion && !params.has('still')) { st.t = T0; emberN = 0; emberCv = null; setPlay(true); } else syncTime();
+  if (!reduceMotion && params.has('play')) { st.t = T0; emberN = 0; emberCv = null; setPlay(true); } else syncTime();
   loop();
 }
 function leave() { entered = false; if ($('#dPlay')) setPlay(false); K.hideTip(); }
@@ -771,4 +768,4 @@ const dataProvider = {
 registerData('dm', dataProvider);
 
 export const resetStore = () => idb.clearAll();
-export const api = (K.ns.dm = { enter, leave, select, setPlay, get state() { return st; }, get gl() { return !!gl; }, perf: K.perf });
+export const api = (K.ns.dm = { enter, leave, select, setPlay, get state() { return st; }, get verdict() { return verdict(); }, get gl() { return !!gl; }, perf: K.perf });

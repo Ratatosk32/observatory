@@ -80,131 +80,13 @@
   </div>
 </header>
 
-<div class="subbar">
-<nav class="presets ast" id="presets" aria-label="Guided views of the asteroids"><span class="lbl">Explore</span></nav>
-<nav class="presets stars-only" id="sPresets" aria-label="Guided views of the stars sample"><span class="lbl">Explore</span></nav>
-<nav class="presets dm-only" id="dPresets" aria-label="Guided views of the lensing sky"><span class="lbl">Explore</span></nav>
-<nav class="presets earth-only" id="ePresets" aria-label="Guided views of the Earth"><span class="lbl">Explore</span></nav>
-<div class="toolrow">
-<nav class="chapters stars-only" id="chapters" aria-label="Stories"><span class="lbl">Stories</span></nav>
-<div class="lensbar dm-only" id="lensbar" role="group" aria-label="Lens controls"><label class="lbl" for="dAmp">Amplify bending</label><input type="range" id="dAmp" min="0" max="1000" step="1" value="0"><output id="dAmpV" class="sval">×1</output><button class="btn" type="button" id="dShadow" aria-pressed="false">Show the shadow</button><span class="scnt" id="dAmpNote" aria-live="polite"></span></div>
-<div class="sizebar ast" id="sizebar" role="group" aria-labelledby="sizeLbl">
-  <span class="lbl" id="sizeLbl" title="Estimated diameter D = 1329 km / √p × 10^(−H/5), from the absolute magnitude H measured here. Albedo p = 0.15, except 0.40 for Hungarias and 0.06 for Cybeles, Hildas and Trojans. Real sizes can differ by about 2×.">Size</span>
-  <div class="dual" id="dual">
-    <canvas id="sizeHist" aria-hidden="true"></canvas>
-    <input type="range" id="dMin" min="0" max="1000" step="1" value="0" aria-label="Minimum estimated diameter">
-    <input type="range" id="dMax" min="0" max="1000" step="1" value="1000" aria-label="Maximum estimated diameter">
-  </div>
-  <span class="sval" id="sizeVal"></span>
-  <span class="scnt" id="sizeCnt" aria-live="polite"></span>
-  <button class="btn" type="button" id="sizeReset" hidden>Reset</button>
-</div>
-</div>
-<p class="lead"><span class="ast">New here? Press <b>Play</b> under the map to watch the season unfold, try a guided view above, or tap any dot to open its card.</span><span class="stars-only">A sample of about 4,800 objects from Rubin’s alerts, not the survey. Press <b>Play</b>, pick a story, or tap any spark.</span><span class="dm-only">Move the gold lens over the oldest light in the universe. Rubin’s explosions arrive night by night; do they follow the dark matter yet?</span><span class="earth-only">Aurora from a model, space weather live, lightning from last night’s satellites. Press <b>Play</b>, pick a view, or tap a storm.</span></p>
-</div>
-
 <p class="loading stars-only" id="starsLoading" hidden>Loading the sky…</p>
-<div id="starsRoot" class="stars-only"></div>
+<div id="starsRoot" class="floor stars-only"></div>
 <p class="loading dm-only" id="dmLoading" hidden>Loading the CMB…</p>
-<div id="dmRoot" class="dm-only"></div>
+<div id="dmRoot" class="floor dm-only"></div>
 <p class="loading earth-only" id="earthLoading" hidden>Loading the Earth…</p>
-<div id="earthRoot" class="earth-only"></div>
-<main class="ast" id="astMain">
-  <div class="stack">
-  <section class="panel map-panel" aria-labelledby="h-map">
-    <div class="phead">
-      <div class="pbar"><h2 id="h-map">Where are they, and where is Rubin looking?</h2></div>
-      <p class="cap">The Solar System from above, to scale. Bright: the most unusual asteroids; the soft haze is everyone else. Glowing: detected by Rubin within two days; the gold fan from Earth is where it looked.</p>
-    </div>
-    <div class="map-wrap">
-      <canvas id="map" aria-label="Solar System map"></canvas>
-      <div class="zoom">
-        <button class="btn sm" data-zoom="1.8" type="button">Inner</button>
-        <button class="btn sm" data-zoom="3.9" type="button">Belt</button>
-        <button class="btn sm" data-zoom="6.2" type="button">Jupiter</button>
-      </div>
-    </div>
-    <div class="time">
-      <button id="play" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
-      <div class="slider-wrap">
-        <input id="slider" type="range" min="0" max="1000" step="0.01" aria-label="Date">
-        <div class="slider-scale" aria-hidden="true"><span>Jan 2026</span><span class="win">dates with detections</span><span>Dec 2027</span></div>
-      </div>
-      <output id="date" class="date"></output>
-      <label class="speed"><span>Speed</span>
-        <select id="speed" aria-label="Days per second">
-          <option value="1">1 day/s</option>
-          <option value="5">5 days/s</option>
-          <option value="15" selected>15 days/s</option>
-          <option value="60">60 days/s</option>
-          <option value="200">200 days/s</option>
-        </select>
-      </label>
-    </div>
-    <details class="about"><summary>About this view</summary><p>Each asteroid moves on its own orbit; the fan from Earth is brighter where Rubin looked more often. The ring is the ecliptic, marked in heliocentric longitude from the vernal equinox. <span id="timenote"></span></p></details>
-    <div class="legend" id="legend-map"></div>
-  </section>
-
-
-  <section class="panel el-panel" aria-labelledby="h-el">
-    <div class="phead">
-      <div class="pbar"><h2 id="h-el">How does Jupiter sculpt the asteroid belt?</h2></div>
-      <p class="cap">Each dot is an asteroid: its orbit size (semi-major axis a) against its <span id="ycap">eccentricity e, how stretched the orbit is</span>. The strip on top counts asteroids per 0.025 AU. Dashed lines mark orbits whose period is a simple fraction of Jupiter's (4:1, 3:1, …); Jupiter's regular tugs clear those zones, so look for the dips.</p>
-    </div>
-    <div class="seg" role="group" aria-label="Vertical axis">
-      <button class="btn sm on" data-y="e" type="button">a vs e</button>
-      <button class="btn sm" data-y="i" type="button">a vs i</button>
-    </div>
-    <canvas id="elem" aria-label="Orbital element scatter plot"></canvas>
-    <div class="legend" id="legend-el"></div>
-  </section>
-
-  <section class="panel col-panel" aria-labelledby="h-col">
-    <div class="phead">
-      <div class="pbar"><h2 id="h-col">What are they made of?</h2></div>
-      <p class="cap">Colour from two exposures in different filters taken minutes apart, so distance and lighting barely change. Gold line: the Sun's colour. Redder than the Sun in r − i hints at stony S-types; close to solar hints at dark carbon-rich C-types.</p>
-    </div>
-    <canvas id="colours" aria-label="Colour histograms"></canvas>
-    <p class="note" id="colnote"></p>
-  </section>
-
-  <section class="panel cad-panel" aria-labelledby="h-cad">
-    <div class="phead">
-      <div class="pbar"><h2 id="h-cad">When was Rubin observing?</h2></div>
-      <p class="cap">One bar per night of 2026 with data. Top: all alerts that night (log scale), and in blue those matched to known Solar System objects. Bottom: detections of the asteroids on this page. Empty stretches mean no data. Click a night to send the map there.</p>
-    </div>
-    <canvas id="cadence" aria-label="Nightly cadence chart"></canvas>
-    <div class="legend" id="legend-cad"></div>
-  </section>
-
-  <section class="panel stamp-panel" aria-labelledby="h-st">
-    <div class="phead">
-      <div class="pbar"><h2 id="h-st">How does one alert find a moving dot?</h2></div>
-      <p class="cap" id="stampCap">The three 36 × 36 pixel stamps (0.2″ per pixel, about 7″ across) that came with alert 171211557626183684: near-Earth asteroid 2020 HJ4, i band, 15 Nov 2026, 0.30 AU from Earth. Open any asteroid's card and press <b>Show cutouts</b> to load its latest stamps here.</p>
-    </div>
-    <div class="stamps">
-      <figure><span class="im"><img id="stSci" src="stamps/science.png" alt="Science image stamp" width="36" height="36"></span><figcaption><b>Science</b>tonight's exposure</figcaption></figure>
-      <div class="op">−</div>
-      <figure><span class="im"><img id="stTpl" src="stamps/template.png" alt="Template image stamp" width="36" height="36"></span><figcaption><b>Template</b>deep stack of earlier visits</figcaption></figure>
-      <div class="op">=</div>
-      <figure><span class="im"><img id="stDif" src="stamps/difference.png" alt="Difference image stamp" width="36" height="36"></span><figcaption><b>Difference</b>only what changed</figcaption></figure>
-    </div>
-    <p class="body" id="stampBody">The template holds only noise at this spot: the asteroid was elsewhere when the template visits were taken. Subtracting it leaves the asteroid alone. It is an elongated streak rather than a round star because it moved about 3″ during the 30-second exposure, which is the signature of a nearby, fast-moving object. The alert pipeline then matches the source to a predicted position of a known object and attaches its heliocentric position and velocity, which is what every orbit on this page is built from.</p>
-  </section>
-  </div>
-  <aside class="panel card" id="card" aria-labelledby="h-card">
-    <div class="phead"><div class="pbar"><h2 id="h-card">Asteroid card</h2></div></div>
-    <div id="cardBody" aria-live="polite"></div>
-  </aside>
-</main>
-
-<footer class="foot">
-  <p class="indep">Independent project, not affiliated with or endorsed by the Vera C. Rubin Observatory.</p>
-  <p>Data: <a href="https://lsst.fink-broker.org/">Fink</a> LSST broker API (api.lsst.fink-portal.org): SSO alerts, SSOFT, nightly statistics, alert cutouts, from the alert stream of the NSF–DOE Vera C. Rubin Observatory. Planet positions from JPL approximate Keplerian elements (Standish). Orbits are two-body Keplerian; see README for caveats.</p>
-  <p class="stars-only">Stars &amp; beyond: this work uses alert data from the NSF–DOE Vera C. Rubin Observatory Legacy Survey of Space and Time, via the Fink broker (Möller et al. 2021, MNRAS 501, 3272), with crossmatch labels from AAVSO VSX, SIMBAD (CDS), the Transient Name Server, Mangrove and Legacy Surveys DR8 photo-z. This work has made use of data from the European Space Agency (ESA) mission <a href="https://www.cosmos.esa.int/gaia">Gaia</a>, processed by the Gaia Data Processing and Analysis Consortium (<a href="https://www.cosmos.esa.int/web/gaia/dpac/consortium">DPAC</a>). Funding for the DPAC has been provided by national institutions, in particular the institutions participating in the Gaia Multilateral Agreement. Gaia Collaboration, Vallenari et al. 2023, A&amp;A 674, A1; distances from Bailer-Jones et al. 2021, AJ 161, 147. Gaia-derived grids: CC BY-SA 3.0 IGO. Redshifts: SDSS DR16 (Ahumada et al. 2020) via the GAVO Data Center; funding for the Sloan Digital Sky Survey IV has been provided by the Alfred P. Sloan Foundation, the U.S. Department of Energy Office of Science, and the Participating Institutions. Star names: IAU Catalog of Star Names, IAU Working Group on Star Names (WGSN), compiled by E. Mamajek (CC BY). RR Lyrae M<sub>G</sub> = 0.63 (Muraveva et al. 2018); flat ΛCDM, H<sub>0</sub> = 70, Ω<sub>m</sub> = 0.3.</p>
-  <p class="dm-only">Dark matter: based on observations obtained with Planck (https://www.esa.int/Planck), an ESA science mission with instruments and contributions directly funded by ESA Member States, NASA, and Canada; SMICA CMB map (Planck 2015 release) and the PR4 lensing reconstruction (Carron, Mirmelstein and Lewis 2022). ACT DR6 SZ cluster catalogue (ACT Collaboration 2025, arXiv:2507.21459), via NASA LAMBDA; the DR5 catalogue (Hilton et al. 2021) for the dashed comparison needle. SN-like alerts from the Fink broker tag most_likely_sn, from the NSF–DOE Vera C. Rubin Observatory alert stream.</p>
-  <p class="earth-only">Earth: space weather from the NOAA Space Weather Prediction Center (OVATION Prime aurora model: Newell et al. 2009, 2010; real-time solar wind from SWFO-L1, ACE and IMAP; GOES XRS X-rays; planetary Kp from the GFZ and NOAA magnetometer network). Lightning from the GOES-R Geostationary Lightning Mapper (GOES-East and GOES-West GLM L2 flashes) via NOAA Open Data Dissemination on AWS. City lights: NASA Black Marble 2016 (Román et al. 2018), NASA Earth Observatory and NOAA NGDC from Suomi NPP VIIRS, via NASA GIBS. Lightning over Europe, Africa and the Atlantic from the MTG-I1 Lightning Imager (LI-2-LFL flashes). Contains modified EUMETSAT Meteosat data 2026 (EUMETSAT Data Policy, CC BY 4.0). Land, country and sea outlines: Natural Earth. Clouds, when switched on: infrared imagery recoloured for this site, based on EUMETSAT Meteosat data, NOAA GOES and Himawari (Japan Meteorological Agency), via EUMETView and NASA GIBS. We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).</p>
-</footer>
+<div id="earthRoot" class="floor earth-only"></div>
+<div id="astRoot" class="floor ast"></div>
 
 <div id="tip" class="tip" role="tooltip" hidden></div>
 <script type="module" src="js/main.js"></script>

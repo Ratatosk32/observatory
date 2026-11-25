@@ -1,4 +1,5 @@
 import * as K from './kit.js';
+import { sceneHtml, wireScene, openInstrument } from './scene.js';
 import * as SL from './starlight.js';
 import * as SC from './showcase.js';
 import * as TN from './tonight.js';
@@ -138,58 +139,36 @@ const sprites = [];
 
 function buildDom() {
   const root = $('#starsRoot');
-  root.innerHTML = `
-<main class="smain">
-  <div class="stack">
-    <section class="panel map-panel s-sky" aria-labelledby="h-sky">
-      <div class="phead"><div class="pbar"><h2 id="h-sky">Where in the sky does something change?</h2></div>
-      <p class="cap">Gaia’s Milky Way in Galactic coordinates, centre in the middle. Bright: the most unusual objects tonight; the soft haze is everyone else. Sparks: a night on which an object changed.</p></div>
-      <div class="map-wrap"><canvas id="sky" tabindex="0" aria-label="All-sky map in Galactic coordinates. Plus and minus zoom, 0 resets."></canvas>
-        <div class="maptools" id="skyTools"><div class="zoom"><button class="btn sm" type="button" id="zoomIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="zoomOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="zoomReset" hidden>Reset view</button></div></div></div>
-      <div class="time">
-        <button id="sPlay" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
-        <div class="slider-wrap">
-          <input id="sSlider" type="range" min="0" max="1000" step="0.01" aria-label="Date">
-          <div class="slider-scale" aria-hidden="true"><span id="sScale0"></span><span class="win">nights with data</span><span id="sScale1"></span></div>
-        </div>
+  root.innerHTML = sceneHtml('stars', {
+    qid: 'h-sky', stageCls: 's-sky', pillId: 'skyTools',
+    question: 'Where in the sky does something change?',
+    canvas: '<canvas id="sky" tabindex="0" aria-label="All-sky map in Galactic coordinates. Plus and minus zoom, 0 resets."></canvas>',
+    zoom: '<div class="zoom"><button class="btn sm" type="button" id="zoomIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="zoomOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="zoomReset" hidden>Reset view</button></div>',
+    views: {
+      nav: 'sPresets', label: 'Guided views of the stars sample', first: 'Everything', legend: 'sLegend',
+      extra: [['Tools', '<div class="sky-tools"><button class="btn" type="button" id="dropBtn">Drop to distance</button><label class="speed"><span>Pulses</span><select id="sPulse" aria-label="Pulse time scale"><option value="0">off</option><option value="0.5">1 day = 0.5 s</option><option value="1">1 day = 1 s</option><option value="2" selected>1 day = 2 s</option><option value="5">1 day = 5 s</option><option value="20">1 day = 20 s</option></select></label><p class="note pulsecap" id="sPulseCap"></p></div>']],
+    },
+    stories: true,
+    dockCls: 'track-dock',
+    dock: `<button id="sPlay" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
         <output id="sDate" class="date"></output>
-        <label class="speed"><span>Speed</span><select id="sSpeed" aria-label="Days per second"><option value="1">1 day/s</option><option value="2" selected>2 days/s</option><option value="5">5 days/s</option><option value="15">15 days/s</option></select></label>
-      </div>
-      <details class="about"><summary>About this view</summary><p>Embers stay where something has changed so far. Clusters are deep drilling fields, where Rubin returns night after night. In this first season the sample’s alerts come mostly from high Galactic latitudes, looking out of the Milky Way: its stars are halo stars, and the plane and the Magellanic Clouds have almost no alerts here. The soft gold disc is the sky more than 30° above Cerro Pachón at local midnight (computed, not data); north of the gold dec +30° line Rubin cannot see. Gaps with no data are skipped while playing.</p></details>
-      <div class="legend" id="sLegend"></div>
-      <div class="sky-tools"><button class="btn" type="button" id="dropBtn">Drop to distance</button><label class="speed"><span>Pulses</span><select id="sPulse" aria-label="Pulse time scale"><option value="0">off</option><option value="0.5">1 day = 0.5 s</option><option value="1">1 day = 1 s</option><option value="2" selected>1 day = 2 s</option><option value="5">1 day = 5 s</option><option value="20">1 day = 20 s</option></select></label><span class="note pulsecap" id="sPulseCap"></span></div>
-    </section>
-    <section class="panel s-ribbon" aria-labelledby="h-rib">
-      <div class="phead"><div class="pbar"><h2 id="h-rib">When was Rubin watching?</h2></div>
-      <p class="cap">Every night Fink has statistics for: all alerts that night (log scale), coloured by filter. Dots below: this sample's alerts per night, to show how sparse the sample is. Hatched: no data. Click or drag to move in time; ← → step a night, Shift for a week.</p></div>
-      <canvas id="ribbon" tabindex="0" aria-label="Season ribbon and time scrubber"></canvas>
-      <div class="legend" id="sBandLegend"></div>
-    </section>
-    <section class="panel s-ladder" aria-labelledby="h-lad">
-      <div class="phead"><div class="pbar"><h2 id="h-lad">How far away are the things that change?</h2></div>
-      <p class="cap">Each object at its own distance, on a log scale from 1 parsec to 10 billion. Filled dot: measured directly (Gaia parallax, spectroscopic redshift). Open ring: indirect (RR Lyrae standard candle, host galaxy). Dotted ring: weak (photometric redshift). Flaring and eclipsing stars sit within a few kpc, RR Lyrae 10–100 kpc out in the halo, supernovae hundreds of Mpc to Gpc away. Three in four objects cannot be placed and wait in the hatched pile.</p></div>
-      <canvas id="ladder" aria-label="Distance ladder"></canvas>
-    </section>
-    <section class="panel s-census" aria-labelledby="h-cen">
-      <div class="phead"><div class="pbar"><h2 id="h-cen">What is in this sample?</h2></div>
-      <p class="cap">Objects per family (square-root bar length, number at the end). The three thin lines under each bar: how many have a light curve, a distance, a Gaia period. Click a family to show only it.</p></div>
-      <div class="census" id="census"></div>
-      <p class="note">How these were chosen: up to about 200 recent alerts per catalogue class and up to 150 per half-month per Fink tag. Proportions reflect that choice, not the sky. Labels are catalogue crossmatches (VSX, SIMBAD, TNS) and Fink tags, and can be wrong.</p>
-    </section>
-    <section class="panel s-hr" aria-labelledby="h-hrd">
-      <div class="phead"><div class="pbar"><h2 id="h-hrd">What kind of star is it?</h2></div>
-      <p class="cap">Background: 1.34 million Gaia DR3 stars within 200 pc, each cell tinted with the stars’ own BP − RP colour and lit by how many stars it holds (log scale, lightly smoothed). Top and right axes are approximate: temperature from a dwarf colour–temperature relation, luminosity in the G band without bolometric correction. Gold band: the instability strip, where RR Lyrae, Cepheids and δ Scuti stars pulsate. On top: the sample’s stars with a Gaia parallax better than 5σ, shaped by family. Flare stars sit at the cool bottom of the main sequence, white-dwarf binaries below it; RR Lyrae are too far for good parallaxes, so only one appears. Scroll or pinch to zoom, drag to pan.</p></div>
-      <div class="map-wrap"><canvas id="hr" tabindex="0" aria-label="Hertzsprung-Russell diagram. Plus and minus zoom, 0 resets."></canvas>
-        <div class="zoom"><button class="btn sm" type="button" id="hrIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="hrOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="hrReset" hidden>Reset view</button></div></div>
-      <div class="legend" id="hrLegend"></div>
-    </section>
-  </div>
-  <aside class="panel card" id="sCard" aria-labelledby="h-scard">
-    <div class="phead"><div class="pbar"><h2 id="h-scard">Object card</h2></div></div>
-    <div id="sCardBody" aria-live="polite"></div>
-  </aside>
-</main>`;
-  K.panelControls(root);
+        <canvas id="ribbon" class="track" tabindex="0" aria-label="Season ribbon and time scrubber: alerts per night by filter. Left and right arrows step a night, Shift a week."></canvas>
+        <label class="speed"><span>Speed</span><select id="sSpeed" aria-label="Days per second"><option value="1">1 day/s</option><option value="2" selected>2 days/s</option><option value="5">5 days/s</option><option value="15">15 days/s</option></select></label>`,
+    info: {
+      cap: 'Gaia’s Milky Way in Galactic coordinates, centre in the middle. Bright: the most unusual objects tonight; the soft haze is everyone else. Sparks: a night on which an object changed.',
+      about: '<p>Embers stay where something has changed so far. Clusters are deep drilling fields, where Rubin returns night after night. In this first season the sample’s alerts come mostly from high Galactic latitudes, looking out of the Milky Way: its stars are halo stars, and the plane and the Magellanic Clouds have almost no alerts here. The soft gold disc is the sky more than 30° above Cerro Pachón at local midnight (computed, not data); north of the gold dec +30° line Rubin cannot see. Gaps with no data are skipped while playing.</p><p>The time track under the map is the season ribbon: every night Fink has statistics for, all alerts that night (log scale), coloured by filter; dots below are this sample’s alerts per night. Hatched: no data. Click or drag it to move in time; ← → step a night, Shift a week.</p>',
+      key: 'sBandLegend',
+      honest: 'A sample of about 4,800 objects from Rubin’s alerts, not the survey. Labels are catalogue crossmatches (VSX, SIMBAD, TNS) and Fink tags, and can be wrong.',
+    },
+    instruments: [
+      { label: 'Distances', cls: 's-ladder', html: '<h3 id="h-lad">How far away are the things that change?</h3><p class="cap">Each object at its own distance, on a log scale from 1 parsec to 10 billion. Filled dot: measured directly (Gaia parallax, spectroscopic redshift). Open ring: indirect (RR Lyrae standard candle, host galaxy). Dotted ring: weak (photometric redshift). Flaring and eclipsing stars sit within a few kpc, RR Lyrae 10–100 kpc out in the halo, supernovae hundreds of Mpc to Gpc away. Three in four objects cannot be placed and wait in the hatched pile.</p><canvas id="ladder" aria-label="Distance ladder"></canvas>' },
+      { label: 'Census', cls: 's-census', html: '<h3 id="h-cen">What is in this sample?</h3><p class="cap">Objects per family (square-root bar length, number at the end). The three thin lines under each bar: how many have a light curve, a distance, a Gaia period. Click a family to show only it.</p><div class="census" id="census"></div><p class="note">How these were chosen: up to about 200 recent alerts per catalogue class and up to 150 per half-month per Fink tag. Proportions reflect that choice, not the sky. Labels are catalogue crossmatches (VSX, SIMBAD, TNS) and Fink tags, and can be wrong.</p>' },
+      { label: 'HR diagram', cls: 's-hr', html: '<h3 id="h-hrd">What kind of star is it?</h3><p class="cap">Background: 1.34 million Gaia DR3 stars within 200 pc, each cell tinted with the stars’ own BP − RP colour and lit by how many stars it holds (log scale, lightly smoothed). Top and right axes are approximate: temperature from a dwarf colour–temperature relation, luminosity in the G band without bolometric correction. Gold band: the instability strip, where RR Lyrae, Cepheids and δ Scuti stars pulsate. On top: the sample’s stars with a Gaia parallax better than 5σ, shaped by family. Flare stars sit at the cool bottom of the main sequence, white-dwarf binaries below it; RR Lyrae are too far for good parallaxes, so only one appears. Scroll or pinch to zoom, drag to pan.</p><div class="map-wrap"><canvas id="hr" tabindex="0" aria-label="Hertzsprung-Russell diagram. Plus and minus zoom, 0 resets."></canvas><div class="zoom"><button class="btn sm" type="button" id="hrIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="hrOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="hrReset" hidden>Reset view</button></div></div><div class="legend" id="hrLegend"></div>' },
+      { label: 'Season', cls: 's-ribbon', html: '<h3 id="h-rib">When was Rubin watching?</h3><p class="cap">The season ribbon is the time track under the map. Every night Fink has statistics for: all alerts that night (log scale), coloured by filter. Dots below: this sample’s alerts per night, to show how sparse the sample is. Hatched: no data. Click or drag to move in time; ← → step a night, Shift for a week.</p><p class="note" id="sSeason"></p>' },
+    ],
+    card: { id: 'sCard', hid: 'h-scard', body: 'sCardBody', title: 'Object card' },
+  });
+  wireScene('stars', root);
 }
 
 function makeSprites() {
@@ -1909,7 +1888,7 @@ function frame(ts) {
   drawSky(skyS); drawLadder(ladS); drawRibbon(ribS);
   perf.draw.push(performance.now() - c0);
   if (perf.draw.length > 600) perf.draw.shift();
-  if (++frameN % 10 === 0) { $('#sDate').textContent = fmtD(st.t); syncSlider(); }
+  if (++frameN % 10 === 0) { $('#sDate').textContent = fmtD(st.t); }
   raf = requestAnimationFrame(frame);
 }
 function setPlay(p) {
@@ -1923,8 +1902,7 @@ function setPlay(p) {
   if (p && !raf) raf = requestAnimationFrame(frame);
   if (!p) $('#sDate').textContent = fmtD(st.t);
 }
-function syncSlider() { const sl = $('#sSlider'); if (sl) sl.value = ((st.t - T0) / (T1 - T0) * 1000).toFixed(2); }
-function setT(t) { st.tween = null; endWrap(); st.t = clamp(t, T0, T1); $('#sDate').textContent = fmtD(st.t); syncSlider(); redraw(); }
+function setT(t) { st.tween = null; endWrap(); st.t = clamp(t, T0, T1); $('#sDate').textContent = fmtD(st.t); redraw(); }
 function redraw() {
   if (!entered) return;
   drawSky(skyS); drawLadder(ladS); drawRibbon(ribS); drawHr(hrS);
@@ -1933,8 +1911,9 @@ function redraw() {
 
 function dropToDistance() {
   const sky = $('#sky'), lad = $('#ladder');
-  if (reduceMotion || window.innerWidth < 700) { lad.scrollIntoView({ behavior: 'auto', block: 'center' }); return; }
-  lad.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+  openInstrument('stars', 'Distances');
+  ladS.resize();
+  if (reduceMotion || window.innerWidth < 700) return;
   const rs = sky.getBoundingClientRect(), rl = lad.getBoundingClientRect();
   const ov = document.createElement('canvas');
   ov.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:45';
@@ -2015,8 +1994,6 @@ function build() {
   rib.addEventListener('pointerup', () => { drag = false; });
   $('#sPlay').addEventListener('click', () => setPlay(!st.playing));
   $('#sSpeed').addEventListener('change', (e) => { st.speed = +e.target.value; });
-  const sl = $('#sSlider');
-  sl.addEventListener('input', () => setT(T0 + +sl.value / 1000 * (T1 - T0)));
   $('#dropBtn').addEventListener('click', dropToDistance);
   const sp = $('#sPulse');
   if (reduceMotion) sp.disabled = true;
@@ -2034,7 +2011,7 @@ const monthYear = (t) => `${MON[dateOf(t).getUTCMonth()]} ${dateOf(t).getUTCFull
 function headerText() {
   K.shell.setSearch({ items: searchItems, empty: 'No object in this sample matches. Try a TNS name (SN 2026…), a family or a Rubin ID.' }, `Search ${fmtN(N)} objects, e.g. SN or RR Lyrae`);
 }
-function scaleText() { $('#sScale0').textContent = monthYear(T0); $('#sScale1').textContent = monthYear(T1 - 1); }
+function scaleText() { $('#sSeason').textContent = `Nights with data run from ${monthYear(T0)} to ${monthYear(T1 - 1)}.`; }
 function rebuildData() {
   derive();
   buildRank();
@@ -2043,7 +2020,7 @@ function rebuildData() {
   skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1;
   if (skyS) skyS.__w = 0;
   if (built) { legend(); census(); scaleText(); pulseCaption(); }
-  if (entered) { headerText(); renderCard(); $('#sDate').textContent = fmtD(st.t); syncSlider(); redraw(); }
+  if (entered) { headerText(); renderCard(); $('#sDate').textContent = fmtD(st.t); redraw(); }
 }
 function enter(objId) {
   K.ns.debug = Object.assign(K.ns.debug || {}, { weights: () => Float32Array.from(W.w) });
@@ -2060,7 +2037,7 @@ function enter(objId) {
   requestAnimationFrame(() => { [skyS, ladS, ribS, hrS].forEach((s) => s.resize()); redraw(); });
   const params = new URLSearchParams(location.search);
   const handled = ext.story ? ext.story.onEnter(params) : false;
-  if (!handled && !reduceMotion && !params.has('still')) setPlay(true);
+  if (!handled && !reduceMotion && params.has('play')) setPlay(true);
   startPulses();
 }
 function leave() { lan.ra = null; st.tween = null; if (ext.story && ext.story.chapter) ext.story.exitStory(); entered = false; setPlay(false); stopTour(); K.hideTip(); }

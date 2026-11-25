@@ -1,4 +1,5 @@
-import { $, esc, ns, shell, setUrl, initTheme, applyTheme, panelControls, fullscreenPanel, exitFs, modeReady, onKey, onBrand, slot } from './kit.js';
+import { $, esc, ns, shell, setUrl, initTheme, applyTheme, fullscreenPanel, exitFs, modeReady, onKey, onBrand, slot } from './kit.js';
+import './scene.js';
 import { activate as activateData } from './datapanel.js';
 import { initLadder, MODES as FLOORS } from './ladder.js';
 import './health.js';
@@ -74,7 +75,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 initTheme();
-panelControls();
 
 const params = new URLSearchParams(location.search);
 let mode = null;

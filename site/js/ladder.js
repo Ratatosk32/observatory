@@ -162,7 +162,6 @@ function finish(svg, v) {
   return v;
 }
 
-const HINT_KEY = 'lookup.ladderHint';
 
 export function initLadder({ onPick }) {
   const nav = document.getElementById('altLadder');
@@ -483,19 +482,6 @@ export function initLadder({ onPick }) {
   new ResizeObserver(() => { cancelAnimationFrame(relayout); relayout = requestAnimationFrame(() => { layout(); pull('event'); }); }).observe(nav);
   wideQ.addEventListener('change', layout); pinQ.addEventListener('change', layout);
   layout();
-  hintOnce();
-
-  function hintOnce() {
-    let seen = false;
-    try { seen = localStorage.getItem(HINT_KEY) === '1'; } catch {}
-    if (seen || !wideQ.matches) return;
-    nav.classList.add('hint');
-    let done = false;
-    const end = () => { if (done) return; done = true; nav.classList.remove('hint'); try { localStorage.setItem(HINT_KEY, '1'); } catch {} };
-    setTimeout(end, 7000);
-    nav.addEventListener('pointerenter', end, { once: true });
-    group.addEventListener('focusin', end, { once: true });
-  }
 
   return { select, mode, get state() { return S; } };
 }

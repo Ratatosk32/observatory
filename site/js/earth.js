@@ -1,4 +1,5 @@
 import * as K from './kit.js';
+import { sceneHtml, wireScene } from './scene.js';
 import * as SC from './showcase.js';
 import * as SKY from './skycalc.js';
 import * as EG from './earthgl.js';
@@ -1449,46 +1450,38 @@ function onUpdate(id, ok) {
 
 function buildDom() {
   const fr = (T1 - T0) / (Math.max(nowS(), T1 + 1800) - T0);
-  $('#earthRoot').innerHTML = `
-<main class="smain emain">
-  <div class="stack">
-    <section class="panel map-panel e-map" aria-labelledby="h-emap">
-      <div class="phead"><div class="pbar"><h2 id="h-emap">Where is the night sky glowing?</h2></div>
-      <p class="cap">The Earth at night from NASA’s Black Marble, the aurora the OVATION model expects, and the lightning the ${LI_ON ? 'GOES and Meteosat' : 'GOES'} satellites saw. Gold line: dusk and dawn.${LI_ON ? ' Contains modified EUMETSAT Meteosat data 2026.' : ''}</p></div>
-      <div class="map-wrap e-wrap"><div class="e-stage"><canvas id="earthGl" tabindex="0" aria-label="Globe with the two polar caps. Drag to turn, wheel or pinch to zoom, plus and minus zoom, 0 resets, arrows turn."></canvas><canvas id="earthOv" aria-hidden="true"></canvas></div>
-        <div class="maptools" id="eTools"><div class="zoom"><button class="btn sm" type="button" id="eZoomIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="eZoomOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="eZoomReset" hidden>Reset view</button><button class="btn sm" type="button" id="eClouds" aria-pressed="false" title="Show today’s clouds from five weather satellites">Clouds</button></div></div></div>
-      <div class="time etime">
-        <button id="ePlay" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
+  const root = $('#earthRoot');
+  root.innerHTML = sceneHtml('earth', {
+    qid: 'h-emap', stageCls: 'e-map', mainCls: 'emain', wrapCls: 'e-wrap', pillId: 'eTools',
+    question: 'Where is the night sky glowing?',
+    canvas: '<div class="e-stage"><canvas id="earthGl" tabindex="0" aria-label="Globe with the two polar caps. Drag to turn, wheel or pinch to zoom, plus and minus zoom, 0 resets, arrows turn."></canvas><canvas id="earthOv" aria-hidden="true"></canvas></div>',
+    zoom: '<div class="zoom ezoom"><button class="btn sm" type="button" id="eZoomIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="eZoomOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="eZoomReset" hidden>Reset view</button><button class="btn sm" type="button" id="eClouds" aria-pressed="false" title="Show today’s clouds from five weather satellites">Clouds</button></div>',
+    overlay: '<p class="note ecloud" id="eCloudNote" aria-live="polite" hidden></p>',
+    views: { nav: 'ePresets', label: 'Guided views of the Earth', first: 'Everything' },
+    dockCls: 'etime',
+    dock: `<button id="ePlay" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
+        <output id="eDate" class="date"></output>
         <div class="slider-wrap etrack" style="--fr:${(fr * 100).toFixed(1)}%">
           <div class="erail"><input id="eSlider" type="range" min="0" max="1000" step="0.01" aria-label="Time in the 24 hours of nightly lightning"><span class="ehatch" aria-hidden="true"></span><button id="eLive" class="elive" type="button" aria-pressed="false" aria-label="Live: now" title="Live: now (L)"></button></div>
           <div class="escale" aria-hidden="true"><span>${fmtDayHour(T0)}</span><span class="t1">nightly lightning ends ${hhmm(T1)}</span><span class="lv">Live</span></div>
         </div>
-        <output id="eDate" class="date"></output>
-        <label class="speed"><span>Speed</span><select id="eSpeed" aria-label="Playback speed">${SPEEDS.map(([v, l]) => `<option value="${v}"${v === 900 ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-      </div>
-      <details class="about"><summary>About this view</summary><p>City lights are NASA’s Black Marble 2016 composite, not tonight’s lights. The aurora is OVATION Prime, a model: a 30–90 minute forecast from the solar wind measured at L1, not an observation. One model run is kept each night; for other hours it is turned with the Sun. Live shows the newest run. The aurora is drawn on two shells about 1.7% and 3.4% above the surface (110 and 220 km), true to scale, so it pokes past the limb. GLM (and, over Europe and Africa, MTG’s Lightning Imager) sees total lightning, cloud-to-ground and in-cloud, from geostationary orbit, and detects fewer flashes by day; where two satellites overlap, each flash is kept from the one whose point below is nearer. Hatched: nobody shares open lightning data there yet. GLM flash areas are optical footprints, not channel lengths. City lights and aurora are styled into the site’s palette. Geomagnetic poles: the 2025 IGRF dipole. Tags: <span class="prov live"></span> live, <span class="prov nightly"></span> nightly copy, <span class="prov model">◆</span> model.</p></details>
-      <div class="legend" id="eLegend"></div>
-      <p class="note ecloud" id="eCloudNote" aria-live="polite" hidden></p>
-    </section>
-    <section class="panel e-sw" aria-labelledby="h-esw">
-      <div class="phead"><div class="pbar"><h2 id="h-esw">What is the Sun sending us?</h2></div>
-      <p class="cap" id="eStripCap">Measured at L1, 1.5 million km sunward, and by GOES in orbit. Bz south opens the door to the aurora. Gold line: the time on the map.</p></div>
+        <label class="speed"><span>Speed</span><select id="eSpeed" aria-label="Playback speed">${SPEEDS.map(([v, l]) => `<option value="${v}"${v === 900 ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`,
+    info: {
+      cap: `The Earth at night from NASA’s Black Marble, the aurora the OVATION model expects, and the lightning the ${LI_ON ? 'GOES and Meteosat' : 'GOES'} satellites saw. Gold line: dusk and dawn.${LI_ON ? ' Contains modified EUMETSAT Meteosat data 2026.' : ''}`,
+      about: '<p>City lights are NASA’s Black Marble 2016 composite, not tonight’s lights. The aurora is OVATION Prime, a model: a 30–90 minute forecast from the solar wind measured at L1, not an observation. One model run is kept each night; for other hours it is turned with the Sun. Live shows the newest run. The aurora is drawn on two shells about 1.7% and 3.4% above the surface (110 and 220 km), true to scale, so it pokes past the limb. GLM (and, over Europe and Africa, MTG’s Lightning Imager) sees total lightning, cloud-to-ground and in-cloud, from geostationary orbit, and detects fewer flashes by day; where two satellites overlap, each flash is kept from the one whose point below is nearer. Hatched: nobody shares open lightning data there yet. GLM flash areas are optical footprints, not channel lengths. City lights and aurora are styled into the site’s palette. Geomagnetic poles: the 2025 IGRF dipole. Tags: <span class="prov live"></span> live, <span class="prov nightly"></span> nightly copy, <span class="prov model">◆</span> model.</p>',
+      key: 'eLegend',
+      honest: 'Aurora: a model (OVATION), not an observation. Lightning: last night’s satellites, not live. City lights: 2016. Hatched: no open lightning data.',
+    },
+    instruments: [
+      { label: 'Space weather', cls: 'e-sw', html: `<h3 id="h-esw">What is the Sun sending us?</h3><p class="cap" id="eStripCap">Measured at L1, 1.5 million km sunward, and by GOES in orbit. Bz south opens the door to the aurora. Gold line: the time on the map.</p>
       <div class="escales" id="eScales"></div>
       <p class="note" id="eLiveNote" hidden>Live data from NOAA did not load; showing the nightly copy to ${hhmm(T1)}.</p>
-      <canvas id="eStrip" aria-label="Space weather over the last day: solar wind, density, magnetic field, Kp, X-rays and aurora power. Click or drag to move in time."></canvas>
-    </section>
-    <section class="panel e-reg" aria-labelledby="h-ereg">
-      <div class="phead"><div class="pbar"><h2 id="h-ereg">Where is it storming?</h2></div>
-      <p class="cap">Flashes per region over the 24 hours, square-root bar length. Hatched: nobody shares open lightning data there. Click a region to fly to it.</p></div>
-      <div class="eregions" id="eRegions"></div>
-    </section>
-  </div>
-  <aside class="panel card" id="eCard" aria-labelledby="h-ecard">
-    <div class="phead"><div class="pbar"><h2 id="h-ecard">Earth card</h2></div></div>
-    <div id="eCardBody" aria-live="polite"></div>
-  </aside>
-</main>`;
-  K.panelControls($('#earthRoot'));
+      <canvas id="eStrip" aria-label="Space weather over the last day: solar wind, density, magnetic field, Kp, X-rays and aurora power. Click or drag to move in time."></canvas>` },
+      { label: 'Regions', cls: 'e-reg', html: '<h3 id="h-ereg">Where is it storming?</h3><p class="cap">Flashes per region over the 24 hours, square-root bar length. Hatched: nobody shares open lightning data there. Click a region to fly to it.</p><div class="eregions" id="eRegions"></div>' },
+    ],
+    card: { id: 'eCard', hid: 'h-ecard', body: 'eCardBody', title: 'Earth card' },
+  });
+  wireScene('earth', root);
 }
 
 async function loadImages() {
@@ -1542,7 +1535,7 @@ async function enter(objId) {
   requestAnimationFrame(() => {
     layout(); makeBasis(); stripS.resize(); renderCard(); scalesRow(); syncTime();
     if (params.has('live')) setLive(true);
-    else if (!reduceMotion && !params.has('still')) setPlay(true);
+    else if (!reduceMotion && params.has('play')) setPlay(true);
     redraw();
   });
   if (live.enabled) live.start();

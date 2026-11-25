@@ -1,11 +1,70 @@
 import {
   $, C, DEG, BANDS, MON, ns, perf, pushPerf, pingLadder, cosmo, reduceMotion, mjdDate, fmtDate, fmtShort, dateMjd, nightMjd, fmtN, clamp, norm, esc,
-  rng, seedOf, pencilLine, pencilCircle, hatch, sketchBar, setupCanvas, font, annotate, text, showTip, hideTip, setUrl, setCollapsed,
-  fullscreenPanel, onTheme, loadJson, withTokensOf,
+  rng, seedOf, pencilLine, pencilCircle, hatch, sketchBar, setupCanvas, font, annotate, text, showTip, hideTip, setUrl,
+  onTheme, loadJson, withTokensOf,
 } from './kit.js';
 import { createSync } from './sync.js';
 import { register as registerData, refresh as refreshData, fmtBytes } from './datapanel.js';
 import * as SC from './showcase.js';
+import { sceneHtml, wireScene, openInstrument } from './scene.js';
+
+function buildDom() {
+  const root = $('#astRoot');
+  root.innerHTML = sceneHtml('asteroids', {
+    mainId: 'astMain', qid: 'h-map', stageCls: 'map-panel', pillId: 'astTools',
+    question: 'Where are they, and where is Rubin looking?',
+    canvas: '<canvas id="map" aria-label="Solar System map"></canvas>',
+    zoom: '<div class="zoom stops"><button class="btn sm" data-zoom="1.8" type="button">Inner</button><button class="btn sm" data-zoom="3.9" type="button">Belt</button><button class="btn sm" data-zoom="6.2" type="button">Jupiter</button></div>',
+    views: {
+      nav: 'presets', label: 'Guided views of the asteroids', first: 'Whole sample', legend: 'legend-map',
+      extra: [['Size', `<div class="sizebar" id="sizebar" role="group" aria-labelledby="sizeLbl">
+  <span class="lbl" id="sizeLbl">Estimated diameter</span>
+  <div class="dual" id="dual"><canvas id="sizeHist" aria-hidden="true"></canvas><input type="range" id="dMin" min="0" max="1000" step="1" value="0" aria-label="Minimum estimated diameter"><input type="range" id="dMax" min="0" max="1000" step="1" value="1000" aria-label="Maximum estimated diameter"></div>
+  <span class="sval" id="sizeVal"></span>
+  <span class="scnt" id="sizeCnt" aria-live="polite"></span>
+  <button class="btn" type="button" id="sizeReset" hidden>Reset</button>
+  <p class="note">D = 1329 km / √p × 10<sup>−H/5</sup>, from the absolute magnitude H measured here. Albedo p = 0.15, except 0.40 for Hungarias and 0.06 for Cybeles, Hildas and Trojans. Real sizes can differ by about 2×.</p>
+</div>`]],
+    },
+    dock: `<button id="play" class="btn play" type="button" aria-label="Play"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></button>
+      <output id="date" class="date"></output>
+      <div class="slider-wrap">
+        <input id="slider" type="range" min="0" max="1000" step="0.01" aria-label="Date">
+        <div class="slider-scale" aria-hidden="true"><span>Jan 2026</span><span class="win">dates with detections</span><span>Dec 2027</span></div>
+      </div>
+      <label class="speed"><span>Speed</span>
+        <select id="speed" aria-label="Days per second">
+          <option value="1">1 day/s</option>
+          <option value="5">5 days/s</option>
+          <option value="15" selected>15 days/s</option>
+          <option value="60">60 days/s</option>
+          <option value="200">200 days/s</option>
+        </select>
+      </label>`,
+    info: {
+      cap: 'The Solar System from above, to scale. Bright: the most unusual asteroids; the soft haze is everyone else. Glowing: detected by Rubin within two days; the gold fan from Earth is where it looked.',
+      about: '<p>Each asteroid moves on its own orbit; the fan from Earth is brighter where Rubin looked more often. The ring is the ecliptic, marked in heliocentric longitude from the vernal equinox. <span id="timenote"></span></p>',
+      honest: 'Orbits are two-body Sun-only ellipses fixed at each asteroid’s last detection; far outside the detection window the dots are extrapolations. Sizes are estimates from brightness and an assumed albedo.',
+    },
+    instruments: [
+      { label: 'Orbits', cls: 'el-panel', html: '<h3 id="h-el">How does Jupiter sculpt the asteroid belt?</h3><p class="cap">Each dot is an asteroid: its orbit size (semi-major axis a) against its <span id="ycap">eccentricity e, how stretched the orbit is</span>. The strip on top counts asteroids per 0.025 AU. Dashed lines mark orbits whose period is a simple fraction of Jupiter’s (4:1, 3:1, …); Jupiter’s regular tugs clear those zones, so look for the dips.</p><div class="seg" role="group" aria-label="Vertical axis"><button class="btn sm on" data-y="e" type="button">a vs e</button><button class="btn sm" data-y="i" type="button">a vs i</button></div><canvas id="elem" aria-label="Orbital element scatter plot"></canvas><div class="legend" id="legend-el"></div>' },
+      { label: 'Colours', cls: 'col-panel', html: '<h3 id="h-col">What are they made of?</h3><p class="cap">Colour from two exposures in different filters taken minutes apart, so distance and lighting barely change. Gold line: the Sun’s colour. Redder than the Sun in r − i hints at stony S-types; close to solar hints at dark carbon-rich C-types.</p><canvas id="colours" aria-label="Colour histograms"></canvas><p class="note" id="colnote"></p>' },
+      { label: 'Cadence', cls: 'cad-panel', html: '<h3 id="h-cad">When was Rubin observing?</h3><p class="cap">One bar per night of 2026 with data. Top: all alerts that night (log scale), and in blue those matched to known Solar System objects. Bottom: detections of the asteroids on this page. Empty stretches mean no data. Click a night to send the map there.</p><canvas id="cadence" aria-label="Nightly cadence chart"></canvas><div class="legend" id="legend-cad"></div>' },
+      { label: 'Stamps', cls: 'stamp-panel', html: `<h3 id="h-st">How does one alert find a moving dot?</h3><p class="cap" id="stampCap">The three 36 × 36 pixel stamps (0.2″ per pixel, about 7″ across) that came with alert 171211557626183684: near-Earth asteroid 2020 HJ4, i band, 15 Nov 2026, 0.30 AU from Earth. Open any asteroid’s card and press <b>Show cutouts</b> to load its latest stamps here.</p>
+    <div class="stamps">
+      <figure><span class="im"><img id="stSci" src="stamps/science.png" alt="Science image stamp" width="36" height="36"></span><figcaption><b>Science</b>tonight’s exposure</figcaption></figure>
+      <div class="op">−</div>
+      <figure><span class="im"><img id="stTpl" src="stamps/template.png" alt="Template image stamp" width="36" height="36"></span><figcaption><b>Template</b>deep stack of earlier visits</figcaption></figure>
+      <div class="op">=</div>
+      <figure><span class="im"><img id="stDif" src="stamps/difference.png" alt="Difference image stamp" width="36" height="36"></span><figcaption><b>Difference</b>only what changed</figcaption></figure>
+    </div>
+    <p class="body" id="stampBody">The template holds only noise at this spot: the asteroid was elsewhere when the template visits were taken. Subtracting it leaves the asteroid alone. It is an elongated streak rather than a round star because it moved about 3″ during the 30-second exposure, which is the signature of a nearby, fast-moving object. The alert pipeline then matches the source to a predicted position of a known object and attaches its heliocentric position and velocity, which is what every orbit on this page is built from.</p>` },
+    ],
+    card: { id: 'card', hid: 'h-card', body: 'cardBody', title: 'Asteroid card' },
+  });
+  wireScene('asteroids', root);
+}
+buildDom();
 
 const [R, SCD] = await Promise.all([loadJson('data/asteroids.json'), SC.loadShowcase()]);
 const sync = createSync(R);
@@ -1384,10 +1443,8 @@ async function showCutouts(o) {
       $('#stampCap').innerHTML = STAMP_CAP; $('#stampBody').innerHTML = STAMP_BODY;
     });
     $('#stampBody').textContent = 'Science minus template leaves only what changed. A distant or slow asteroid barely moves during the 30-second exposure and looks like a star; a nearby, fast one smears into a streak. Anything that also appears in the template, a star or a galaxy, cancels out in the difference. Stamps are scaled by Fink with a sigmoid stretch, so brightness between panels is not comparable.';
-    const sp = $('.stamp-panel');
-    if (sp.classList.contains('collapsed')) setCollapsed(sp, false);
-    if ($('#cutMsg')) $('#cutMsg').innerHTML = 'Shown in the <a href="#h-st">stamps panel</a> below.';
-    if (window.innerWidth > 1000 || !fullscreenPanel()) sp.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+    openInstrument('asteroids', 'Stamps');
+    if ($('#cutMsg')) $('#cutMsg').textContent = 'Shown in Instruments, Stamps.';
   } catch (e) {
     if (e.name !== 'AbortError' && $('#cutMsg')) $('#cutMsg').textContent = `Could not fetch stamps (${e.message || e}). Try again later.`;
   } finally {
@@ -1440,9 +1497,7 @@ new ResizeObserver(drawSizeHist).observe($('#dual'));
 onTheme(() => { spriteCache.clear(); legendMap(); renderCard(); redrawAll(); drawSizeHist(); });
 
 export function start(params) {
-  const wrap = $('#map').parentElement, zoom = wrap.querySelector('.zoom'), tools = document.createElement('div');
-  tools.className = 'maptools'; tools.id = 'astTools'; wrap.appendChild(tools); if (zoom) tools.appendChild(zoom);
-  pill = SC.makePill(tools, { onToggle: toggleShowAll, onBack: () => runPreset('all') });
+  pill = SC.makePill($('#astTools'), { onToggle: toggleShowAll, onBack: () => runPreset('all') });
   legendMap();
   sizeRange();
   applyFilters();
@@ -1458,7 +1513,7 @@ export function show(params) {
   metaText(); mapS.draw(mapS);
   setTimeout(() => { elS.draw(elS); colS.draw(colS); cadS.draw(cadS); cardPlots.forEach((p) => p.draw(p)); }, 0);
   $('#search').value = state.sel ? state.sel.name : '';
-  if (params && !reduceMotion && !params.has('still')) setPlaying(true);
+  if (params && !reduceMotion && params.has('play')) setPlaying(true);
 }
 export function hide() { setPlaying(false); }
 ns.asteroids = { rebuild, get meta() { return META; }, get state() { return state; }, byName: (n) => byName.get(norm(n)), runPreset, select };

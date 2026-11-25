@@ -718,7 +718,6 @@ function buildUi() {
     <div class="storyright">
       <div id="slotMap"></div>
       <section class="panel stage" aria-labelledby="h-stage"><div class="phead"><div class="pbar"><h2 id="h-stage"></h2></div></div><div id="stageBody"></div></section>
-      <div id="slotRib"></div>
     </div>
   </div>`);
   K.panelControls($('#storyView'));
@@ -743,9 +742,8 @@ function openChapter(key) {
   stopAll(); resetHooks(); R.state.sel = -1;
   chap = CHAPTERS.find((c) => c.key === key);
   if (!document.body.classList.contains('story')) {
-    savedPos = { sky: [$('.s-sky').parentNode, $('.s-sky').nextSibling], rib: [$('.s-ribbon').parentNode, $('.s-ribbon').nextSibling] };
+    savedPos = { sky: [$('.s-sky').parentNode, $('.s-sky').nextSibling] };
     $('#slotMap').appendChild($('.s-sky'));
-    $('#slotRib').appendChild($('.s-ribbon'));
     document.body.classList.add('story');
     $('#storyView').hidden = false;
   }
@@ -778,7 +776,6 @@ function exitStory() {
   stopAll(); resetHooks();
   if (savedPos) {
     savedPos.sky[0].insertBefore($('.s-sky'), savedPos.sky[1]);
-    savedPos.rib[0].insertBefore($('.s-ribbon'), savedPos.rib[1]);
     savedPos = null;
   }
   document.body.classList.remove('story');

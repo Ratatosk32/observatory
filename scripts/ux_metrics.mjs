@@ -10,6 +10,7 @@ const OUT = opt('out', null);
 const SHOTS = opt('shots', null);
 const MODES = (opt('modes', 'stars,asteroids,dm,earth')).split(',');
 const LIMIT_MS = +opt('timeout', 240000);
+const EXTRA = opt('query', '');
 const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PUP = process.env.PUPPETEER_CORE || 'puppeteer-core';
 
@@ -69,6 +70,17 @@ async function collect(page, mode) {
       const r = e.getBoundingClientRect();
       return { sel, ok: r.top >= 0 && r.bottom <= H + 1, top: Math.round(r.top), bottom: Math.round(r.bottom) };
     });
+    const st = [...document.querySelectorAll('.sc-stage')].find(shown);
+    const top = document.querySelector('.top'), rail = document.querySelector('.ladder');
+    let stageCol = null, stageOfContent = null;
+    if (st) {
+      const r = st.getBoundingClientRect();
+      const a = Math.max(0, Math.min(r.right, W) - Math.max(r.left, 0)) * Math.max(0, Math.min(r.bottom, H) - Math.max(r.top, 0));
+      const railW = rail && getComputedStyle(rail).position === 'fixed' ? rail.getBoundingClientRect().right : 0;
+      const topH = top ? top.getBoundingClientRect().bottom : 0;
+      stageCol = +(a / (W * H)).toFixed(3);
+      stageOfContent = +(a / ((W - railW) * (H - topH))).toFixed(3);
+    }
     const se = document.scrollingElement;
     return {
       chrome: chrome.length,
@@ -77,6 +89,8 @@ async function collect(page, mode) {
       height: se.scrollHeight,
       hscroll: se.scrollWidth > W + 1,
       stageShare: +(stage / (W * H)).toFixed(3),
+      stageCol,
+      stageOfContent,
       answer: ans,
     };
   }, mode, ANSWER);
@@ -132,7 +146,7 @@ async function perfRun(browser, results, errors) {
       window.__long = [];
       try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__long.push([performance.now(), e.duration]); }).observe({ type: 'longtask', buffered: true }); } catch (e) { window.__long = null; }
     });
-    await page.goto(`${BASE}?mode=${MODES[0]}`, { waitUntil: 'load', timeout: 90000 });
+    await page.goto(`${BASE}?mode=${MODES[0]}${EXTRA ? '&' + EXTRA : ''}`, { waitUntil: 'load', timeout: 90000 });
     await waitReady(page, MODES[0]);
     const out = {};
     for (const pass of ['first', 'again']) {
@@ -153,8 +167,8 @@ async function perfRun(browser, results, errors) {
           const playing = await page.evaluate(() => {
             const b = [...document.querySelectorAll('button.play, #play, #ePlay, #sPlay, #dPlay')].find((x) => x.getClientRects().length && !x.closest('[hidden]'));
             if (!b) return false;
-            b.click();
-            return true;
+            if (b.getAttribute('aria-label') === 'Play') { b.click(); return 'started'; }
+            return 'already';
           });
           await new Promise((r) => setTimeout(r, 4000));
           const p = await page.evaluate(() => {
@@ -164,7 +178,7 @@ async function perfRun(browser, results, errors) {
           Object.assign(out[key], p, { played: playing });
           await page.evaluate(() => {
             const b = [...document.querySelectorAll('button.play, #play, #ePlay, #sPlay, #dPlay')].find((x) => x.getClientRects().length && !x.closest('[hidden]'));
-            if (b) b.click();
+            if (b && b.getAttribute('aria-label') !== 'Play') b.click();
           });
         }
       }
@@ -177,14 +191,14 @@ async function perfRun(browser, results, errors) {
 
 function report(results) {
   const rows = [];
-  rows.push('| Mode | Chrome 1440 (before) | All controls 1440 (before) | Height 1440 (before) | Height 390 (before) | Stage share 1440 | Answer 1440 | Answer 390 | Paused | H-scroll |');
-  rows.push('|---|---|---|---|---|---|---|---|---|---|');
+  rows.push('| Mode | Chrome 1440 (before) | All controls 1440 (before) | Height 1440 (before) | Height 390 (before) | Canvas share 1440 | Stage column share | Answer 1440 | Answer 390 | Paused | H-scroll |');
+  rows.push('|---|---|---|---|---|---|---|---|---|---|---|');
   for (const m of MODES) {
     const a = results[`${m}@1440`], p = results[`${m}@390`];
     if (!a) continue;
     const ok = (r) => (r ? (r.answer.every((x) => x.ok) ? 'yes' : 'no') : '-');
     const hs = SIZES.map((s) => results[`${m}@${s.name}`]).filter(Boolean).some((r) => r.hscroll);
-    rows.push(`| ${m} | ${a.chrome} (${BEFORE.chrome1440[m]}) | ${a.all} (${BEFORE.all1440[m]}) | ${a.height} (${BEFORE.height1440[m]}) | ${p ? p.height : '-'} (${BEFORE.height390[m]}) | ${a.stageShare} | ${ok(a)} | ${ok(p)} | ${a.paused ? 'yes' : 'no'} | ${hs ? 'YES' : 'no'} |`);
+    rows.push(`| ${m} | ${a.chrome} (${BEFORE.chrome1440[m]}) | ${a.all} (${BEFORE.all1440[m]}) | ${a.height} (${BEFORE.height1440[m]}) | ${p ? p.height : '-'} (${BEFORE.height390[m]}) | ${a.stageShare} | ${a.stageCol == null ? '-' : `${a.stageCol} (${a.stageOfContent} of content)`} | ${ok(a)} | ${ok(p)} | ${a.paused ? 'yes' : 'no'} | ${hs ? 'YES' : 'no'} |`);
   }
   return rows.join('\n');
 }
