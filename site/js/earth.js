@@ -8,6 +8,7 @@ import { PICK, guessSite } from './places.js';
 import { register as registerData, refresh as refreshData } from './datapanel.js';
 import { createLive } from './swpc.js';
 import * as CL from './clouds.js';
+import { cardHead } from './cardhead.js';
 
 const [E, LT, AU] = await Promise.all([K.loadJson('data/earth.json'), K.loadJson('data/earth-lightning.json'), K.loadJson('data/earth-aurora.json').catch(() => null)]);
 const { $, esc, fmtN, MON, clamp, text, annotate } = K;
@@ -154,9 +155,13 @@ function cloudUi() {
   if (!G) { b.hidden = true; return; }
   n.hidden = !clouds.on;
   if (!clouds.on) return;
+  if (!n.dataset.watch) {
+    n.dataset.watch = '1';
+    new ResizeObserver(() => { const w = n.parentElement; if (w) w.style.setProperty('--ecloud-h', `${n.offsetHeight}px`); }).observe(n);
+  }
   const ok = CL.SOURCES.filter((s) => clouds.status[s.id]), bad = CL.SOURCES.filter((s) => clouds.status[s.id] === false);
   const when = clouds.loading ? 'Loading the cloud imagery…' : clouds.err ? clouds.err : `Clouds as of ${hhmm(clouds.time / 1000)} UTC, not the map’s time${bad.length ? ` · missing: ${bad.map((s) => s.label).join(', ')}` : ''}.`;
-  n.innerHTML = `${esc(when)} <button class="link" type="button" id="eCloudRefresh"${clouds.loading ? ' hidden' : ''}>Refresh</button><br><span class="cred">Clouds: infrared imagery recoloured for this site, based on EUMETSAT Meteosat data, NOAA GOES and Himawari (Japan Meteorological Agency), via EUMETView and NASA GIBS.</span>`;
+  n.innerHTML = `${esc(when)} <button class="link" type="button" id="eCloudRefresh"${clouds.loading ? ' hidden' : ''}>Refresh</button><span class="cred">Clouds: infrared imagery recoloured for this site, based on EUMETSAT Meteosat data, NOAA GOES and Himawari (Japan Meteorological Agency), via EUMETView and NASA GIBS.</span>`;
   n.title = ok.length ? `Loaded: ${ok.map((s) => s.label).join(', ')}` : '';
   const rb = $('#eCloudRefresh');
   if (rb) rb.addEventListener('click', () => loadCloudLayer(true));
@@ -452,9 +457,9 @@ function loadTiles() {
   }
 }
 
-function budget() {
+function budget(speed = st.speed) {
   const h = hourOf(st.t), n = rateInView(h), D = box.phone ? 18 : 30;
-  const r = n / 3600 * st.speed;
+  const r = n / 3600 * speed;
   const s = Math.max(1, r / D);
   stats.rate = r;
   const loaded = tilesInView().filter((id) => tiles.get(id));
@@ -474,6 +479,24 @@ function pillText() {
 }
 
 const active = [];
+const IDLE_WIN = 120;
+const idle = { on: false, t0: 0, prev: 0, timer: 0, wake: false };
+const idleOk = () => entered && !st.playing && !st.live && !reduceMotion && !document.hidden;
+function idleSpawn(nowMs) {
+  if (!idle.on) { idle.on = true; idle.t0 = nowMs; idle.prev = 0; return; }
+  const a = idle.prev, b = (nowMs - idle.t0) / 1000;
+  idle.prev = b;
+  if (b <= a) return;
+  const base = st.t - IDLE_WIN, wa = a % IDLE_WIN, wb = b % IDLE_WIN;
+  if (b - a >= IDLE_WIN) spawn(base, st.t, nowMs);
+  else if (Math.floor(b / IDLE_WIN) > Math.floor(a / IDLE_WIN)) { spawn(base + wa, st.t, nowMs); spawn(base, base + wb, nowMs); }
+  else spawn(base + wa, base + wb, nowMs);
+}
+function idleStop() { idle.on = false; if (idle.timer) { clearTimeout(idle.timer); idle.timer = 0; } }
+function idleSleep() {
+  if (idle.timer || !idleOk()) return;
+  idle.timer = setTimeout(() => { idle.timer = 0; idle.wake = true; loop(); }, 220);
+}
 const eggList = [], eggQueue = [];
 let lastData = null, drawnLog = [];
 function keep(F, k, level, inTile) {
@@ -492,7 +515,7 @@ function spawn(tA, tB, now) {
       const p = projV(F.x[k], F.y[k], F.z[k]);
       if (p.z <= 0.02 || p.x < 0 || p.y < 0 || p.x > box.w || p.y > box.h) continue;
       const f = { F, k, born: now + (F.t[k] - tA) / Math.max(1, tB - tA) * 16, dbl: F.h[k] % 10 < 3, boost: 1 };
-      if (st.playing) {
+      if (st.playing || idle.on) {
         drawnFlashes++;
         drawnLog.push(now);
         if (drawnFlashes % EGG_EVERY === 0) {
@@ -633,27 +656,59 @@ function stormsAt(h) {
   return out.sort((a, b) => b.n - a.n);
 }
 let ringList = [];
+const TRACKS = CELLS.map((c) => new Map(c.track.map((r) => [r[0], r])));
+function stormsNow(t) {
+  const u = (t - T0) / 3600 - 0.5, h0 = Math.floor(u), w = clamp(u - h0, 0, 1), out = [];
+  CELLS.forEach((c, i) => {
+    const a = TRACKS[i].get(h0), b = TRACKS[i].get(h0 + 1);
+    if (!a && !b) return;
+    if (a && b) out.push({ i, lat: a[1] + (b[1] - a[1]) * w, lon: a[2] + wrapLon(b[2] - a[2]) * w, n: a[3] + (b[3] - a[3]) * w, fade: 1 });
+    else { const r = a || b, f = a ? 1 - w : w; out.push({ i, lat: r[1], lon: r[2], n: r[3], fade: smooth(0, 1, f) }); }
+  });
+  return out.sort((x, y) => y.n * y.fade - x.n * x.fade);
+}
+const ringR = (n) => (3 + Math.sqrt(n) / 6) * Math.min(2, Math.sqrt(view.k));
+function drawTrack(g, c, i) {
+  const pts = [...TRACKS[i].values()].sort((x, y) => x[0] - y[0]);
+  g.strokeStyle = C().hi; g.fillStyle = C().hi; g.lineWidth = 1.2; g.globalAlpha = 0.55;
+  g.beginPath();
+  let on = false;
+  for (const r of pts) {
+    const p = projLL(r[1], r[2]);
+    if (p.z <= 0.05) { on = false; continue; }
+    if (on) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y);
+    on = true;
+  }
+  g.stroke();
+  for (const r of pts) { const p = projLL(r[1], r[2]); if (p.z > 0.05) { g.beginPath(); g.arc(p.x, p.y, 1.6, 0, 6.2832); g.fill(); } }
+  g.globalAlpha = 1;
+}
 function drawRings(g) {
-  const h = hourOf(st.t), list = st.live ? [] : stormsAt(h);
+  const list = st.live ? [] : stormsNow(st.t);
   ringList = [];
   const a0 = st.lightA * wrapAlpha;
+  g.strokeStyle = tokens.ember; g.lineWidth = 1;
   for (const s of list) {
-    if (ringList.length >= 12) break;
+    if (ringList.length >= 8) break;
     const p = projLL(s.lat, s.lon);
-    if (p.z <= 0.05 || p.x < 0 || p.y < 0 || p.x > box.w || p.y > box.h) continue;
-    const r = (3 + Math.sqrt(s.n) / 6) * Math.min(2, Math.sqrt(view.k)), dim = st.emph.focus >= 0 && st.emph.focus !== s.i ? st.emph.others : 1;
+    if (p.z <= 0.05 || p.x < 0 || p.y < 0 || p.x > box.w || p.y > box.h || s.fade < 0.05) continue;
+    const r = ringR(s.n);
+    if (ringList.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < q.r)) continue;
+    const dim = st.emph.focus >= 0 && st.emph.focus !== s.i ? st.emph.others : 1, rank = ringList.length;
     ringList.push({ ...s, x: p.x, y: p.y, r });
-    g.strokeStyle = tokens.ember; g.lineWidth = 1; g.globalAlpha = 0.5 * a0 * dim;
+    g.globalAlpha = (rank < 3 ? 0.55 : 0.3) * a0 * dim * s.fade;
     g.beginPath(); g.arc(p.x, p.y, r, 0, 6.2832); g.stroke();
   }
   g.globalAlpha = 1;
   const sel = st.sel && st.sel.type === 'storm' ? CELLS[st.sel.i] : null;
   if (sel) {
-    const tr = sel.track.find((r) => r[0] === h) || sel.track.reduce((a, r) => (Math.abs(r[0] - h) < Math.abs(a[0] - h) ? r : a));
+    drawTrack(g, sel, st.sel.i);
+    const now = list.find((x) => x.i === st.sel.i), h = hourOf(st.t);
+    const tr = now ? [h, now.lat, now.lon, now.n] : sel.track.reduce((a, r) => (Math.abs(r[0] - h) < Math.abs(a[0] - h) ? r : a));
     const p = projLL(tr[1], tr[2]);
     if (p.z > 0) {
-      const r = (5 + Math.sqrt(tr[3]) / 6) * Math.min(2, Math.sqrt(view.k));
-      g.strokeStyle = C().hi; g.lineWidth = 2; g.beginPath(); g.arc(p.x, p.y, r, 0, 6.2832); g.stroke();
+      const r = ringR(tr[3]) + 2;
+      g.strokeStyle = C().hi; g.lineWidth = 2; g.globalAlpha = now ? 1 : 0.5; g.beginPath(); g.arc(p.x, p.y, r, 0, 6.2832); g.stroke(); g.globalAlpha = 1;
       const dx = p.x - box.cx, dy = p.y - box.cy, m = Math.hypot(dx, dy) || 1, lx = p.x + dx / m * (r + 18), ly = p.y + dy / m * (r + 18);
       g.strokeStyle = C().ink; g.lineWidth = 1; g.globalAlpha = 0.7; g.beginPath(); g.moveTo(p.x + dx / m * r, p.y + dy / m * r); g.lineTo(lx, ly); g.stroke(); g.globalAlpha = 1;
       annotate(g, sel.name.replace(/^Storm over /, ''), clamp(lx, 60, box.w - 60), clamp(ly + (dy > 0 ? 14 : -4), 16, box.h - 8), { size: 17, color: C().ink, align: dx >= 0 ? 'left' : 'right' });
@@ -697,6 +752,10 @@ function provenanceLine() {
   const a = AUR ? `aurora: OVATION run ${hhmm(AUR.obs)}, turned with the Sun to ${hhmm(st.t)}` : 'aurora: no model run kept';
   return `${a} · lightning: ${LI_ON ? "GLM and MTG LI" : "GLM"}, 1 h trail`;
 }
+function provenanceShort() {
+  if (st.live) return liveGrid ? `aurora: OVATION live, valid ${hhmm(liveGrid.valid)}` : 'aurora: OVATION, turned with the Sun';
+  return `aurora: model run ${AUR ? hhmm(AUR.obs) : 'none'} · lightning: ${LI_ON ? 'GLM, MTG LI' : 'GLM'}, 1 h trail`;
+}
 function drawOverlay(now) {
   if (!box.w || !entered) return;
   const g = ov, c = C();
@@ -719,6 +778,11 @@ function drawOverlay(now) {
   if (!box.phone) {
     text(g, fmtUtc(st.live ? nowS() : st.t), 16, box.h - 30, { size: 16, weight: 600, color: c.ink, halo: true });
     text(g, provenanceLine(), 16, box.h - 12, { size: 12, color: c.ink3, halo: true });
+  } else if (box.w >= 600) {
+    const room = box.w - 4 * box.capR - 24, line = provenanceLine();
+    g.font = K.font(11);
+    const str = g.measureText(line).width <= room ? line : provenanceShort();
+    if (g.measureText(str).width <= room) text(g, str, box.cx, box.h - 8, { size: 11, color: c.ink3, align: 'center', halo: true });
   }
   if (glFail) text(g, glFail, 16, 52, { size: 12, color: c.ink2, halo: true });
 }
@@ -749,10 +813,16 @@ function frame(ts) {
       else if (st.t >= T1) { st.t = T1; wrapAt = ts; }
     }
   }
+  const wake = idle.wake;
+  idle.wake = false;
   if (!st.live) {
-    budget();
+    const still = idleOk();
+    budget(still ? 1 : st.speed);
     if (st.playing && !wrapAt && st.t > tPrev) spawn(tPrev, st.t, performance.now());
+    else if (still) idleSpawn(performance.now());
   }
+  if (!idleOk()) idleStop();
+  if (wake && !active.length && !eggList.length && !glDirty && !moving && !view.tween) { idleSleep(); return; }
   if (!glDirty && lastSunPx) {
     const [sd, sl] = sunLL(st.t), mv = Math.hypot(sd - lastSunPx[0], wrapLon(sl - lastSunPx[1])) * DEG * Rk();
     if (mv > 0.6 && performance.now() - lastGlAt > 100) glDirty = true;
@@ -765,8 +835,10 @@ function frame(ts) {
   if (ts - (frame.lastUi || 0) > 120) { frame.lastUi = ts; syncTime(); }
   while (drawnLog.length && drawnLog[0] < performance.now() - 1000) drawnLog.shift();
   stats.drawnPerSec = drawnLog.length;
+  heroTick(ts);
   const busy = st.playing || st.live || view.tween || active.length || eggList.length || moving || st.liveFade;
   if (busy) raf = requestAnimationFrame(frame);
+  else idleSleep();
 }
 function loop() { if (!raf && entered) { lastTs = 0; raf = requestAnimationFrame(frame); } }
 function redraw() { glDirty = true; loop(); K.pingLadder(); }
@@ -1077,8 +1149,12 @@ function cardRightNow() {
     ${storms.length ? `<h4>Busiest storms, ${hhmm(T0 + h * 3600)} UTC</h4>
     <ul class="hooks">${storms.map((s) => { const c = CELLS[s.i]; return `<li><button type="button" data-storm="${s.i}"><span class="sw" style="background:${tokens.ember}"></span><b>${esc(c.name)}</b>${SC.chipsHtml([`~${fmtN(s.n)} flashes/h`, SAT_LABEL[c.sat] || c.sat, ...(c.areaMax >= 1000 ? ['Big flashes'] : c.sea > 0.6 ? ['Over the ocean'] : [])])}</button></li>`; }).join('')}</ul>` : st.live ? `<p class="note">No lightning after ${hhmm(T1)} UTC; it arrives with tonight's update.</p>` : ''}
     <h4>Who is watching for lightning</h4>
-    <ul class="watch">${watch.map(([on, a, b]) => `<li><span class="sw${on ? '' : ' hollow'}"></span><span><b>${esc(a)}</b><small>${esc(b)}</small></span></li>`).join('')}</ul>`;
+    <ul class="watch">${watch.map(([on, a, b]) => `<li><span class="sw${on ? '' : ' hollow'}"></span><span><b>${esc(a)}</b><small>${esc(b)}</small></span></li>`).join('')}</ul>
+    <div class="chead"><p class="ch-links"><a href="https://www.swpc.noaa.gov/" target="_blank" rel="noopener">NOAA SWPC <span aria-hidden="true">↗</span></a><a href="${SWPC_AURORA}" target="_blank" rel="noopener">Aurora forecast <span aria-hidden="true">↗</span></a></p></div>`;
 }
+const SWPC_AURORA = 'https://www.swpc.noaa.gov/products/aurora-30-minute-forecast';
+const IMAGERY = { G19: ['GOES imagery', 'https://www.star.nesdis.noaa.gov/GOES/index.php'], G18: ['GOES imagery', 'https://www.star.nesdis.noaa.gov/GOES/index.php'], MTI1: ['EUMETView', 'https://view.eumetsat.int/'] };
+const llStr = (lat, lon) => `${Math.abs(lat).toFixed(1)}° ${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}° ${lon >= 0 ? 'E' : 'W'}`;
 function cardStorm(i) {
   const c = CELLS[i], th = (h) => T0 + h * 3600;
   const chips = [`~${fmtN(c.peak)} flashes/h`];
@@ -1091,57 +1167,115 @@ function cardStorm(i) {
     ['Peak rate', `${fmtN(c.peak)} <small>flashes/h</small>`],
     ['Flashes in 24 h', fmtN(c.total)],
     ['Mean flash area', `${fmtN(c.areaMean)} km²`],
-    ['Centre', `${Math.abs(c.lat).toFixed(1)}° ${c.lat >= 0 ? 'N' : 'S'}, ${Math.abs(c.lon).toFixed(1)}° ${c.lon >= 0 ? 'E' : 'W'}`],
+    ['Centre', llStr(c.lat, c.lon)],
   ];
-  return `<h3>${esc(c.name)}</h3>
-    <div class="cls"><span class="sw" style="background:${tokens.ember}"></span>Thunderstorm complex · seen by ${SAT_NAME[c.sat] || c.sat}</div>
-    ${SC.chipsHtml(chips).replace(/<div class="why">(.*)<\/div>/, (m, x) => `<div class="why">${x}${chips.slice(3).map((y) => `<span>${esc(y)}</span>`).join('')}</div>`)}
+  const img = IMAGERY[c.sat];
+  const head = cardHead({
+    name: c.name, sw: tokens.ember, cls: 'Thunderstorm complex', note: `seen by ${esc(SAT_NAME[c.sat] || c.sat)}`,
+    chips: SC.chipsHtml(chips).replace(/<div class="why">(.*)<\/div>/, (m, x) => `<div class="why">${x}${chips.slice(3).map((y) => `<span>${esc(y)}</span>`).join('')}</div>`),
+    how: 'measured', prov: `flashes counted by ${esc(SAT_NAME[c.sat] || c.sat)}, ${c.sat === 'MTI1' ? 'via EUMETSAT' : 'via NOAA NODD'} · nightly copy to ${hhmm(T1)} UTC ${prov('nightly')}`,
+    ladder: '<b>≈ 12 km</b> above the ground · a typical storm top; GLM gives no heights',
+    links: img ? [{ label: img[0], href: img[1] }] : [],
+  });
+  return `${head}
+    <h4>Flashes per 10 minutes</h4>
+    <canvas class="erate ehero" id="eRate" aria-label="Flash rate of this storm over its life, with the map's time"></canvas>
+    <p class="cap hero-cap">Gold line: the time on the map; dim bars are still to come. On the globe, the thin line is the storm's path, hour by hour.</p>
     <dl>${facts.map(([k, x]) => `<div><dt>${k}</dt><dd>${x}</dd></div>`).join('')}</dl>
-    <h4>Flashes per 10 minutes ${prov('nightly')}</h4>
-    <canvas class="erate" id="eRate" aria-label="Flash rate of this storm over its life"></canvas>
     <p class="note">${c.sat === 'MTI1' ? 'MTG’s Lightning Imager counts flashes, cloud-to-ground and in-cloud alike, from 35,786 km up. Contains modified EUMETSAT Meteosat data 2026.' : 'GLM counts flashes, cloud-to-ground and in-cloud alike, from 35,786 km up. By day it misses more (it sees about 70–90% of flashes).'}</p>
     <p><button class="link" type="button" data-back>Back to right now</button></p>`;
 }
+function nearestPick(lat, lon) {
+  let best = null, bd = 400;
+  for (const p of PICK) { const d = gcKm(lat, lon, p.lat, p.lon); if (d < bd) { bd = d; best = p; } }
+  return best;
+}
+function auroraNightly(lat, lon, t) {
+  if (!AUR) return null;
+  const sh = wrapLon(sunLL(AUR.obs)[1] - sunLL(t)[1]), lo = ((lon + sh) % 360 + 360) % 360;
+  return AUR.grid[clamp(Math.round(lat + 90), 0, 180) * 362 + Math.round(lo) % 360];
+}
+const placeCache = { key: '', v: null };
+function placeSeries(lat, lon) {
+  const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+  if (placeCache.key === key) return placeCache.v;
+  const cov = isCovered(lat, lon), flashes = [], aur = [], alt = [];
+  for (let h = 0; h < HOURS; h++) {
+    const tm = T0 + h * 3600 + 1800;
+    flashes.push(cov ? nearbyFlashes(lat, lon, tm) || 0 : null);
+    aur.push(Math.abs(lat) >= 40 ? auroraNightly(lat, lon, tm) : null);
+  }
+  for (let k = 0; k <= HOURS * 6; k++) alt.push(sunAlt(lat, lon, T0 + k * 600));
+  placeCache.key = key; placeCache.v = { cov, flashes, aur, alt };
+  return placeCache.v;
+}
 function cardPlace(lat, lon) {
   const t = st.live ? nowS() : st.t, alt = sunAlt(lat, lon, t), now = auroraAt(lat, lon, t), nf = st.live ? null : nearbyFlashes(lat, lon, t);
+  const near = nearestPick(lat, lon), cov = isCovered(lat, lon), high = Math.abs(lat) >= 40;
   const facts = [
-    ['Where', `${Math.abs(lat).toFixed(1)}° ${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}° ${lon >= 0 ? 'E' : 'W'}`],
     ['Local solar time', solarTime(lon, t)],
     ['Sun', `${alt < 0 ? '−' : ''}${Math.abs(alt).toFixed(0)}° · ${sunWord(alt)}`],
   ];
   if (now != null) facts.push(['Aurora chance', `${now}% ${prov('model')}`]);
-  if (!isCovered(lat, lon)) facts.push(['Lightning', 'No lightning coverage here.']);
+  if (!cov) facts.push(['Lightning', 'No lightning coverage here.']);
   else if (nf != null) facts.push(['Flashes within 100 km', `${fmtN(nf)} <small>in the last hour</small>`]);
-  return `<h3>A place on the map</h3>
-    <div class="cls"><span class="sw" style="background:var(--gold)"></span>${fmtUtc(t)}</div>
+  const kinds = [cov ? `lightning from ${LI_ON ? 'GLM and MTG LI' : 'GLM'}, nightly to ${hhmm(T1)} UTC ${prov('nightly')}` : 'no open lightning data here', `aurora from the OVATION model ${prov('model')}`, 'city lights 2016'];
+  const head = cardHead({
+    name: near ? `Near ${near.label}` : 'A place on the map', sw: 'var(--gold)', cls: llStr(lat, lon), note: fmtUtc(t),
+    how: cov ? 'measured' : 'model', prov: kinds.join(' · '),
+    ladder: 'Above this point: storm tops at <b>≈ 12 km</b>, the green aurora at <b>≈ 110 km</b>',
+    links: high ? [{ label: 'SWPC aurora forecast', href: SWPC_AURORA }] : [],
+  });
+  return `${head}
+    <h4>The 24 hours here</h4>
+    <canvas class="ehero" id="ePlace" aria-label="Flashes within 100 km per hour${high ? ', aurora chance' : ''} and daylight at this place over the 24 hours"></canvas>
+    <p class="cap hero-cap">${cov ? 'Bars: flashes within 100 km per hour. ' : ''}${high ? 'Green line: aurora chance from the model. ' : ''}Shading: day and twilight here. Gold line: the time on the map.</p>
     <dl>${facts.map(([k, x]) => `<div style="grid-column:span ${x.length > 34 ? 3 : 1}"><dt>${k}</dt><dd>${x}</dd></div>`).join('')}</dl>
     <p class="note">City lights from 2016 composites, not tonight.</p>
     <p><button class="link" type="button" data-back>Back to right now</button></p>`;
 }
 function cardAurora(hemi) {
   const t = st.live ? nowS() : st.t, site = readSite();
-  const lon = Math.sign(site.lat || 1) === hemi ? site.lon : wrapLon(sunLL(t)[1] + 180);
+  const mine = Math.sign(site.lat || 1) === hemi;
+  const lon = mine ? site.lon : wrapLon(sunLL(t)[1] + 180);
   const edge = ovalEdge(lon, hemi, t);
   const run = st.live && liveGrid ? liveGrid : AUR;
   const hp = live.st.hp.data && live.st.hp.data.length ? live.st.hp.data[live.st.hp.data.length - 1] : null;
   const lastN = lastOf(hemi > 0 ? SW.hpN : SW.hpS);
   const pw = hp ? hp[hemi > 0 ? 1 : 2] : lastN ? lastN[1] : null;
-  return `<h3>${hemi > 0 ? 'Northern' : 'Southern'} lights</h3>
-    <div class="cls"><span class="sw" style="background:${tokens.aurora}"></span>OVATION Prime aurora model ${prov('model')}</div>
+  const v = nowValues(), ch = mine ? auroraAt(site.lat, site.lon, t) : null;
+  const turned = !(st.live && liveGrid) && run;
+  const head = cardHead({
+    name: hemi > 0 ? 'Northern lights' : 'Southern lights', sw: tokens.aurora, cls: 'Aurora oval', note: 'OVATION Prime model',
+    how: 'model', prov: run ? `OVATION run ${hhmm(run.obs)} UTC, valid ${hhmm(run.valid)}, from NOAA SWPC${turned ? `, turned with the Sun to ${hhmm(t)}` : ''} ${prov('model')}` : 'no model run kept',
+    ladder: '<b>≈ 110 km</b> above the ground · the green aurora shell; the red glow reaches ≈ 220 km',
+    links: [{ label: 'SWPC aurora forecast', href: SWPC_AURORA }],
+  });
+  return `${head}
+    <h4>Hemispheric power since ${hhmm(T0)} UTC</h4>
+    <canvas class="erate ehero" id="eHp" aria-label="Hemispheric power over the window, with the map's time"></canvas>
+    <p class="cap hero-cap">The power the model puts into this hemisphere's aurora. ${live.st.hp.data ? 'Brighter tail: live from NOAA. ' : ''}Gold line: the time on the map.</p>
     <dl>
       <div><dt>Hemispheric power</dt><dd>${pw != null ? `${pw} GW` : '–'} ${prov('model')}</dd></div>
       <div><dt>Oval edge at ${Math.abs(lon).toFixed(0)}° ${lon >= 0 ? 'E' : 'W'}</dt><dd>${edge ? `${edge}° ${hemi > 0 ? 'N' : 'S'}` : 'no oval'}</dd></div>
-      <div><dt>Model run</dt><dd>${run ? `${hhmm(run.obs)} <small>valid ${hhmm(run.valid)}</small>` : '–'}</dd></div>
+      <div><dt>Kp now</dt><dd>${kpStr(v.kp)} <small>${esc(kpWord(v.kp))}</small></dd></div>
+      ${ch != null ? `<div style="grid-column:span 3"><dt>From ${esc(site.label || 'your place')}</dt><dd>${ch}% chance overhead ${prov('model')}</dd></div>` : ''}
     </dl>
-    <h4>Hemispheric power since 00:00 UTC</h4>
-    <canvas class="erate" id="eHp" aria-label="Hemispheric power over the window"></canvas>
     <p class="cap">Think of OVATION as a table with one row per 1° × 1° cell. Its column is the chance, in percent, that aurora is overhead within the hour. It is computed from the solar wind measured at L1, so it is a forecast about 30–90 minutes ahead, not a photo.</p>
     ${st.live && liveGrid ? '' : `<p class="note">One model run is kept each night; for other hours the map turns it with the Sun, so the oval keeps its place under the Sun while the Earth turns.</p>`}
     <p><button class="link" type="button" data-back>Back to right now</button></p>`;
 }
-let rateS = null;
+let rateS = null, heroAt = 0, heroT = -1;
+function heroTick(ts) {
+  if (!rateS || ts - heroAt < 150) return;
+  const t = st.live ? Math.floor(nowS() / 60) : st.t;
+  if (t === heroT) return;
+  heroAt = ts; heroT = t;
+  rateS.draw(rateS);
+}
 function renderCard() {
   K.pingLadder();
+  rateS = null; heroT = -1;
   const body = $('#eCardBody');
   if (!body) return;
   const s = st.sel;
@@ -1152,35 +1286,123 @@ function renderCard() {
   if (rc && s && s.type === 'storm') rateS = K.setupCanvas(rc, (x) => drawRate(x, CELLS[s.i]));
   const hc = body.querySelector('#eHp');
   if (hc) rateS = K.setupCanvas(hc, (x) => drawHp(x, s.hemi));
+  const pc = body.querySelector('#ePlace');
+  if (pc) rateS = K.setupCanvas(pc, (x) => drawPlace(x, s.lat, s.lon));
 }
+function heroFrame(s, t0, t1) {
+  const L = 36, Rm = 6, T = 8, B = 18, W = s.w - L - Rm, H = s.h - T - B;
+  return { L, Rm, T, B, W, H, x: (t) => L + (t - t0) / Math.max(1, t1 - t0) * W, y: (f) => T + H - f * H, t0, t1 };
+}
+function heroAxes(g, s, f, yTop, yLabel) {
+  const c = C(), span = f.t1 - f.t0, step = span > 15 * 3600 ? 6 * 3600 : span > 6 * 3600 ? 3 * 3600 : 3600;
+  g.strokeStyle = c.grid; g.lineWidth = 1; g.globalAlpha = 0.8;
+  g.beginPath(); g.moveTo(f.L, f.y(0) + 0.5); g.lineTo(f.L + f.W, f.y(0) + 0.5); g.moveTo(f.L, f.y(1) + 0.5); g.lineTo(f.L + f.W, f.y(1) + 0.5); g.stroke();
+  g.globalAlpha = 1;
+  text(g, yTop, f.L - 4, f.y(1) + 4, { size: 10.5, color: c.ink3, align: 'right' });
+  text(g, '0', f.L - 4, f.y(0) + 3, { size: 10.5, color: c.ink3, align: 'right' });
+  if (yLabel) text(g, yLabel, f.L + 2, f.y(1) - 1 + 11, { size: 10.5, color: c.ink3 });
+  let first = true;
+  for (let t = Math.ceil(f.t0 / step) * step; t <= f.t1 + 1; t += step) {
+    const x = f.x(t);
+    if (x < f.L + 8 || x > f.L + f.W - 8) continue;
+    g.strokeStyle = c.grid; g.beginPath(); g.moveTo(x + 0.5, f.y(0)); g.lineTo(x + 0.5, f.y(0) + 4); g.stroke();
+    text(g, `${hhmm(t)}${first ? ' UTC' : ''}`, x, s.h - 4, { size: 10.5, color: c.ink3, align: 'center' });
+    first = false;
+  }
+}
+function heroCursor(g, f, t) {
+  const x = f.x(t);
+  if (x < f.L - 1 || x > f.L + f.W + 1) return;
+  g.strokeStyle = C().gold; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, f.T - 4); g.lineTo(x, f.y(0)); g.stroke();
+}
+const niceTop = (v) => { const p = 10 ** Math.floor(Math.log10(Math.max(1, v))), m = v / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p; };
 function drawRate(s, c) {
   const g = s.ctx;
   g.clearRect(0, 0, s.w, s.h);
-  if (!c) return;
-  const r = c.r10, n = r.length, top = Math.max(1, ...r), bw = (s.w - 2) / n, H = s.h - 16;
-  g.fillStyle = tokens.ember; g.globalAlpha = 0.85;
-  r.forEach((v, i) => { const bh = v / top * H; g.fillRect(1 + i * bw, H - bh, Math.max(1, bw - 1), bh); });
+  if (!c || !s.w) return;
+  const r = c.r10, n = r.length, t0 = T0 + c.h0 * 3600, f = heroFrame(s, t0, t0 + n * 600), pk = Math.max(1, ...r), top = niceTop(pk);
+  heroAxes(g, s, f, fmtN(top), '');
+  const tc = st.live ? T1 : st.t, bw = f.W / n;
+  g.fillStyle = tokens.ember;
+  for (let i = 0; i < n; i++) {
+    const bh = r[i] / top * f.H;
+    if (bh <= 0) continue;
+    g.globalAlpha = t0 + i * 600 <= tc ? 0.9 : 0.3;
+    g.fillRect(f.L + i * bw + 0.5, f.y(0) - bh, Math.max(1, bw - 1), bh);
+  }
   g.globalAlpha = 1;
-  const x = 1 + ((st.t - T0) / 600 - c.h0 * 6) * bw;
-  if (x >= 0 && x <= s.w) { g.strokeStyle = C().gold; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
-  text(g, `${hhmm(T0 + c.h0 * 3600)} UTC`, 1, s.h - 2, { size: 11, color: C().ink3 });
-  text(g, `peak ${fmtN(Math.max(...r))} in 10 min`, s.w - 1, s.h - 2, { size: 11, color: C().ink3, align: 'right' });
+  const ip = r.indexOf(pk), px = f.L + (ip + 0.5) * bw, py = f.y(pk / top);
+  const left = px < f.L + f.W * 0.55;
+  text(g, `peak ${fmtN(pk)} at ${hhmm(t0 + ip * 600)}`, px + (left ? 6 : -6), Math.max(f.T + 9, py + 9), { size: 10.5, weight: 600, color: C().ink2, align: left ? 'left' : 'right', halo: true });
+  heroCursor(g, f, tc);
 }
 function drawHp(s, hemi) {
   const g = s.ctx, arr = (hemi > 0 ? SW.hpN : SW.hpS) || [];
   g.clearRect(0, 0, s.w, s.h);
+  if (!s.w) return;
   const liveRows = (live.st.hp.data || []).filter((r) => r[0] >= T1);
-  const pts = arr.map((v, i) => [T0 + i * 300 + 150, v]).filter((p) => p[1] != null).concat(liveRows.map((r) => [r[0], r[hemi > 0 ? 1 : 2]]));
-  const tEnd = Math.max(nowS(), T1), H = s.h - 16, top = Math.max(60, ...pts.map((p) => p[1]));
-  const x = (t) => (t - T0) / (tEnd - T0) * s.w;
-  g.strokeStyle = tokens.aurora; g.lineWidth = 1.2; g.beginPath();
-  let prev = null;
-  for (const [t, v] of pts) { const px = x(t), py = H - v / top * H; if (prev && t - prev > 900) g.moveTo(px, py); else g.lineTo(px, py); prev = t; }
-  g.stroke();
-  const cx = x(st.live ? nowS() : st.t);
-  g.strokeStyle = C().gold; g.beginPath(); g.moveTo(cx, 0); g.lineTo(cx, H); g.stroke();
-  text(g, `0–${top} GW`, 1, s.h - 2, { size: 11, color: C().ink3 });
-  text(g, 'now', s.w - 1, s.h - 2, { size: 11, color: C().ink3, align: 'right' });
+  const night = arr.map((v, i) => [T0 + i * 300 + 150, v]).filter((p) => p[1] != null);
+  const lv = liveRows.map((r) => [r[0], r[hemi > 0 ? 1 : 2]]).filter((p) => p[1] != null);
+  const tEnd = Math.max(nowS(), T1), top = niceTop(Math.max(40, ...night.map((p) => p[1]), ...lv.map((p) => p[1])));
+  const f = heroFrame(s, T0, tEnd);
+  heroAxes(g, s, f, `${fmtN(top)} GW`, '');
+  if (tEnd > T1 + 600) {
+    g.fillStyle = C().ink; g.globalAlpha = 0.05; g.fillRect(f.x(T1), f.T, f.x(tEnd) - f.x(T1), f.H); g.globalAlpha = 1;
+  }
+  const line = (pts, w, a, fill) => {
+    if (!pts.length) return;
+    g.beginPath();
+    let prev = null, start = null;
+    const close = () => { if (fill && start != null && prev != null) { g.lineTo(f.x(prev), f.y(0)); g.lineTo(f.x(start), f.y(0)); } };
+    for (const [t, v] of pts) {
+      const px = f.x(t), py = f.y(v / top);
+      if (prev == null || t - prev > 900) { if (fill && prev != null) { close(); } if (fill) { g.moveTo(px, f.y(0)); g.lineTo(px, py); } else g.moveTo(px, py); start = t; } else g.lineTo(px, py);
+      prev = t;
+    }
+    if (fill) { close(); g.fillStyle = tokens.aurora; g.globalAlpha = 0.16; g.fill(); }
+    else { g.strokeStyle = tokens.aurora; g.lineWidth = w; g.globalAlpha = a; g.stroke(); }
+    g.globalAlpha = 1;
+  };
+  line(night, 0, 1, true);
+  line(night, 1.3, 0.85, false);
+  line(lv, 2, 1, false);
+  if (lv.length) { const [t, v] = lv[lv.length - 1]; g.fillStyle = tokens.live; g.beginPath(); g.arc(f.x(t), f.y(v / top), 3, 0, 6.2832); g.fill(); }
+  if (tEnd > T1 + 600) text(g, 'now', f.L + f.W, f.T + 9, { size: 10.5, color: C().ink3, align: 'right' });
+  heroCursor(g, f, st.live ? nowS() : st.t);
+}
+function drawPlace(s, lat, lon) {
+  const g = s.ctx;
+  g.clearRect(0, 0, s.w, s.h);
+  if (!s.w) return;
+  const d = placeSeries(lat, lon), f = heroFrame(s, T0, T1), c = C();
+  for (let k = 0; k < d.alt.length - 1; k++) {
+    const a = (d.alt[k] + d.alt[k + 1]) / 2, x0 = f.x(T0 + k * 600), x1 = f.x(T0 + (k + 1) * 600);
+    const v = a > 0 ? 0.1 : a > -18 ? 0.1 * (1 + a / 18) * 0.6 : 0;
+    if (v <= 0) continue;
+    g.fillStyle = c.ink; g.globalAlpha = v; g.fillRect(x0, f.T, x1 - x0 + 0.5, f.H);
+  }
+  g.globalAlpha = 1;
+  const pk = Math.max(0, ...d.flashes.map((v) => v || 0)), top = niceTop(Math.max(10, pk));
+  heroAxes(g, s, f, d.cov ? fmtN(top) : '', d.cov ? 'flashes/h' : '');
+  const bw = f.W / HOURS, tc = st.live ? T1 : st.t;
+  if (d.cov) {
+    g.fillStyle = tokens.ember;
+    d.flashes.forEach((v, h) => {
+      if (!v) return;
+      const bh = Math.max(1, v / top * f.H);
+      g.globalAlpha = T0 + h * 3600 <= tc ? 0.9 : 0.3;
+      g.fillRect(f.L + h * bw + 1, f.y(0) - bh, Math.max(1, bw - 2), bh);
+    });
+    g.globalAlpha = 1;
+    if (!pk) text(g, 'no flashes within 100 km', f.L + f.W / 2, f.T + f.H / 2 + 4, { size: 11, color: c.ink3, align: 'center', halo: true });
+  } else text(g, 'no open lightning data here', f.L + f.W / 2, f.T + f.H / 2 + 4, { size: 11, color: c.ink3, align: 'center', halo: true });
+  if (d.aur.some((v) => v != null)) {
+    g.strokeStyle = tokens.aurora; g.lineWidth = 1.6; g.beginPath();
+    d.aur.forEach((v, h) => { const x = f.L + (h + 0.5) * bw, y = f.y(clamp((v || 0) / 100, 0, 1)); if (h) g.lineTo(x, y); else g.moveTo(x, y); });
+    g.stroke();
+    text(g, 'aurora 0–100%', f.L + f.W, f.T + 9, { size: 10.5, color: c.ink3, align: 'right', halo: true });
+  }
+  heroCursor(g, f, tc);
 }
 
 const LANES_DESK = ['speed', 'density', 'bz', 'kp', 'xray', 'hp'];
@@ -1524,6 +1746,7 @@ async function build() {
   strip.addEventListener('pointerup', (e) => { drag = false; if (e.pointerType !== 'mouse') focusStrip(false); });
   strip.addEventListener('pointerleave', () => { K.hideTip(); focusStrip(false); });
   wire();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && entered) loop(); });
   presets();
   legend();
   regionsRender();
@@ -1554,7 +1777,7 @@ async function enter(objId) {
   if (cloudPref() && !clouds.on) setClouds(true); else cloudUi();
 }
 function leave() {
-  entered = false; setPlay(false); live.stop(); K.hideTip();
+  entered = false; setPlay(false); live.stop(); K.hideTip(); idleStop();
   if (raf) { cancelAnimationFrame(raf); raf = 0; }
 }
 

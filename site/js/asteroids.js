@@ -8,6 +8,7 @@ import { register as registerData, refresh as refreshData, fmtBytes } from './da
 import * as SC from './showcase.js';
 import { sceneHtml, wireScene, openInstrument } from './scene.js';
 import { dockHtml, makeDock, fmtSpeed } from './dock.js';
+import { cardHead } from './cardhead.js';
 
 function buildDom() {
   const root = $('#astRoot');
@@ -524,13 +525,26 @@ function buildStatic(s) {
   }
   staticLayer = cv;
 }
+let zoomBox = { key: '', r: null };
+function zoomRect(s) {
+  const key = `${s.w}x${s.h}`;
+  if (zoomBox.key === key) return zoomBox.r;
+  const z = document.querySelector('#astRoot .zoom.stops'), cv = $('#map');
+  const zr = z && z.getBoundingClientRect(), cr = cv.getBoundingClientRect();
+  const r = zr && zr.width ? { left: zr.left - cr.left, top: zr.top - cr.top, right: zr.right - cr.left, bottom: zr.bottom - cr.top } : null;
+  zoomBox = { key: r ? key : '', r };
+  return r;
+}
 function scaleBar(g, s, sc) {
-  const au = niceAU(state.viewR);
-  const x0 = s.w - 12 - au * sc, y0 = s.h - 34;
-  pencilLine(g, x0, y0, x0 + au * sc, y0, { color: C.graphite, width: 1.2 });
+  const au = niceAU(state.viewR), len = au * sc, z = zoomRect(s);
+  let x1 = s.w - 12, y0 = s.h - 14;
+  if (z && z.bottom > y0 - 26 && z.left < x1) { x1 = z.left - 14; y0 = Math.min(y0, z.bottom - 6); }
+  const x0 = x1 - len;
+  pencilLine(g, x0, y0, x1, y0, { color: C.graphite, width: 1.2 });
   pencilLine(g, x0, y0 - 5, x0, y0 + 1, { color: C.graphite, width: 1 });
-  pencilLine(g, x0 + au * sc, y0 - 5, x0 + au * sc, y0 + 1, { color: C.graphite, width: 1 });
-  text(g, `${au} AU`, x0 + au * sc / 2, y0 - 8, { size: 11, weight: 500, color: C.ink2, align: 'center', halo: true });
+  pencilLine(g, x1, y0 - 5, x1, y0 + 1, { color: C.graphite, width: 1 });
+  text(g, `${au} AU`, x0 + len / 2, y0 - 8, { size: 11, weight: 500, color: C.ink2, align: 'center', halo: true });
+  return [x0, y0, x1];
 }
 function plateFill() {
   const [r, g, b] = SC.rgbOf(C.dark ? C.ink : getComputedStyle(document.documentElement).getPropertyValue('--field').trim());
@@ -735,8 +749,14 @@ function drawMap(s) {
   }
   fadeOutside(g, s);
   if (g !== s.ctx) fadeOutside(s.ctx, s);
-  if (plateEq) text(g, plateEq[0], plateEq[1], plateEq[2], { size: 11, color: C.ink3, align: plateEq[3], halo: true });
-  scaleBar(g, s, sc);
+  const [bx, by, bx1] = scaleBar(g, s, sc);
+  if (plateEq && plateEq[3] !== 'right') text(g, plateEq[0], plateEq[1], plateEq[2], { size: 11, color: C.ink3, align: 'left', halo: true });
+  else if (plateEq) {
+    g.font = font(11);
+    const w = g.measureText(plateEq[0]).width;
+    if (bx - 14 - w >= 4) text(g, plateEq[0], bx - 14, by + 4, { size: 11, color: C.ink3, align: 'right', halo: true });
+    else if (bx1 - w >= 4) text(g, plateEq[0], bx1, by - 24, { size: 11, color: C.ink3, align: 'right', halo: true });
+  }
   planetLabels(g, s, discs);
 
   if (state.sel) {
@@ -763,6 +783,7 @@ function drawMap(s) {
   }
   perf.draw.push(performance.now() - t0);
   if (perf.draw.length > 600) perf.draw.shift();
+  heroTick();
 }
 
 
@@ -1260,6 +1281,124 @@ function hgPhi(a, G) {
   return (1 - G) * Math.exp(-3.33 * t ** 0.63) + G * Math.exp(-1.87 * t ** 1.22);
 }
 
+const LIGHT_S_PER_AU = 499.005;
+function earthDist(o, mjd) {
+  const p = posAt(o, mjd, [0, 0]), E = planetAt('Earth', mjd);
+  return Math.hypot(p[0] - E[0], p[1] - E[1]);
+}
+function lightWords(au) {
+  const s = au * LIGHT_S_PER_AU;
+  return s < 90 ? `${Math.round(s)} light-seconds` : s < 5400 ? `${(s / 60).toFixed(s < 600 ? 1 : 0)} light-minutes` : `${(s / 3600).toFixed(1)} light-hours`;
+}
+function ladLine(o) {
+  const d = earthDist(o, state.t), inData = state.t >= META.tmin - 1 && state.t <= META.tmax + 1;
+  return `<b>${d.toFixed(2)} AU</b> from Earth on ${fmtShort(state.t)}, ${lightWords(d)} · ${inData ? 'orbit fitted to Rubin detections, in the ecliptic plane' : 'extrapolated along the fitted orbit'}`;
+}
+function detRuns(o) {
+  const ts = o.det.map((d) => d[0] + MJD_OFF).sort((a, b) => a - b), runs = [];
+  for (const t of ts) { const r = runs[runs.length - 1]; if (r && t - r[1] < 20) r[1] = t; else runs.push([t, t]); }
+  return runs;
+}
+const hero = { s: null, o: null, base: null, key: '', col: null, fit: null, lastT: -1, lastAt: 0 };
+function heroFit(s, o) {
+  const tmp = [0, 0];
+  let x0 = -1.02, x1 = 1.02, y0 = -1.02, y1 = 1.02;
+  for (let k = 0; k < 96; k++) {
+    const E = k / 96 * 2 * Math.PI, xp = o.a * (Math.cos(E) - o.e), yp = o.b * Math.sin(E);
+    tmp[0] = xp * o.Px + yp * o.Qx; tmp[1] = xp * o.Py + yp * o.Qy;
+    x0 = Math.min(x0, tmp[0]); x1 = Math.max(x1, tmp[0]); y0 = Math.min(y0, tmp[1]); y1 = Math.max(y1, tmp[1]);
+  }
+  const padX = 18, padT = 26, padB = 14;
+  const sc = Math.min((s.w - 2 * padX) / (x1 - x0), (s.h - padT - padB) / (y1 - y0));
+  const cx = s.w / 2 - (x0 + x1) / 2 * sc, cy = padT + (s.h - padT - padB) / 2 + (y0 + y1) / 2 * sc;
+  return { sc, cx, cy, X: (x) => cx + x * sc, Y: (y) => cy - y * sc };
+}
+function heroBase(s, o) {
+  const key = [s.w, s.h, s.dpr, o.idx, C.dark, dataVer].join('|');
+  if (key === hero.key && hero.base) return;
+  hero.key = key;
+  hero.col = { hi: C.hi, gold: C.gold, porbit: C.porbit, ink: C.ink, ink2: C.ink2, ink3: C.ink3, bg: C.bg, earth: PLANET_LOOK.Earth[0], sun: '#f6d98b' };
+  const f = hero.fit = heroFit(s, o), c = hero.col;
+  const cv = hero.base || document.createElement('canvas');
+  cv.width = Math.round(s.w * s.dpr); cv.height = Math.round(s.h * s.dpr);
+  const g = cv.getContext('2d');
+  g.setTransform(s.dpr, 0, 0, s.dpr, 0, 0); g.clearRect(0, 0, s.w, s.h);
+  g.lineWidth = 0.8; g.strokeStyle = c.porbit;
+  for (const p of ['Mercury', 'Venus', 'Earth', 'Mars', 'Jupiter']) {
+    const a = PLANETS[p][0];
+    if (a * f.sc < 6 || (p !== 'Earth' && a > Math.max(o.Q, 1) * 1.25)) continue;
+    g.globalAlpha = p === 'Earth' ? 0.9 : 0.5;
+    g.beginPath(); g.arc(f.cx, f.cy, a * f.sc, 0, 6.2832); g.stroke();
+  }
+  g.globalAlpha = 1;
+  const tmp = [0, 0];
+  g.strokeStyle = c.hi; g.lineWidth = 1.4; g.beginPath();
+  for (let k = 0; k <= 240; k++) {
+    const E = k / 240 * 2 * Math.PI, xp = o.a * (Math.cos(E) - o.e), yp = o.b * Math.sin(E);
+    tmp[0] = xp * o.Px + yp * o.Qx; tmp[1] = xp * o.Py + yp * o.Qy;
+    if (k) g.lineTo(f.X(tmp[0]), f.Y(tmp[1])); else g.moveTo(f.X(tmp[0]), f.Y(tmp[1]));
+  }
+  g.stroke();
+  g.strokeStyle = c.gold; g.lineWidth = 4.5; g.lineCap = 'round'; g.globalAlpha = 0.55;
+  for (const [t0, t1] of detRuns(o)) {
+    g.beginPath();
+    const n = Math.max(2, Math.ceil((t1 - t0) / 2));
+    for (let k = 0; k <= n; k++) { posAt(o, t0 + (t1 - t0) * k / n, tmp); if (k) g.lineTo(f.X(tmp[0]), f.Y(tmp[1])); else g.moveTo(f.X(tmp[0]), f.Y(tmp[1])); }
+    if (t1 - t0 < 1) { posAt(o, t0, tmp); g.lineTo(f.X(tmp[0]) + 0.1, f.Y(tmp[1])); }
+    g.stroke();
+  }
+  g.globalAlpha = 1; g.lineCap = 'butt'; g.fillStyle = c.gold;
+  for (const d of o.det) if (d[6] !== null) { g.beginPath(); g.arc(f.X(d[6]), f.Y(d[7]), 1.6, 0, 6.2832); g.fill(); }
+  const sunR = 3.5;
+  g.fillStyle = c.sun; g.beginPath(); g.arc(f.cx, f.cy, sunR, 0, 6.2832); g.fill();
+  const apse = (E, lbl) => {
+    const xp = o.a * (Math.cos(E) - o.e), yp = o.b * Math.sin(E), x = f.X(xp * o.Px + yp * o.Qx), y = f.Y(xp * o.Py + yp * o.Qy);
+    const dx = x - f.cx, dy = y - f.cy, m = Math.hypot(dx, dy) || 1;
+    g.strokeStyle = c.hi; g.lineWidth = 1; g.beginPath(); g.moveTo(x - dx / m * 4, y - dy / m * 4); g.lineTo(x + dx / m * 4, y + dy / m * 4); g.stroke();
+    g.font = font(11);
+    const w = g.measureText(lbl).width, ux = dx / m, uy = dy / m;
+    const lx = clamp(x + ux * 10 + (ux > 0.3 ? 0 : ux < -0.3 ? -w : -w / 2), 3, s.w - w - 3), ly = clamp(y + uy * 12 + 4, 26, s.h - 4);
+    text(g, lbl, lx, ly, { size: 11, color: c.ink2, halo: true });
+  };
+  if (o.e > 0.02) { apse(0, `q ${o.q.toFixed(2)} AU`); apse(Math.PI, `Q ${o.Q.toFixed(2)} AU`); }
+  hero.base = cv;
+}
+function drawHero(s) {
+  const o = hero.o;
+  if (!s.w || !o) return;
+  heroBase(s, o);
+  const g = s.ctx, f = hero.fit, c = hero.col;
+  g.clearRect(0, 0, s.w, s.h);
+  g.drawImage(hero.base, 0, 0, s.w, s.h);
+  const p = posAt(o, state.t, [0, 0]), q = posAt(o, state.t + 3, [0, 0]), E = planetAt('Earth', state.t);
+  const ax = f.X(p[0]), ay = f.Y(p[1]), ex = f.X(E[0]), ey = f.Y(E[1]);
+  g.strokeStyle = c.ink2; g.lineWidth = 1; g.setLineDash([3, 3]); g.globalAlpha = 0.8;
+  g.beginPath(); g.moveTo(ex, ey); g.lineTo(ax, ay); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+  g.fillStyle = c.earth; g.strokeStyle = c.ink; g.lineWidth = 0.8; g.beginPath(); g.arc(ex, ey, 3.5, 0, 6.2832); g.fill(); g.stroke();
+  const vx = f.X(q[0]) - ax, vy = f.Y(q[1]) - ay, vm = Math.hypot(vx, vy);
+  if (vm > 0.01) {
+    const ux = vx / vm, uy = vy / vm, bx = ax + ux * 11, by = ay + uy * 11;
+    g.fillStyle = c.hi; g.beginPath(); g.moveTo(bx + ux * 5, by + uy * 5); g.lineTo(bx - uy * 3.2, by + ux * 3.2); g.lineTo(bx + uy * 3.2, by - ux * 3.2); g.closePath(); g.fill();
+  }
+  g.fillStyle = c.hi; g.beginPath(); g.arc(ax, ay, 4, 0, 6.2832); g.fill();
+  g.strokeStyle = c.bg; g.lineWidth = 1.2; g.stroke();
+  const d = Math.hypot(p[0] - E[0], p[1] - E[1]), mx = (ax + ex) / 2, my = (ay + ey) / 2;
+  if (Math.hypot(ax - ex, ay - ey) > 46) text(g, `${d.toFixed(2)} AU`, mx + 6, my - 4, { size: 11, weight: 600, color: c.ink, halo: true });
+  text(g, 'Earth', ex + 6, ey + 12, { size: 11, color: c.ink2, halo: true });
+  const inData = state.t >= META.tmin - 1 && state.t <= META.tmax + 1;
+  text(g, fmtDate(state.t), 4, 13, { size: 12, weight: 600, color: c.ink, halo: true });
+  if (!inData) text(g, 'position extrapolated', s.w - 4, 13, { size: 11, color: c.ink3, align: 'right', halo: true });
+}
+function heroTick() {
+  if (!hero.s || !hero.o || hero.o !== state.sel || state.t === hero.lastT) return;
+  const now = performance.now();
+  if (state.playing && now - hero.lastAt < 66) return;
+  hero.lastT = state.t; hero.lastAt = now;
+  drawHero(hero.s);
+  const l = $('#cardBody [data-ladline]');
+  if (l) l.innerHTML = ladLine(hero.o);
+}
+
 let cardPlots = [];
 const renderCard = onCard(renderCardInner);
 function renderCardInner() {
@@ -1267,6 +1406,7 @@ function renderCardInner() {
   cardPlots = [];
   const o = state.sel;
   if (!o) {
+    hero.s = null; hero.o = null;
     const c = META.classes;
     const stats = `<dl><div><dt>Asteroids</dt><dd>${fmtN(META.nobj)}</dd></div><div><dt>Detections</dt><dd>${fmtN(META.ndet)}</dd></div><div><dt>Bands</dt><dd>${Object.keys(META.bands).length}</dd></div>
       <div><dt>Main belt</dt><dd>${fmtN(c.MBA || 0)}</dd></div><div><dt>Near-Earth</dt><dd>${c.NEO || 0}</dd></div><div><dt>Trojans</dt><dd>${c.TRO || 0}</dd></div></dl>
@@ -1291,10 +1431,17 @@ function renderCardInner() {
     o.H.r !== undefined ? `${o.H.r.toFixed(1)} <small>r, G=0.15 assumed</small>` :
     Object.keys(o.H).length ? `${Object.values(o.H)[0].toFixed(1)} <small>${Object.keys(o.H)[0]}, G=0.15</small>` : '—';
   const col = o.col ? Object.entries(o.col).map(([k, v]) => `${k[0]}−${k[1]} ${v.toFixed(2)}`).join(', ') : null;
+  const sstr = encodeURIComponent(o.des || o.name);
+  const head = cardHead({
+    name: o.name, sw: C.cls[o.cls], cls: esc(CLASS[o.cls].name), note: esc(CLASS[o.cls].desc), chips: SC.chipsHtml(chipsFor(o)), how: 'measured',
+    prov: `orbit fitted to ${o.det.length} Rubin detection${o.det.length === 1 ? '' : 's'} on ${o.nn} night${o.nn === 1 ? '' : 's'}, via Fink, to ${fmtShort(Math.max(...t))}`,
+    ladder: ladLine(o),
+    links: [{ label: 'JPL SBDB', href: `https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=${sstr}` }, { label: 'MPC', href: `https://minorplanetcenter.net/db_search/show_object?object_id=${sstr}` }],
+  });
   card.innerHTML = `
-    <h3>${o.name}</h3>
-    <div class="cls"><span class="sw" style="background:${C.cls[o.cls]}"></span>${CLASS[o.cls].name} <span style="color:var(--ink3)">· ${CLASS[o.cls].desc}</span></div>
-    ${SC.chipsHtml(chipsFor(o))}
+    ${head}
+    <canvas class="orbit" aria-label="The orbit of ${esc(o.name)} seen from above the ecliptic, with Earth, the Sun, the stretches where Rubin detected it, and its position on the map's date"></canvas>
+    <p class="cap orbit-cap">To scale, seen from above the ecliptic. Thick gold: where on its orbit Rubin detected it. The arrow shows its direction of travel; the dashed line runs to Earth on the map's date.</p>
     <dl>
       <div><dt>a, semi-major axis</dt><dd>${o.a.toFixed(3)} <small>AU</small></dd></div>
       <div><dt>e, eccentricity</dt><dd>${o.e.toFixed(3)}</dd></div>
@@ -1317,6 +1464,9 @@ function renderCardInner() {
     <div class="legend">${bands.map((b) => `<span class="k"><span class="sw" style="background:${C.band[b]}"></span>${b} band</span>`).join('')}</div>
     <div class="cut-row"><button class="btn" type="button" id="cutBtn">Show cutouts</button><span id="cutMsg">latest Science / Template / Difference stamps, fetched from Fink</span></div>`;
   card.querySelector('#cutBtn').addEventListener('click', () => showCutouts(o));
+  hero.o = o; hero.lastT = state.t; hero.key = '';
+  hero.s = setupCanvas(card.querySelector('canvas.orbit'), onCard(drawHero));
+  cardPlots.push(hero.s);
   cardPlots.push(phasePlot(card.querySelector('.pp'), o));
   cardPlots.push(lcPlot(card.querySelector('.lc'), o));
 }
