@@ -162,6 +162,8 @@ function finish(svg, v) {
   return v;
 }
 
+const HINT_KEY = 'lookup.ladderHint';
+
 export function initLadder({ onPick }) {
   const nav = document.getElementById('altLadder');
   const group = nav.querySelector('[role=radiogroup]');
@@ -178,7 +180,7 @@ export function initLadder({ onPick }) {
   const peekSel = peek.querySelector('.lp-sel');
   const peekClose = peek.querySelector('.lp-close');
   const wideQ = matchMedia('(min-width: 1200px)'), pinQ = matchMedia('(min-width: 1760px)');
-  radios.forEach((b) => { const c = b.cloneNode(true); c.removeAttribute('id'); c.querySelector('.lw').remove(); c.setAttribute('aria-label', MODES[b.dataset.mode].name); c.removeAttribute('title'); peekGroup.appendChild(c); });
+  radios.forEach((b) => { const c = b.cloneNode(true); c.removeAttribute('id'); c.querySelector('.lw').setAttribute('aria-hidden', 'true'); c.setAttribute('aria-label', MODES[b.dataset.mode].name); c.removeAttribute('title'); peekGroup.appendChild(c); });
   const peekRadios = [...peekGroup.querySelectorAll('[role=radio]')];
 
   const S = { mode: null, shown: null, u: null, target: null, cm: null, how: 'measured', info: null, segs: [null, null], segT: [null, null], anim: null, raf: 0, last: 0, mod: null, token: 0, announced: '' };
@@ -481,6 +483,19 @@ export function initLadder({ onPick }) {
   new ResizeObserver(() => { cancelAnimationFrame(relayout); relayout = requestAnimationFrame(() => { layout(); pull('event'); }); }).observe(nav);
   wideQ.addEventListener('change', layout); pinQ.addEventListener('change', layout);
   layout();
+  hintOnce();
+
+  function hintOnce() {
+    let seen = false;
+    try { seen = localStorage.getItem(HINT_KEY) === '1'; } catch {}
+    if (seen || !wideQ.matches) return;
+    nav.classList.add('hint');
+    let done = false;
+    const end = () => { if (done) return; done = true; nav.classList.remove('hint'); try { localStorage.setItem(HINT_KEY, '1'); } catch {} };
+    setTimeout(end, 7000);
+    nav.addEventListener('pointerenter', end, { once: true });
+    group.addEventListener('focusin', end, { once: true });
+  }
 
   return { select, mode, get state() { return S; } };
 }

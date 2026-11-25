@@ -880,8 +880,8 @@ h1 .arw { color: var(--gold); }
 .lad-group button, .lp-group button { font: inherit; color: var(--ink2); background: transparent; border: 0; padding: 0; cursor: pointer; }
 .lad-group button .ic, .lp-group button .ic { width: 20px; height: 20px; stroke-width: 1.5; }
 .lad-group button:focus-visible, .lp-group button:focus-visible, .lad-track:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
-.lad-group .box, .lp-group .box { display: grid; place-items: center; width: 28px; height: 30px; border-radius: 10px; border: 1px solid transparent; }
-.lad-group button:hover .box, .lp-group button:hover .box { background: var(--hover); color: var(--ink); }
+.lad-group .box, .lp-group .box { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; border: 1px solid var(--chip-line); background: var(--field); transition: border-color 120ms, background 120ms, color 120ms; }
+.lad-group button:hover .box, .lp-group button:hover .box { background: var(--hover); color: var(--ink); border-color: var(--ink3); }
 .lad-group button.on, .lp-group button.on { color: var(--gold); }
 .lad-group button.on .box, .lp-group button.on .box { background: var(--gold-tint); border-color: var(--gold); }
 .lad-read { margin: 0; }
@@ -901,6 +901,9 @@ h1 .arw { color: var(--gold); }
 .lp-body { position: relative; flex: 1 1 auto; min-height: 0; }
 .lp-body > svg { position: absolute; left: 0; top: 0; }
 .lp-group button { position: absolute; left: 4px; top: var(--y, 0); width: 40px; height: 40px; display: grid; place-items: center; }
+.lp-group .lw { position: absolute; left: 3px; top: 40px; width: max-content; font-size: 10.5px; line-height: 12px; color: var(--ink3); pointer-events: none; }
+.lp-group button.on .lw { color: var(--lad-gold, var(--gold)); font-weight: 600; }
+.lp-group button:hover .lw { color: var(--ink); }
 .lp-sel { position: absolute; left: 0; right: 0; bottom: 0; height: 72px; padding: 6px 14px 0; border-top: 1px solid var(--chip-line); font-size: 12px; line-height: 15px; color: var(--ink2); overflow: hidden; }
 .lp-sel p { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lp-sel .lp-n { color: var(--lad-gold); font-size: 13px; font-weight: 600; line-height: 17px; }
@@ -918,7 +921,8 @@ h1 .arw { color: var(--gold); }
   .top { grid-template-columns: minmax(310px, 1fr) minmax(260px, 560px) auto; grid-template-areas: "brand search right"; }
   .lad-track { position: absolute; inset: 0; pointer-events: none; }
   .lad-group button { position: absolute; left: 0; top: var(--y, 0); width: 40px; height: 40px; display: grid; place-items: center; }
-  .lad-group .lw { display: none; }
+  .lad-group .lw { position: absolute; left: 44px; top: 50%; transform: translateY(-50%); padding: 3px 9px; border-radius: 8px; border: 1px solid var(--gold-soft); background: var(--field); color: var(--ink); font-size: 12px; line-height: 16px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 200ms; }
+  .ladder.hint .lad-group .lw, .lad-group button:focus-visible .lw { opacity: 1; }
   .lad-read { position: absolute; left: 6px; width: 52px; bottom: 0; height: 52px; padding-top: 8px; border-top: 1px solid var(--chip-line); text-align: center; line-height: 1.25; }
   .lad-read b { display: block; color: var(--lad-gold); font-size: 12px; font-weight: 600; white-space: nowrap; }
   .lad-read span { display: block; color: var(--ink3); font-size: 10px; }
