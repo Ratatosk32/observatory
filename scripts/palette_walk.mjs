@@ -85,13 +85,13 @@ async function main() {
     await page.waitForFunction(() => window.Observatory && window.Observatory.ready, { timeout: 40000 });
     await page.evaluate(HELPERS);
     const egg = await page.evaluate(async () => {
-      const p = await import('/js/palette.js');
+      const p = await import('/js/palette.js' + new URL(document.querySelector('script[src*="main.js"]').src).search);
       return ['sprite', 'sprites', 'elves', 'egg', '70 km'].flatMap((q) => p.paletteItems(q).filter((i) => i.group !== 'Search other floors' && /sprite|elves|egg/i.test(i.label)).map((i) => i.label));
     });
     out.push((egg.length ? 'FAIL' : 'ok  ') + ' the easter egg is not indexed ' + (egg.length ? JSON.stringify(egg) : ''));
     for (const [row, q, id, check, before] of ROWS) {
       const res = await page.evaluate(async (q, id, check, before) => {
-        const p = await import('/js/palette.js');
+        const p = await import('/js/palette.js' + new URL(document.querySelector('script[src*="main.js"]').src).search);
         const a = document.querySelector('#aboveYou');
         if (a && !a.hidden) a.querySelector('.ab-close').click();
         if (!document.querySelector('#dataPanel').hidden) document.querySelector('#dataClose').click();

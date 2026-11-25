@@ -174,8 +174,8 @@ function actions() {
   const helpKeys = (shell.keyHelp || []).flatMap((h) => h.keys || []);
   if (typeof scene().openView === 'function' && !helpKeys.includes('V')) out.push({ id: 'act:view', label: 'Views and filters on this floor', kw: 'view menu presets filters show size tools legend', m, run: () => scene().openView(mode()) });
   if (typeof scene().zen === 'function' && !helpKeys.includes('H')) out.push({ id: 'act:zen', label: 'Hide or show the controls', kw: 'zen full screen calm hide chrome', m, run: () => scene().zen() });
-  const seen = new Set();
-  for (const h of shell.keyHelp || []) if (typeof h.run === 'function' && h.label && !seen.has(h.label) && seen.add(h.label)) out.push({ id: 'key:' + h.label, label: h.label, kw: h.kw || '', kbd: h.keys || [], m: h.mode || null, run: h.run });
+  const help = [...new Map((shell.keyHelp || []).filter((h) => typeof h.run === 'function' && h.label).map((h) => [h.label, h])).values()];
+  for (const h of help) out.push({ id: 'key:' + h.label, label: h.label, kw: h.kw || '', kbd: h.keys || [], m: h.mode || null, run: h.run });
   out.push(
     { id: 'stars:drop', label: 'Drop the stars to their distances', kw: 'distance 3d parallax animation', m: 'stars', run: floorClick('stars', '#dropBtn') },
     { id: 'stars:pulse', label: 'Pulse time scale', kw: 'pulses period animation speed', m: 'stars', run: floorFocus('stars', '#sPulse') },
