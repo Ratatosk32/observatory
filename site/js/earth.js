@@ -1772,7 +1772,7 @@ async function enter(objId) {
   requestAnimationFrame(() => {
     layout(); makeBasis(); stripS.resize(); renderCard(); scalesRow(); syncTime();
     if (params.has('live')) setLive(true);
-    else if (!reduceMotion && params.has('play')) setPlay(true);
+    else if (!reduceMotion && (params.has('play') || (!tp && !objId && !params.has('pause')))) setPlay(true);
     redraw();
   });
   if (live.enabled) live.start();

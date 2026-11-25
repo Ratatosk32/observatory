@@ -374,7 +374,7 @@ export function initLadder({ onPick }) {
       const d = S.target - S.u;
       if (Math.abs(d) < 0.01) { S.u = S.target; S.target = null; } else { S.u += d * (1 - Math.exp(-dt / 250)); moving = true; }
     }
-    if (rail && rail.label && S.info && S.u != null) { const c = S.anim && S.anim.climb; rail.label(S.u, c ? '' : readV.textContent, c ? '' : readM.textContent); }
+    if (rail && rail.label && S.u != null) { const c = S.anim && (S.anim.climb || S.anim.wait); if (c) rail.label(S.u, '', ''); else if (S.info) rail.label(S.u, readV.textContent, readM.textContent); }
     for (let k = 0; k < 2; k++) {
       const tg = S.segT[k], cur = S.segs[k];
       if (!tg) { S.segs[k] = null; continue; }
