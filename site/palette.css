@@ -100,3 +100,5 @@
   .pl-hint { display: none; }
   .pl-open { display: inline-grid; width: 40px; height: 40px; }
 }
+.pl-toast { position: fixed; z-index: 75; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: calc(100vw - 32px); margin: 0; padding: 8px 14px; border-radius: 10px; background: var(--field); color: var(--ink); border: 1px solid var(--gold-soft); box-shadow: var(--shadow-2); font-size: 13.5px; }
+.pl-toast[hidden] { display: none; }

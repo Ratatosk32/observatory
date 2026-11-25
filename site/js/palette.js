@@ -4,7 +4,6 @@ import { css, mode, visible, waitFor, toFloor, reveal, runPreset, pickObject, op
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const MOD = MAC ? '⌘' : 'Ctrl';
 const SEARCH_IC = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>';
-const ROOT = { stars: '#starsRoot', asteroids: '#astMain', dm: '#dmRoot', earth: '#earthRoot' };
 const PLAY = { stars: '#sPlay', asteroids: '#play', dm: '#dPlay', earth: '#ePlay' };
 const TAG = { stars: 'Stars', asteroids: 'Asteroids', dm: 'Dark matter', earth: 'Earth' };
 const NOUN = { stars: 'the stars and transients', asteroids: 'the asteroids', dm: 'the ACT clusters', earth: 'storms and places' };
@@ -104,14 +103,15 @@ async function onFloor(m, find) {
   const el = await waitFor(find);
   return el;
 }
-const floorClick = (m, sel) => async () => { const b = await onFloor(m, () => document.querySelector(sel)); if (b) b.click(); };
+const floorClick = (m, sel, show = false) => async () => { const b = await onFloor(m, () => document.querySelector(sel)); if (!b) return; if (show) reveal(b, false); b.click(); };
 const floorFocus = (m, sel, focusSel) => async () => { const b = await onFloor(m, () => document.querySelector(sel)); if (b) { reveal(b, false); const f = focusSel ? $(focusSel) : b; if (f) f.focus({ preventScroll: true }); } };
-function rootOf(m) { return $(ROOT[m]); }
+function rootOf(m) { return document.querySelector(`.scene[data-floor="${m}"]`); }
 function pillButton(m) {
   const r = rootOf(m);
   return r ? [...r.querySelectorAll('.showcase button')].find(visible) || r.querySelector('.showcase button') : null;
 }
-function stagePanel(m) { const r = rootOf(m); return r && r.querySelector('.panel.map-panel'); }
+const scene = () => shell.scene || {};
+const sceneReady = (m) => waitFor(() => (typeof scene().ready === 'function' ? scene().ready(m) : !!rootOf(m)));
 
 function climb(d) {
   const k = FLOOR_ORDER.indexOf(mode());
@@ -125,25 +125,28 @@ function openLadder() {
   const r = $('.lad-group [aria-checked="true"]');
   if (r) r.focus();
 }
-function aboutView() {
-  const p = stagePanel(mode());
-  const d = p && p.querySelector('details.about');
-  if (d) { d.open = true; reveal(d); return; }
-  const cap = p && p.querySelector('.cap');
-  if (cap) reveal(cap);
-}
-function credits() {
+async function aboutView() {
   const m = mode();
-  const cls = { stars: 'stars-only', dm: 'dm-only', earth: 'earth-only', asteroids: 'indep' }[m];
-  const p = document.querySelector(`.foot p.${cls}`) || document.querySelector('.foot');
-  reveal(p);
+  await sceneReady(m);
+  if (typeof scene().openInfo === 'function') { scene().openInfo(m); return; }
+  reveal(document.querySelector(`#${m}Info .cap`));
+}
+async function credits() {
+  const m = mode();
+  await sceneReady(m);
+  if (typeof scene().openCredits === 'function' && scene().openCredits(m) !== false) return;
+  reveal(document.getElementById(`${m}Credits`));
+}
+let toastEl = null, toastT = 0;
+function toast(text) {
+  if (!toastEl) { toastEl = document.createElement('p'); toastEl.className = 'pl-toast'; toastEl.setAttribute('role', 'status'); document.body.appendChild(toastEl); }
+  toastEl.textContent = text;
+  toastEl.hidden = false;
+  clearTimeout(toastT);
+  toastT = setTimeout(() => { toastEl.hidden = true; }, 2600);
 }
 async function copyLink() {
-  try { await navigator.clipboard.writeText(location.href); flash('Link copied'); } catch { flash('Copy the address bar to share this view'); }
-}
-function flash(text) {
-  if (!status) return;
-  status.textContent = text;
+  try { await navigator.clipboard.writeText(location.href); toast('Link to this view copied'); } catch { toast('Copying was blocked: the address bar holds the link to this view'); }
 }
 
 function actions() {
@@ -168,9 +171,11 @@ function actions() {
   } else {
     out.push({ id: 'act:pill', label: 'Show all, not only the most unusual', kw: 'show all most unusual showcase honesty everything', m, run: async () => { const b = await waitFor(() => pillButton(mode())); if (b) b.click(); } });
   }
-  const fs = stagePanel(m);
-  if (fs && fs.querySelector('.pctl .fsb')) out.push({ id: 'act:fs', label: 'Show the scene full screen', kw: 'full screen expand zen big', m, run: click(() => stagePanel(mode()).querySelector('.pctl .fsb')) });
-  for (const h of shell.keyHelp || []) if (typeof h.run === 'function' && h.label) out.push({ id: 'key:' + h.label, label: h.label, kw: h.kw || '', kbd: h.keys || [], m: h.mode || null, run: h.run });
+  const helpKeys = (shell.keyHelp || []).flatMap((h) => h.keys || []);
+  if (typeof scene().openView === 'function' && !helpKeys.includes('V')) out.push({ id: 'act:view', label: 'Views and filters on this floor', kw: 'view menu presets filters show size tools legend', m, run: () => scene().openView(mode()) });
+  if (typeof scene().zen === 'function' && !helpKeys.includes('H')) out.push({ id: 'act:zen', label: 'Hide or show the controls', kw: 'zen full screen calm hide chrome', m, run: () => scene().zen() });
+  const seen = new Set();
+  for (const h of shell.keyHelp || []) if (typeof h.run === 'function' && h.label && !seen.has(h.label) && seen.add(h.label)) out.push({ id: 'key:' + h.label, label: h.label, kw: h.kw || '', kbd: h.keys || [], m: h.mode || null, run: h.run });
   out.push(
     { id: 'stars:drop', label: 'Drop the stars to their distances', kw: 'distance 3d parallax animation', m: 'stars', run: floorClick('stars', '#dropBtn') },
     { id: 'stars:pulse', label: 'Pulse time scale', kw: 'pulses period animation speed', m: 'stars', run: floorFocus('stars', '#sPulse') },
@@ -185,10 +190,10 @@ function actions() {
   );
   const legend = $('#sLegend');
   const fams = legend ? [...legend.querySelectorAll('[data-g]')] : [];
-  if (fams.length) for (const b of fams) { const name = b.textContent.trim().replace(/\s[\d,]+$/, ''); out.push({ id: 'stars:fam:' + b.dataset.g, label: `Show or hide ${name}`, kw: 'family filter legend toggle', m: 'stars', run: floorClick('stars', `#sLegend [data-g="${b.dataset.g}"]`) }); }
+  if (fams.length) for (const b of fams) { const name = b.textContent.trim().replace(/\s[\d,]+$/, ''); out.push({ id: 'stars:fam:' + b.dataset.g, label: `Show or hide ${name}`, kw: 'family filter legend toggle', m: 'stars', run: floorClick('stars', `#sLegend [data-g="${b.dataset.g}"]`, true) }); }
   else out.push({ id: 'stars:fams', label: 'Filter the stars by family', kw: 'family filter legend pulsating explosions black holes', m: 'stars', run: floorFocus('stars', '#sLegend', '#sLegend [data-g]') });
   const cls = [...document.querySelectorAll('#legend-map [data-cls]')];
-  if (cls.length) for (const b of cls) { const name = b.textContent.trim().replace(/\s[\d,]+$/, ''); out.push({ id: 'ast:cls:' + b.dataset.cls, label: `Only ${name} asteroids`, kw: 'orbit class filter legend', m: 'asteroids', run: floorClick('asteroids', `#legend-map [data-cls="${b.dataset.cls}"]`) }); }
+  if (cls.length) for (const b of cls) { const name = b.textContent.trim().replace(/\s[\d,]+$/, ''); out.push({ id: 'ast:cls:' + b.dataset.cls, label: `Only ${name} asteroids`, kw: 'orbit class filter legend', m: 'asteroids', run: floorClick('asteroids', `#legend-map [data-cls="${b.dataset.cls}"]`, true) }); }
   else out.push({ id: 'ast:classes', label: 'Filter the asteroids by orbit class', kw: 'orbit class filter legend neo hungaria hilda trojan', m: 'asteroids', run: floorFocus('asteroids', '#legend-map', '#legend-map [data-cls]') });
   const regions = [...document.querySelectorAll('#eRegions [data-region]')].map((b) => [b.dataset.region, (b.querySelector('.nm') || b).textContent.trim()]);
   for (const [id, name] of regions.length ? regions : (index && index.regions) || []) out.push({ id: 'earth:reg:' + id, label: `Fly to ${name}`, kw: 'region lightning flashes', m: 'earth', run: floorClick('earth', `#eRegions [data-region="${id}"]`) });
@@ -392,7 +397,7 @@ export function runById(id, q = '') { const it = collect(q).find((x) => x.id ===
 
 function keyRows() {
   const own = [[[MOD, 'K', 'or', '/'], 'Search and commands'], [['N'], 'Above you: one line per floor'], [['?'], 'This list of shortcuts'], [['Alt', '↑'], 'Climb a floor'], [['Alt', '↓'], 'Descend a floor'], [['Esc'], 'Close the topmost panel']];
-  const theirs = (shell.keyHelp || []).filter((h) => h.keys && h.label).map((h) => [h.keys, h.label]);
+  const theirs = [...new Map((shell.keyHelp || []).filter((h) => h.keys && h.label).map((h) => [h.label, [h.keys, h.label]])).values()];
   return { anywhere: [...own, ...theirs], floor: [[['Space'], 'Play or pause time (Stars, Dark matter, Earth)'], [['←', '→'], 'Step a night on the season ribbon, or 10 minutes on Earth; Shift for a week or an hour'], [['L'], 'Live space weather and aurora (Earth)'], [['+', '−', '0'], 'Zoom in, out and reset (sky, HR diagram, globe)'], [['↑', '↓'], 'Move between floors when the ladder has focus']], story: [[['←', '→'], 'Previous or next step'], [['Esc'], 'Leave the story']] };
 }
 function dl(rows) { return `<dl>${rows.map(([k, v]) => `<dt>${k.map((x) => (x === 'or' ? '<span>or</span>' : `<kbd>${esc(x)}</kbd>`)).join('')}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`; }
