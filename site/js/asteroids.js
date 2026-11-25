@@ -1,5 +1,5 @@
 import {
-  $, C, DEG, BANDS, MON, ns, perf, pushPerf, reduceMotion, mjdDate, fmtDate, fmtShort, dateMjd, nightMjd, fmtN, clamp, norm, esc,
+  $, C, DEG, BANDS, MON, ns, perf, pushPerf, pingLadder, cosmo, reduceMotion, mjdDate, fmtDate, fmtShort, dateMjd, nightMjd, fmtN, clamp, norm, esc,
   rng, seedOf, pencilLine, pencilCircle, hatch, sketchBar, setupCanvas, font, annotate, text, showTip, hideTip, setUrl, setCollapsed,
   fullscreenPanel, onTheme, loadJson, withTokensOf,
 } from './kit.js';
@@ -164,6 +164,7 @@ let hazeSmall = null, hazeSoft = null;
 const BLUR = typeof CanvasRenderingContext2D !== 'undefined' && 'filter' in CanvasRenderingContext2D.prototype;
 const AST_W = { rare: 1, orbit: 0.9, approach: 1, extreme: 0.8 };
 let N = 0, flatT = new Float64Array(0), META = R.meta, posX = new Float32Array(0), posY = new Float32Array(0);
+const ladderGeo = { ok: false, sc: 1, ex: 0, ey: 0 };
 function buildData() {
   O.length = 0;
   R.objs.forEach((o, idx) => O.push(mkObj(o, idx)));
@@ -621,6 +622,8 @@ function drawMap(s) {
   for (const p in PLANETS) planetNow[p] = planetAt(p, state.t);
   const E = planetNow.Earth;
   const ex = cx + E[0] * sc, ey = cy - E[1] * sc;
+  ladderGeo.sc = sc; ladderGeo.ex = ex; ladderGeo.ey = ey; ladderGeo.ok = true;
+  pingLadder();
 
   const win = 2;
   const i0 = lowerBound(flatT, state.t - win), i1 = lowerBound(flatT, state.t + win);
@@ -1343,12 +1346,8 @@ function legendMap() {
   $('#legend-cad').innerHTML = `<span class="k"><span class="sw sq" style="background:${C.bar}"></span>all Fink alerts</span><span class="k"><span class="sw sq" style="background:${C.bar2}"></span>matched to known SSOs</span><span class="k"><span class="sw sq" style="background:${C.gold}"></span>this sample</span><span class="k"><span class="sw sq" style="background:${C.hi}"></span>selected asteroid's nights</span>`;
 }
 
-const ASTRO_TITLE = 'Look up';
 function metaText() {
   if (document.body.dataset.mode && document.body.dataset.mode !== 'asteroids') return;
-  const d0 = mjdDate(META.tmin), d1 = mjdDate(META.tmax);
-  const span = d0.getUTCFullYear() === d1.getUTCFullYear() ? `${MON[d0.getUTCMonth()]}–${MON[d1.getUTCMonth()]} ${d1.getUTCFullYear()}` : `${fmtShort(META.tmin)} ${d0.getUTCFullYear()} – ${fmtDate(META.tmax)}`;
-  $('#sub').textContent = `Rubin’s first asteroid season · ${fmtN(META.nobj)} asteroids · ${fmtN(META.ndet)} detections · ${span}`;
   $('#search').placeholder = `Search ${fmtN(META.nobj)} asteroids, e.g. 2026 CZ10`;
   $('#colnote').textContent = colNote();
   $('#timenote').textContent = `Detections run ${fmtDate(META.tmin)} – ${fmtDate(META.tmax)} (the highlighted stretch of the slider). Each orbit is a simple Sun-only ellipse fixed at the asteroid's last detection, so far outside that window the dots are extrapolations. Zoom with the buttons, the mouse wheel or a pinch; Space plays and pauses.`;
@@ -1455,7 +1454,6 @@ export function start(params) {
   if (params.get('sel')) { const o = byName.get(norm(params.get('sel'))); if (o) select(o, { zoom: true }); }
 }
 export function show(params) {
-  $('h1').textContent = ASTRO_TITLE;
   setUrl({ mode: 'asteroids', obj: null, chapter: null, beat: null, sel: state.sel ? state.sel.name : null });
   metaText(); mapS.draw(mapS);
   setTimeout(() => { elS.draw(elS); colS.draw(colS); cadS.draw(cadS); cardPlots.forEach((p) => p.draw(p)); }, 0);
@@ -1466,3 +1464,14 @@ export function hide() { setPlaying(false); }
 ns.asteroids = { rebuild, get meta() { return META; }, get state() { return state; }, byName: (n) => byName.get(norm(n)), runPreset, select };
 
 export const count = () => fmtN(META.nobj);
+const geoKm = (k) => Math.hypot(posX[k] - ladderGeo.ex, posY[k] - ladderGeo.ey) / ladderGeo.sc * cosmo.KM_PER_AU;
+export function ladder() {
+  if (!ladderGeo.ok) return null;
+  const d = [];
+  for (let k = 0; k < N; k++) if (W.tgt[k] >= 0.5 && inFilter(O[k])) d.push(geoKm(k));
+  d.sort((a, b) => a - b);
+  const view = d.length ? [d[Math.floor(0.05 * (d.length - 1))], d[Math.ceil(0.95 * (d.length - 1))]] : null;
+  const o = state.sel;
+  const sel = o ? { km: geoKm(o.idx), comovingKm: null, z: null, label: o.name, how: 'measured', words: 'orbit fitted to Rubin detections, distance in the ecliptic plane', note: 'from Earth' } : null;
+  return { band: [0.02 * cosmo.KM_PER_AU, 6.2 * cosmo.KM_PER_AU], view, sel };
+}

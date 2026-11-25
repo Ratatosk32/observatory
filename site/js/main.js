@@ -1,5 +1,6 @@
 import { $, esc, ns, shell, setUrl, initTheme, applyTheme, panelControls, fullscreenPanel, exitFs } from './kit.js';
 import { activate as activateData } from './datapanel.js';
+import { initLadder, MODES as FLOORS } from './ladder.js';
 import './health.js';
 
 const sIn = $('#search'), sBox = $('#searchbox'), sList = $('#sugg'), sClear = $('#clear');
@@ -69,11 +70,17 @@ const LOADING = { stars: ['#starsLoading', 'the stars data'], dm: ['#dmLoading',
 const modules = {}, started = new Set();
 const loadMode = (m) => (modules[m] ||= loaders[m]());
 
+const SUBS = {
+  earth: 'Lightning, aurora and the solar wind above you',
+  asteroids: 'The asteroids Rubin is watching',
+  stars: 'Variable stars, supernovae and quasars from Rubin’s alerts',
+  dm: 'The oldest light and the dark matter that bends it',
+};
+const ladder = initLadder({ onPick: (m) => setMode(m) });
 function syncModeUi() {
-  document.querySelectorAll('#modeSeg button').forEach((b) => {
-    const on = b.dataset.mode === mode;
-    b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1;
-  });
+  ladder.select(mode);
+  document.title = `Look up · ${FLOORS[mode].name}`;
+  $('#sub').textContent = SUBS[mode];
 }
 async function leaveMode(m) {
   if (!m || !modules[m]) return;
@@ -86,6 +93,7 @@ async function setMode(m, opts = {}) {
   mode = m;
   document.body.dataset.mode = m;
   syncModeUi();
+  ladder.mode(m, loadMode(m));
   closeSuggestions(); sIn.value = '';
   if (fullscreenPanel()) exitFs();
   if (prev !== m) await leaveMode(prev);
@@ -110,17 +118,6 @@ async function setMode(m, opts = {}) {
   }
 }
 shell.setMode = setMode;
-document.querySelectorAll('#modeSeg button').forEach((b) => {
-  b.addEventListener('click', () => setMode(b.dataset.mode));
-  b.addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    e.preventDefault();
-    const k = MODES.indexOf(b.dataset.mode), next = MODES[(k + (e.key === 'ArrowRight' ? 1 : MODES.length - 1)) % MODES.length];
-    setMode(next);
-    document.querySelector(`#modeSeg [data-mode="${next}"]`).focus();
-  });
-});
-
 if (params.get('theme')) applyTheme(params.get('theme'));
 const wanted = params.get('mode');
 const first = MODES.includes(wanted) ? wanted : params.has('sel') ? 'asteroids' : 'stars';

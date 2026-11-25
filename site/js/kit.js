@@ -261,3 +261,10 @@ export function initTheme() {
 
 export const shell = { setMode: null, setSearch: null };
 
+
+export { cosmo } from './cosmo.js';
+let ladderAt = 0, ladderTimer = 0;
+export function pingLadder() {
+  if (ladderTimer) return;
+  ladderTimer = setTimeout(() => { ladderTimer = 0; ladderAt = performance.now(); window.dispatchEvent(new CustomEvent('ladder')); }, Math.max(0, 250 - (performance.now() - ladderAt)));
+}

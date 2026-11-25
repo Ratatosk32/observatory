@@ -1353,6 +1353,27 @@ function runLod(s) {
     const [t, b, m] = SC.pillCopy({ phone: s.w < 600, all: st.showAll, guided: !scOn(), accepted, total: N, n0, zoomed: view.k > 1.05 });
     pill.set(t, b, m);
   }
+  K.pingLadder();
+}
+const LADDER_HOW = { gaia_parallax: 'measured', tns_redshift: 'measured', sdss_specz: 'measured', rr_lyrae_candle: 'indirect', cloud_member: 'indirect', host_galaxy: 'indirect', photo_z: 'weak' };
+const lightKm = (i) => (Ob.lookbackGyr && Ob.lookbackGyr[i] != null ? Ob.lookbackGyr[i] * 1e9 : Ob.dist[i] * 3.26156) * K.cosmo.KM_PER_LY;
+const hasDist = (i) => Ob.distMethod[i] >= 0 && Ob.dist[i] != null;
+let ladderView = { key: null, view: null };
+export function ladder() {
+  if (!built) return null;
+  if (ladderView.key !== lodKey) {
+    const d = [];
+    for (let i = 0; i < N; i++) if (W.tgt[i] >= 0.5 && vis[i] && hasDist(i)) d.push(lightKm(i));
+    d.sort((a, b) => a - b);
+    ladderView = { key: lodKey, view: d.length ? [d[Math.floor(0.05 * (d.length - 1))], d[Math.ceil(0.95 * (d.length - 1))]] : null };
+  }
+  const i = st.sel;
+  let sel = null;
+  if (i >= 0 && i < N && hasDist(i)) {
+    const z = Ob.z && Ob.z[i] != null ? Ob.z[i] : null, m = METHODS[Ob.distMethod[i]];
+    sel = { km: lightKm(i), comovingKm: z != null && z >= 0.03 ? K.cosmo.comovingLy(z) * K.cosmo.KM_PER_LY : null, z, label: nameOf(i), how: LADDER_HOW[m] || 'indirect', words: METHOD_WORDS[m] || '', note: 'light travel' };
+  }
+  return { band: [30 * K.cosmo.KM_PER_LY, K.cosmo.lookbackGyr(3) * 1e9 * K.cosmo.KM_PER_LY], view: ladderView.view, sel };
 }
 function buildHaze(s) {
   const hw = Math.max(2, Math.ceil(s.w / 2)), hh = Math.max(2, Math.ceil(s.h / 2)), dark = C().dark;
@@ -2009,10 +2030,8 @@ function build() {
   built = true;
 }
 
-const STARS_TITLE = 'Look up';
 const monthYear = (t) => `${MON[dateOf(t).getUTCMonth()]} ${dateOf(t).getUTCFullYear()}`;
 function headerText() {
-  $('#sub').textContent = `Rubin alerts · ${fmtN(N)} objects · ${monthYear(T0)} – ${monthYear(T1 - 1)} · Fink + Gaia DR3`;
   K.shell.setSearch({ items: searchItems, empty: 'No object in this sample matches. Try a TNS name (SN 2026…), a family or a Rubin ID.' }, `Search ${fmtN(N)} objects, e.g. SN or RR Lyrae`);
 }
 function scaleText() { $('#sScale0').textContent = monthYear(T0); $('#sScale1').textContent = monthYear(T1 - 1); }
@@ -2033,7 +2052,6 @@ function enter(objId) {
   entered = true;
   readColors(); makeSprites();
   skyKey = ''; ladderKey = ''; ribKey = ''; hrKey = ''; emberN = -1;
-  $('h1').textContent = STARS_TITLE;
   headerText();
   if (objId) { const i = Ob.id.indexOf(objId); if (i >= 0) st.sel = i; }
   $('#sDate').textContent = fmtD(st.t);

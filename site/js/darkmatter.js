@@ -33,7 +33,6 @@ const RANKPOS = new Int32Array(NC); RANK.forEach((i, q) => { RANKPOS[i] = q; });
 const busyZ = (i) => (CL.inside[i] - CL.expect[i]) / Math.sqrt(CL.expect[i] + 1);
 const nFront = () => (skyBox.w && skyBox.w < 600 ? (scDm ? scDm.top.phone : 60) : (scDm ? scDm.top.desktop : 120));
 const BASE = M.mjdBase;
-const TITLE = 'Look up';
 
 const raw = Uint8Array.from(atob(D.alerts.data), (c) => c.charCodeAt(0));
 const triples = new Uint16Array(raw.buffer, raw.byteOffset, raw.byteLength / 2);
@@ -419,7 +418,24 @@ function chipsFor(i) {
   if (CL.inside[i] + CL.expect[i] > 0) out.push([0.25, 'Rubin is watching it']);
   return out.sort((a, b) => b[0] - a[0]).map((c) => c[1]);
 }
-function select(i) { st.sel = i; K.setUrl({ obj: i >= 0 ? CL.name[i] : null }); renderCard(); }
+function select(i) { st.sel = i; K.setUrl({ obj: i >= 0 ? CL.name[i] : null }); renderCard(); K.pingLadder(); }
+const ltKm = (z) => K.cosmo.lookbackGyr(z) * 1e9 * K.cosmo.KM_PER_LY, cmKm = (z) => K.cosmo.comovingLy(z) * K.cosmo.KM_PER_LY;
+let ladderFront = { n: -1, view: null };
+export function ladder() {
+  if (!built) return null;
+  const n = Math.min(NC, nFront());
+  if (ladderFront.n !== n) {
+    const zs = [];
+    for (let q = 0; q < n; q++) { const z = CL.z[RANK[q]]; if (z > 0) zs.push(z); }
+    zs.sort((a, b) => a - b);
+    ladderFront = { n, view: zs.length ? [ltKm(zs[0]), ltKm(zs[zs.length - 1])] : null };
+  }
+  const i = st.sel, cmb = ltKm(1090);
+  const sel = i >= 0 && CL.z[i] > 0
+    ? { km: ltKm(CL.z[i]), comovingKm: cmKm(CL.z[i]), z: CL.z[i], label: CL.name[i], how: 'indirect', words: 'ACT DR6 catalogue redshift', note: 'light travel' }
+    : { km: cmb, comovingKm: cmKm(1090), z: 1090, label: 'The CMB', how: 'measured', words: 'Planck: the oldest light, from z = 1090', note: 'light travel' };
+  return { band: [ltKm(0.05), cmKm(1090)], view: ladderFront.view, also: [cmb, cmb], sel };
+}
 
 function renderCard() {
   const body = $('#dCardBody');
@@ -664,17 +680,16 @@ async function enter(objId) {
     try { await build(); } finally { $('#dmLoading').hidden = true; }
   }
   if (!entered) return;
-  $('h1').textContent = TITLE;
-  $('#sub').textContent = `The dark-matter shadow · Planck CMB and lensing · ${fmtN(NC)} ACT clusters · ${fmtN(NA)} Rubin SN-like alerts`;
   K.shell.setSearch({ items: searchItems, empty: 'No ACT cluster matches. Try ACT-CL J0102.' }, `Search ${fmtN(NC)} ACT clusters, e.g. ACT-CL J0102`);
   if (objId) { const i = CL.name.indexOf(objId); if (i >= 0) st.sel = i; }
   renderCard();
-  requestAnimationFrame(() => { sizeSky(); syncTime(); pillText(); [meterS, ctestS].forEach((s) => s.resize()); });
+  K.pingLadder();
+  requestAnimationFrame(() => { sizeSky(); syncTime(); pillText(); K.pingLadder(); [meterS, ctestS].forEach((s) => s.resize()); });
   const params = new URLSearchParams(location.search);
   if (!reduceMotion && !params.has('still')) { st.t = T0; emberN = 0; emberCv = null; setPlay(true); } else syncTime();
   loop();
 }
-function leave() { entered = false; setPlay(false); K.hideTip(); }
+function leave() { entered = false; if ($('#dPlay')) setPlay(false); K.hideTip(); }
 
 const idb = openStore('observatory-dm', ['points', 'meta']);
 let lastInfo = null;

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Look up · Observatory</title>
+<title>Look up · Stars &amp; beyond</title>
 <meta name="description" content="Look up: an independent, interactive observatory of public Vera C. Rubin Observatory alerts (asteroids, variable stars, supernovae, quasars), the cosmic microwave background and dark matter, and the Earth's aurora, space weather and lightning.">
 <meta property="og:title" content="Look up · Observatory">
 <meta property="og:description" content="Look up: an independent, interactive observatory of public Vera C. Rubin Observatory alerts (asteroids, variable stars, supernovae, quasars), the cosmic microwave background and dark matter, and the Earth's aurora, space weather and lightning.">
@@ -15,7 +15,7 @@
 <body data-mode="stars">
 <header class="top">
   <div class="brand">
-    <h1>Look up</h1>
+    <h1><span class="arw" aria-hidden="true">↑ </span>Look up</h1>
     <p class="sub" id="sub"></p>
   </div>
   <div class="searchbox" id="searchbox">
@@ -27,12 +27,22 @@
     </div>
     <ul class="sugg" id="sugg" role="listbox" aria-label="Matching asteroids" hidden></ul>
   </div>
-  <div class="modeseg" id="modeSeg" role="radiogroup" aria-label="Mode">
-    <button type="button" role="radio" data-mode="stars" aria-checked="true" aria-label="Stars &amp; beyond" title="Stars &amp; beyond"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 5.2 5.4.3-4.2 3.4 1.4 5.3L12 14.7l-4.5 3 1.4-5.3-4.2-3.4 5.4-.3z"/><path d="M19 3v3M17.5 4.5h3M5 18.5v2.5M3.75 19.75h2.5"/></svg></button>
-    <button type="button" role="radio" data-mode="asteroids" aria-checked="false" aria-label="Asteroids" title="Asteroids"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9.5" ry="4.2" transform="rotate(-20 12 12)"/><circle cx="12" cy="12" r="2.2"/><path d="M19.3 8.1c.9-.2 1.6.4 1.4 1.3-.2.8-1.1 1.1-1.7.6-.6-.4-.5-1.6.3-1.9z"/></svg></button>
-    <button type="button" role="radio" data-mode="dm" aria-checked="false" aria-label="Dark matter" title="Dark matter: the CMB and its lensing"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M3 12c3-5 6-7.5 9-7.5s6 2.5 9 7.5M3 12c3 5 6 7.5 9 7.5s6-2.5 9-7.5"/></svg></button>
-    <button type="button" role="radio" data-mode="earth" aria-checked="false" aria-label="Earth: aurora, space weather and lightning" title="Earth: aurora, space weather and lightning"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5c-3.2 2.6-4.6 5.4-4.6 8.5s1.4 5.9 4.6 8.5M3.5 12h17"/></svg></button>
-  </div>
+  <nav id="altLadder" class="ladder" aria-label="Look up: modes by distance">
+    <div class="lad-track" role="button" aria-label="Open the distance ladder"><svg class="lad-svg" aria-hidden="true" focusable="false"></svg></div>
+    <div class="lad-group" role="radiogroup" aria-label="Mode" aria-describedby="ladderNow">
+    <button type="button" role="radio" data-mode="dm" aria-checked="false" tabindex="-1" aria-label="Dark matter: the CMB and galaxy clusters, 0.7 to 13.5 billion years of light" title="Dark matter"><span class="box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M3 12c3-5 6-7.5 9-7.5s6 2.5 9 7.5M3 12c3 5 6 7.5 9 7.5s6-2.5 9-7.5"/></svg></span><span class="lw">Dark matter</span></button>
+    <button type="button" role="radio" data-mode="stars" aria-checked="true" tabindex="0" aria-label="Stars and beyond: variable stars to quasars, 30 light-years to 11 billion years of light" title="Stars &amp; beyond"><span class="box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 5.2 5.4.3-4.2 3.4 1.4 5.3L12 14.7l-4.5 3 1.4-5.3-4.2-3.4 5.4-.3z"/><path d="M19 3v3M17.5 4.5h3M5 18.5v2.5M3.75 19.75h2.5"/></svg></span><span class="lw">Stars</span></button>
+    <button type="button" role="radio" data-mode="asteroids" aria-checked="false" tabindex="-1" aria-label="Asteroids: 0.02 to 6 AU from Earth" title="Asteroids"><span class="box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9.5" ry="4.2" transform="rotate(-20 12 12)"/><circle cx="12" cy="12" r="2.2"/><path d="M19.3 8.1c.9-.2 1.6.4 1.4 1.3-.2.8-1.1 1.1-1.7.6-.6-.4-.5-1.6.3-1.9z"/></svg></span><span class="lw">Asteroids</span></button>
+    <button type="button" role="radio" data-mode="earth" aria-checked="false" tabindex="-1" aria-label="Earth: lightning, aurora and the solar wind, 10 km to 1.5 million km" title="Earth"><span class="box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5c-3.2 2.6-4.6 5.4-4.6 8.5s1.4 5.9 4.6 8.5M3.5 12h17"/></svg></span><span class="lw">Earth</span></button>
+    </div>
+    <p class="lad-read" aria-hidden="true"><b></b><span></span></p>
+    <p id="ladderNow" class="sr"></p>
+    <div id="ladderPeek" class="lad-peek" role="dialog" aria-label="Distance ladder" aria-modal="false" hidden>
+      <div class="lp-head"><h2>Distance ladder</h2><button class="icon-btn sm lp-close" type="button" aria-label="Close" title="Close"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <div class="lp-body"><svg aria-hidden="true" focusable="false"></svg><div class="lp-group" role="radiogroup" aria-label="Floor"></div></div>
+      <div class="lp-sel"></div>
+    </div>
+  </nav>
   <div class="right">
     <button id="dataBtn" class="btn data-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="dataPanel" title="Data source and updates">
       <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6M5 12v6c0 1.4 3.1 2.6 7 2.6.6 0 1.2 0 1.7-.1M19 12v2.5M17.5 17.5l2 2 2-2M19.5 14.5v5"/></svg>

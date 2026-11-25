@@ -97,7 +97,7 @@ $('#doUpdate').addEventListener('click', async () => {
   const P = active;
   ctl = new AbortController();
   $('#doUpdate').disabled = true; $('#doCancel').hidden = false; $('#prog').hidden = false; $('#doReset').disabled = true; $('#doResetAll').disabled = true;
-  document.querySelectorAll('#modeSeg button').forEach((b) => { b.disabled = true; });
+  document.querySelectorAll('#altLadder [role=radio]').forEach((b) => { b.disabled = true; });
   const bar = $('#progBar'), txt = $('#progTxt');
   persistOnce();
   try {
@@ -118,7 +118,7 @@ $('#doUpdate').addEventListener('click', async () => {
   } finally {
     ctl = null;
     $('#doUpdate').disabled = false; $('#doCancel').hidden = true; $('#doReset').disabled = false; $('#doResetAll').disabled = false;
-    document.querySelectorAll('#modeSeg button').forEach((b) => { b.disabled = false; });
+    document.querySelectorAll('#altLadder [role=radio]').forEach((b) => { b.disabled = false; });
     bar.style.width = '100%';
     refresh(P); storeLabel();
   }

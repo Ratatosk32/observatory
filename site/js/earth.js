@@ -766,7 +766,18 @@ function frame(ts) {
   if (busy) raf = requestAnimationFrame(frame);
 }
 function loop() { if (!raf && entered) { lastTs = 0; raf = requestAnimationFrame(frame); } }
-function redraw() { glDirty = true; loop(); }
+function redraw() { glDirty = true; loop(); K.pingLadder(); }
+let stripFocus = false;
+export function ladder() {
+  if (!built) return null;
+  const em = st.emph, auroraOnly = em.aurora > 1 && em.light < 1;
+  const l1 = stripFocus || st.live;
+  let sel = null;
+  if (stripFocus) sel = { km: 1.5e6, comovingKm: null, z: null, label: 'Solar wind at L1', how: st.live ? 'live' : 'measured', words: st.live ? 'live from NOAA SWPC' : 'measured at L1, nightly copy', note: 'from Earth' };
+  else if (st.sel && st.sel.type === 'storm' && CELLS[st.sel.i]) sel = { km: 12, comovingKm: null, z: null, label: CELLS[st.sel.i].name, how: 'typical', words: 'typical storm top; GLM gives no heights', note: 'above the ground' };
+  else if (st.sel && st.sel.type === 'aurora') sel = { km: 110, comovingKm: null, z: null, label: st.sel.hemi > 0 ? 'Northern lights' : 'Southern lights', how: 'model', words: 'the green aurora shell, from the OVATION model', note: 'above the ground' };
+  return { band: [5, 1.6e6], view: auroraOnly ? [100, 300] : [8, 300], also: l1 ? [1.4e6, 1.6e6] : null, rest: 110, sel };
+}
 
 let lastHourUi = -1;
 function syncTime() {
@@ -1111,6 +1122,7 @@ function cardAurora(hemi) {
 }
 let rateS = null;
 function renderCard() {
+  K.pingLadder();
   const body = $('#eCardBody');
   if (!body) return;
   const s = st.sel;
@@ -1501,10 +1513,11 @@ async function build() {
   const strip = $('#eStrip');
   let drag = false;
   const scrub = (e) => { const r = strip.getBoundingClientRect(), t = stripS.__inv(e.clientX - r.left); if (t > T1 + 600) setLive(true); else setT(t); };
-  strip.addEventListener('pointerdown', (e) => { drag = true; strip.setPointerCapture(e.pointerId); scrub(e); });
-  strip.addEventListener('pointermove', (e) => { const r = strip.getBoundingClientRect(); if (drag) scrub(e); else if (e.pointerType === 'mouse') stripTip(stripS, e.clientX - r.left, e.clientY - r.top, e); });
-  strip.addEventListener('pointerup', () => { drag = false; });
-  strip.addEventListener('pointerleave', () => K.hideTip());
+  const focusStrip = (v) => { if (stripFocus !== v) { stripFocus = v; K.pingLadder(); } };
+  strip.addEventListener('pointerdown', (e) => { drag = true; focusStrip(true); strip.setPointerCapture(e.pointerId); scrub(e); });
+  strip.addEventListener('pointermove', (e) => { const r = strip.getBoundingClientRect(); if (drag) scrub(e); else if (e.pointerType === 'mouse') { focusStrip(true); stripTip(stripS, e.clientX - r.left, e.clientY - r.top, e); } });
+  strip.addEventListener('pointerup', (e) => { drag = false; if (e.pointerType !== 'mouse') focusStrip(false); });
+  strip.addEventListener('pointerleave', () => { K.hideTip(); focusStrip(false); });
   wire();
   presets();
   legend();
@@ -1520,8 +1533,6 @@ async function enter(objId) {
     try { await build(); } finally { $('#earthLoading').hidden = true; }
   }
   if (!entered) return;
-  $('h1').textContent = 'Look up';
-  $('#sub').textContent = 'The Earth tonight: aurora, space weather and lightning';
   K.shell.setSearch({ items: searchItems, empty: 'No storm or place matches. Try Northern lights.' }, 'Search a storm or a place');
   drawnFlashes = 0; eggs.count = 0; eggs.last = null; eggList.length = 0; eggQueue.length = 0;
   const params = new URLSearchParams(location.search);
