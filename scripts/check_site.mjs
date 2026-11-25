@@ -120,6 +120,21 @@ if (existsSync(earthPath)) {
     if (!foot.includes(credit)) problems.push(`site/index.html: the Earth credits lack "${credit}"`);
   }
 }
+const briefPath = join(site, 'data', 'brief.json');
+if (existsSync(briefPath)) {
+  try {
+    const raw = readFileSync(briefPath, 'utf8');
+    const b = JSON.parse(raw);
+    const bad = (f) => !f.floor || !f.mode || !f.headline || !f.state || !f.asOf || !Array.isArray(f.links) || f.links.some((l) => !/^https:\/\//.test(l.url));
+    if (!b.status || !b.status.text || !Array.isArray(b.floors) || !b.floors.length || b.floors.some(bad)) problems.push('site/data/brief.json: a floor line or the status line is incomplete');
+    if (Buffer.byteLength(raw) > 4096) problems.push(`site/data/brief.json: ${Buffer.byteLength(raw)} bytes, over the 4 KB limit`);
+    budgets.push(['brief.json', gz(raw), 2]);
+  } catch {
+    problems.push('site/data/brief.json: does not parse');
+  }
+}
+const indexPath = join(site, 'data', 'index.json');
+if (existsSync(indexPath)) budgets.push(['index.json', gzipSync(readFileSync(indexPath)).length, 25]);
 for (const [name, bytes, kb] of budgets) if (bytes > 1.25 * kb * 1024) problems.push(`${name}: ${(bytes / 1024).toFixed(1)} KB gzip, over 1.25 x the ${kb} KB budget`);
 if (problems.length) {
   process.stderr.write(problems.join('\n') + '\n');

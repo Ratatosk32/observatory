@@ -89,6 +89,11 @@ jobs:
           STEP_TONIGHT: ${{ steps.tonight.outcome }}
           STEP_EARTH: ${{ steps.earth.outcome }}
         run: python -I scripts/build_health.py --fallbacks "$RUNNER_TEMP/fallbacks.txt" || git checkout -- site/data/health.json
+      - name: Write the Above you brief and the cross-floor name index
+        if: always()
+        timeout-minutes: 3
+        continue-on-error: true
+        run: python -I scripts/build_brief.py || { git checkout -- site/data/brief.json site/data/index.json; exit 1; }
       - name: Build tonight's archive snapshot
         id: snapshot
         if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
