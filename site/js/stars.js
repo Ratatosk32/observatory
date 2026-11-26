@@ -1,6 +1,6 @@
 import * as K from './kit.js';
 import { sceneHtml, wireScene, openInstrument, showCard } from './scene.js';
-import { dockHtml, makeDock, fmtSpeed } from './dock.js';
+import { dockHtml, makeDock, fmtSpeed, dataLoop, LOOP_NOTE } from './dock.js';
 import { cardHead } from './cardhead.js';
 import * as SL from './starlight.js';
 import * as SC from './showcase.js';
@@ -2125,7 +2125,7 @@ function frame(ts) {
   if (wrapAt) {
     const p = Math.min(1, (ts - wrapAt) / WRAP_MS);
     wrapAlpha = 1 - p * p * (3 - 2 * p);
-    if (p >= 1) { endWrap(); st.t = T0; st.tween = null; emberN = -1; }
+    if (p >= 1) { endWrap(); st.t = playLoop().from; st.tween = null; emberN = -1; dock.note(LOOP_NOTE); }
   } else if (st.tween) {
     const p = Math.min(1, (ts - st.tween.t0) / st.tween.ms), e = p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2;
     st.t = st.tween.from + (st.tween.to - st.tween.from) * e;
@@ -2136,7 +2136,7 @@ function frame(ts) {
     else st.t = next;
   }
   if (st.stopAt != null && st.t >= st.stopAt) { st.t = st.stopAt; st.stopAt = null; drawSky(skyS); drawLadder(ladS); drawRibbon(ribS); setPlay(false); if (hooks.onStop) { const cb = hooks.onStop; hooks.onStop = null; cb(); } return; }
-  if (st.t > T1 && !wrapAt) { st.t = T1; st.tween = null; wrapAt = ts; }
+  if (st.t >= T1 && !wrapAt) { st.t = T1 - 1e-3; st.tween = null; wrapAt = ts; }
   const c0 = performance.now();
   drawSky(skyS); drawLadder(ladS); drawRibbon(ribS);
   perf.draw.push(performance.now() - c0);
@@ -2152,6 +2152,11 @@ function setPlay(p) {
   if (dock) dock.sync();
 }
 function setT(t) { st.tween = null; endWrap(); st.t = clamp(t, T0, T1); if (dock) dock.sync(); redraw(); }
+let loopOf = null;
+function playLoop() {
+  if (!loopOf || loopOf.nights !== nights) loopOf = { nights, ...dataLoop(nights.map((n) => n.t)) };
+  return loopOf;
+}
 const latestNight = () => Math.min(T1, Math.max(T0, Ob.t1.reduce((a, b) => Math.max(a, b), -1e9)));
 let dock = null;
 function makeTimeDock() {

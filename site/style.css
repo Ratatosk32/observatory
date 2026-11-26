@@ -1201,3 +1201,8 @@ body.idle .proj-switch { opacity: 0.28; }
 @media (max-width: 699.98px) {
   .scene { overflow-x: clip; }
 }
+
+.dock .trk { position: relative; }
+.dock-note { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: calc(100% - 16px); padding: 5px 12px; border-radius: 14px; font-size: 12.5px; line-height: 16px; color: var(--ink2); background: var(--glass); border: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; opacity: 0; transition: opacity 220ms ease; }
+.dock-note.on { opacity: 1; }
+.dock-note:empty { display: none; }

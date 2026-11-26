@@ -14,6 +14,27 @@ export function dockHtml({ play, date, track, speed, label, live = false }) {
 
 export const fmtSpeed = (unit, units) => (v) => `${v} ${v === 1 ? unit : units}/s`;
 
+export const LOOP_NIGHTS = 30;
+export const LOOP_NOTE = `Replaying the last ${LOOP_NIGHTS} nights with data`;
+export function dataLoop(days, gaps = []) {
+  const d = [...new Set(days.map((t) => Math.floor(t)))].sort((a, b) => a - b);
+  if (!d.length) return null;
+  return { from: d[Math.max(0, d.length - LOOP_NIGHTS)], end: d[d.length - 1] + 1, gap: (t) => gaps.find(([a, b]) => t >= a && t < b) || null };
+}
+
+function showNote(d, txt) {
+  if (!d.note) {
+    d.note = document.createElement('span');
+    d.note.className = 'dock-note';
+    d.note.setAttribute('role', 'status');
+    (d.root.querySelector('.trk') || d.root).appendChild(d.note);
+  }
+  d.note.textContent = txt;
+  d.note.classList.add('on');
+  clearTimeout(d.noteT);
+  d.noteT = setTimeout(() => { d.note.classList.remove('on'); d.noteT = setTimeout(() => { d.note.textContent = ''; }, 400); }, 3000);
+}
+
 function speedIdx(d) {
   const v = d.o.speed(), L = d.o.speeds;
   let k = 0;
@@ -223,6 +244,7 @@ export function makeDock(m, o) {
     invalidate: () => { d.key = ''; update(d, true); },
     resize: () => { if (d.s) d.s.resize(); },
     setSpeed: (v) => { o.setSpeed(v); sync(d, true); },
+    note: (txt) => showNote(d, txt),
     el: root,
   };
   sync(d, true);

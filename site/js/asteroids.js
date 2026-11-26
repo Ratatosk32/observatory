@@ -7,7 +7,7 @@ import { createSync } from './sync.js';
 import { register as registerData, refresh as refreshData, fmtBytes } from './datapanel.js';
 import * as SC from './showcase.js';
 import { sceneHtml, wireScene, openInstrument } from './scene.js';
-import { dockHtml, makeDock, fmtSpeed } from './dock.js';
+import { dockHtml, makeDock, fmtSpeed, dataLoop, LOOP_NOTE } from './dock.js';
 import { cardHead } from './cardhead.js';
 
 function buildDom() {
@@ -683,7 +683,16 @@ function wrapLayer(s) {
   g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
   return g;
 }
-function endWrap() { wrapAt = 0; wrapAlpha = 1; wrapCv = null; }
+function endWrap() { wrapAt = 0; wrapAlpha = 1; wrapCv = null; state.tween = null; }
+let wrapDone = false, loopOf = null;
+function playLoop() {
+  if (!loopOf || loopOf.nights !== R.nights || loopOf.tmax !== META.tmax) {
+    const days = R.nights.map((n) => nightMjd(n[0]));
+    loopOf = { nights: R.nights, tmax: META.tmax, ...dataLoop(days.length ? days : [META.tmax], cadenceGaps()) };
+    loopOf.end = Math.max(loopOf.end, Math.floor(META.tmax) + 1);
+  }
+  return loopOf;
+}
 function drawMap(s) {
   if (!s.w) return;
   const t0 = performance.now();
@@ -843,12 +852,19 @@ function frame(ts) {
   lastTs = ts;
   if (wrapAt) {
     const p = Math.min(1, (ts - wrapAt) / WRAP_MS), q = p < 0.5 ? 1 - p * 2 : p * 2 - 1;
-    if (p >= 0.5 && state.t > T0) state.t = T0;
+    if (p >= 0.5 && !wrapDone) { wrapDone = true; state.t = playLoop().from; dock.note(LOOP_NOTE); }
     wrapAlpha = q * q * (3 - 2 * q);
     if (p >= 1) endWrap();
+  } else if (state.tween) {
+    const p = Math.min(1, (ts - state.tween.t0) / state.tween.ms);
+    state.t = state.tween.from + (state.tween.to - state.tween.from) * p * p * (3 - 2 * p);
+    if (p >= 1) state.tween = null;
   } else {
-    state.t += dt * state.speed;
-    if (state.t > T1) { state.t = T1; wrapAt = ts; }
+    const L = playLoop(), next = state.t + dt * state.speed, gp = L.gap(next);
+    if (gp) state.tween = { from: state.t, to: gp[1] + 0.01, t0: ts, ms: 600 };
+    else if (state.t < L.end && next >= L.end) { state.t = L.end - 1e-3; wrapAt = ts; wrapDone = false; }
+    else state.t = next;
+    if (state.t > T1) { state.t = T1; wrapAt = ts; wrapDone = false; }
   }
   drawMap(mapS);
   dock.update();

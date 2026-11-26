@@ -1,6 +1,6 @@
 import * as K from './kit.js';
 import { sceneHtml, wireScene, verdictHtml } from './scene.js';
-import { dockHtml, makeDock, fmtSpeed } from './dock.js';
+import { dockHtml, makeDock, fmtSpeed, dataLoop, LOOP_NOTE } from './dock.js';
 import { register as registerData, fmtBytes } from './datapanel.js';
 import { openStore, post, pool, storageUsage } from './net.js';
 import * as SC from './showcase.js';
@@ -59,7 +59,7 @@ const frameOf = (s) => {
   return { sc, cx: s.w / 2, cy: top + half };
 };
 
-const st = { t: T1, playing: false, speed: 2, amp: 1, shadow: 0, shadowTarget: 0, sel: -1, hover: -1, lan: null, lanR: 0.2, showAll: false };
+const st = { t: T1 - 1e-3, playing: false, speed: 2, amp: 1, shadow: 0, shadowTarget: 0, sel: -1, hover: -1, lan: null, lanR: 0.2, showAll: false };
 let built = false, entered = false;
 let sky = null, ov = null, gl = null, glFail = '', imgs = null, meterS = null, ctestS = null;
 let cx = new Float32Array(NC), cy = new Float32Array(NC), ax = new Float32Array(0), ay = new Float32Array(0);
@@ -449,10 +449,17 @@ function frame(ts) {
     if (wrapAt) {
       const p = Math.min(1, (ts - wrapAt) / WRAP_MS);
       wrapAlpha = 1 - p * p * (3 - 2 * p);
-      if (p >= 1) { wrapAt = 0; wrapAlpha = 1; st.t = T0; emberN = 0; emberCv = null; }
+      if (p >= 1) { wrapAt = 0; wrapAlpha = 1; st.t = (playLoop() || { from: T0 }).from; emberN = 0; emberCv = null; if (dock) dock.note(LOOP_NOTE); }
+    } else if (st.tween) {
+      const p = Math.min(1, (ts - st.tween.t0) / st.tween.ms);
+      st.t = st.tween.from + (st.tween.to - st.tween.from) * p * p * (3 - 2 * p);
+      if (p >= 1) st.tween = null;
     } else {
-      st.t += dt * st.speed;
-      if (st.t > T1) { st.t = T1; wrapAt = ts; }
+      const L = playLoop(), next = st.t + dt * st.speed, gp = L && L.gap(next);
+      if (gp) st.tween = { from: st.t, to: gp[1] + 0.01, t0: ts, ms: 600 };
+      else st.t = next;
+      const end = L ? L.end : T1;
+      if (st.t >= end) { st.t = end - 1e-3; st.tween = null; wrapAt = ts; }
     }
     syncTime();
   }
@@ -466,12 +473,18 @@ function frame(ts) {
 function loop() { if (!raf && entered) { lastTs = 0; raf = requestAnimationFrame(frame); } }
 
 function syncTime() { if (dock) dock.update(); }
+let loopOf = null;
+function playLoop() {
+  const n = alertNights();
+  if (!loopOf || loopOf.n !== n) loopOf = { n, ...dataLoop(n.map((x) => x[0]), alertGaps()) };
+  return loopOf.end == null ? null : loopOf;
+}
 function setPlay(p) {
   st.playing = p;
-  if (!p) { wrapAt = 0; wrapAlpha = 1; }
+  if (!p) { wrapAt = 0; wrapAlpha = 1; st.tween = null; }
   if (dock) dock.sync();
 }
-function setT(t) { wrapAt = 0; wrapAlpha = 1; st.t = clamp(t, T0, T1); if (dock) dock.update(true); }
+function setT(t) { wrapAt = 0; wrapAlpha = 1; st.tween = null; st.t = clamp(t, T0, T1); if (dock) dock.update(true); }
 let nightsKey = -1, nightsV = [];
 function alertNights() {
   if (nightsKey === NA) return nightsV;
@@ -487,7 +500,7 @@ function alertGaps() {
 }
 function makeTimeDock() {
   dock = makeDock('dm', {
-    t0: () => T0, t1: () => T1, get: () => st.t, set: setT,
+    t0: () => T0, t1: () => T1, end: () => T1 - 1e-3, get: () => st.t, set: setT,
     playing: () => st.playing, play: setPlay,
     speeds: [1, 2, 5, 15], speed: () => st.speed, setSpeed: (v) => { st.speed = v; }, speedText: fmtSpeed('day', 'days'),
     unit: 1, big: 7, snap: (t) => Math.floor(t) + 0.5, fmt: fmtD,
