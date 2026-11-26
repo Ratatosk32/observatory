@@ -196,7 +196,7 @@ jobs:
   twilight:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 14
     permissions:
       contents: read
     steps:
@@ -204,13 +204,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Twilight lines against skycalc.js in headless Chrome
+      - name: Twilight lines against skycalc.js, and the phone box check, in headless Chrome
         run: |
           mkdir -p "$RUNNER_TEMP/pc"
           npm install --prefix "$RUNNER_TEMP/pc" --no-save --no-audit --no-fund puppeteer-core@24.43.1
           (cd site && python3 -m http.server 8095 --bind 127.0.0.1 >/dev/null 2>&1 &)
           for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:8095/ && break; sleep 0.5; done
           node scripts/test_twilight.mjs --url http://127.0.0.1:8095/ --modules "$RUNNER_TEMP/pc/node_modules" --chrome "$(command -v google-chrome)"
+          node scripts/box_check.mjs --url http://127.0.0.1:8095/ --modules "$RUNNER_TEMP/pc/node_modules" --chrome "$(command -v google-chrome)" --timeout 540000
 
   keepalive:
     if: github.event_name == 'schedule'

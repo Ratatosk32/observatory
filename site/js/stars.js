@@ -334,7 +334,15 @@ function bloomOf(src) {
   g.drawImage(tiny, 0, 0, w, h);
   return cv;
 }
-let lanGrid = null, lanCv = null, staticView = null, skyFade = null, fadeRaf = 0, skyLabels = null;
+let lanGrid = null, lanCv = null, staticView = null, skyFade = null, fadeRaf = 0, skyLabels = null, skyBoxes = [], ribBoxes = [];
+function hudSafe(s) {
+  const cr = s.cv.getBoundingClientRect();
+  if (!cr.width) return [];
+  return [...s.cv.parentElement.querySelectorAll('.hud .btn, .hud .pill-host > *, .proj-switch, .zoom, .stage-note')].filter((e) => e.getClientRects().length).map((e) => {
+    const b = e.getBoundingClientRect();
+    return [b.left - cr.left - 4, b.top - cr.top - 4, b.right - cr.left + 4, b.bottom - cr.top + 4];
+  });
+}
 let skyJob = null;
 function buildSkyStatic(s) {
   const key = [s.w, s.h, s.dpr, C().dark, view.k.toFixed(4), view.px.toFixed(1), view.py.toFixed(1), mwF ? 1 : 0].join('|');
@@ -444,7 +452,15 @@ function* skyStaticSteps(s, key) {
   lcv.width = cv.width; lcv.height = cv.height;
   const lg = lcv.getContext('2d');
   lg.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
-  const placed = [];
+  const placed = [], avoid = hudSafe(s), gridBoxes = [];
+  const clear = (b) => !avoid.some((q) => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]);
+  const gridLabel = (str, x, y) => {
+    lg.font = K.font(10.5);
+    const b = [x - 1, y - 10, x + lg.measureText(str).width + 1, y + 3];
+    if (!clear(b)) return;
+    gridBoxes.push(b);
+    text(lg, str, x, y, { size: 10.5, color: C().ink3, halo: true });
+  };
   const edgePoint = (pts, score, ok) => {
     let best = null, bs = Infinity;
     for (const [l, b] of pts) { const [u, v] = hammer(l, b), x = f.X(u), y = f.Y(v); if (ok(x, y) && score(x, y) < bs) { bs = score(x, y); best = [x, y]; } }
@@ -453,12 +469,12 @@ function* skyStaticSteps(s, key) {
   for (let b0 = -90 + bStep; b0 < 90; b0 += bStep) {
     const pts = []; for (let l = -179.9; l <= 179.9; l += db) pts.push([(l + 360) % 360, b0]);
     const p = edgePoint(pts, (x) => x, (x, y) => x > 6 && x < s.w - 40 && y > 34 && y < s.h - 48);
-    if (p) text(lg, (b0 > 0 ? '+' : b0 < 0 ? '−' : '') + Math.abs(b0) + '°', p[0] + 5, p[1] - 3, { size: 10.5, color: C().ink3, halo: true });
+    if (p) gridLabel((b0 > 0 ? '+' : b0 < 0 ? '−' : '') + Math.abs(b0) + '°', p[0] + 5, p[1] - 3);
   }
   if (k >= 2.5) for (let l0 = 0; l0 < 360; l0 += lStep) {
     const pts = []; for (let b = -90; b <= 90; b += db) pts.push([l0 === 180 ? 179.9 : l0, b]);
     const p = edgePoint(pts, (x, y) => -y, (x, y) => x > 40 && x < s.w - 40 && y > 12 && y < s.h - 48);
-    if (p) text(lg, `l ${l0}°`, p[0] + 3, p[1] - 4, { size: 10.5, color: C().ink3, halo: true });
+    if (p) gridLabel(`l ${l0}°`, p[0] + 3, p[1] - 4);
   }
   g.setLineDash([3, 5]); g.strokeStyle = C().ink3; g.lineWidth = 1; polyLB(g, f, eqLine(0)); g.stroke();
   g.strokeStyle = gold; g.lineWidth = 1.3; polyLB(g, f, eqLine(30)); g.stroke();
@@ -469,7 +485,7 @@ function* skyStaticSteps(s, key) {
   DDF.forEach(([nm, ra, dec], i) => {
     polyLB(g, f, smallCircleEq(ra, dec, 1.75, 96)); g.closePath(); g.stroke();
     const [u, v] = hammer(...eq2gal(ra, dec)), x = f.X(u), y = f.Y(v), off = 1.75 * f.sc / 57 + 6;
-    if (nm && vis2(x, y)) skyLabel(lg, nm, x + (i % 2 ? -off : off), y + (i % 2 ? off + 8 : -off), { size: sz - 2, color: C().ink, align: i % 2 ? 'right' : 'left' }, placed);
+    if (nm && vis2(x, y)) skyLabel(lg, nm, x + (i % 2 ? -off : off), y + (i % 2 ? off + 8 : -off), { size: sz - 2, color: C().ink, align: i % 2 ? 'right' : 'left' }, placed, [...avoid, ...gridBoxes]);
   });
   if (s.w >= 600) text(lg, k > 1.01 ? `zoom ×${k.toFixed(k < 10 ? 1 : 0)} · Gaia density cells are 0.5° wide${k > 12 ? ', so the wash is smooth but not sharper than that' : ''}` : '', 12, 18, { size: 11, color: C().ink3, halo: true });
   if (TILES && k >= 1) namedStarLabels(lg, f, s, k);
@@ -483,6 +499,7 @@ function* skyStaticSteps(s, key) {
   staticView = atView;
   skyStatic = cv;
   skyLabels = lcv;
+  skyBoxes = [...placed, ...gridBoxes];
   skyKey = key;
 }
 let TILES = null, tilesLoading = null;
@@ -530,15 +547,17 @@ function tileAt(t, l, b) {
   if (!raw) return { v: 0, w };
   return { v: 40 + raw * 0.84, w };
 }
-function skyLabel(g, str, x, y, { size = 18, color = C().ink, align = 'center' } = {}, placed) {
+function skyLabel(g, str, x, y, { size = 18, color = C().ink, align = 'center' } = {}, placed, avoid = []) {
   const px = Math.round(size * 0.7);
   g.font = K.font(px, 600);
   const w = g.measureText(str).width, x0 = align === 'left' ? x : align === 'right' ? x - w : x - w / 2;
   let dy = null;
-  const tries = view.k <= 1.001 ? [0] : [0, -px - 3, px + 3, -2 * px - 6, 2 * px + 6];
+  const tries = view.k <= 1.001 && !avoid.length ? [0] : [0, -px - 3, px + 3, -2 * px - 6, 2 * px + 6];
+  const near = (b, q, m) => b[0] < q[2] + m && b[2] > q[0] - m && b[1] < q[3] + m && b[3] > q[1] - m;
   for (const d of tries) {
     const b = [x0 - 3, y + d - px, x0 + w + 3, y + d + 4];
-    if (!placed.some((q) => b[0] < q[2] + 4 && b[2] > q[0] - 4 && b[1] < q[3] + 4 && b[3] > q[1] - 4)) { dy = d; placed.push(b); break; }
+    if (b[1] < 0 || b[3] > (g.canvas.height / (g.getTransform().d || 1))) continue;
+    if (!placed.some((q) => near(b, q, 4)) && !avoid.some((q) => near(b, q, 0))) { dy = d; placed.push(b); break; }
   }
   if (dy == null) return;
   g.textAlign = align; g.textBaseline = 'alphabetic'; g.lineJoin = 'round';
@@ -1026,6 +1045,7 @@ function drawRibbon(s) {
   if (key !== ribKey || !ribCv) {
     ribKey = key;
     ribCv = document.createElement('canvas'); ribCv.width = Math.round(s.w * s.dpr); ribCv.height = Math.round(s.h * s.dpr);
+    ribBoxes = [];
     const g = ribCv.getContext('2d'); g.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
     const mx = Math.log10(Math.max(...nights.map((n) => n.alerts)));
     const bw = Math.max(1.5, (R - L) / (TE - T0) - 0.4);
@@ -1040,7 +1060,13 @@ function drawRibbon(s) {
     for (const [a, b] of gaps) {
       const x0 = X(a), x1 = X(b);
       g.fillStyle = hatch(g, C().line, 5, 45, 1); g.fillRect(x0, top, x1 - x0, base - top);
-      if (b - a > 10 && x1 - x0 > 70) text(g, `no data · ${Math.round(b - a)} nights`, (x0 + x1) / 2, top + 14, { size: 11, color: C().ink2, align: 'center', halo: true });
+      if (b - a <= 10) continue;
+      g.font = K.font(11);
+      const str = [`no data · ${Math.round(b - a)} nights`, `${Math.round(b - a)} nights`].find((t) => g.measureText(t).width + 12 <= x1 - x0);
+      if (!str) continue;
+      const tw = g.measureText(str).width, xm = (x0 + x1) / 2;
+      text(g, str, xm, top + 14, { size: 11, color: C().ink2, align: 'center', halo: true });
+      ribBoxes.push([xm - tw / 2, top + 4, xm + tw / 2, top + 17, str]);
     }
     pencilLine(g, L, base, R, base, { color: C().goldSoft, width: 1.1 });
     const perDay = new Map();
@@ -1069,6 +1095,7 @@ function drawRibbon(s) {
       const w = g.measureText(mo.label).width, a = mo.x - 4, b = mo.x + w + 4;
       if (b > s.w || placed.some(([l, r]) => a < r && b > l)) continue;
       placed.push([a, b]);
+      ribBoxes.push([mo.x, s.h - 12, mo.x + w, s.h - 1, mo.label]);
       text(g, mo.label, mo.x, s.h - 2, { size: 11, color: C().ink3 });
     }
   }
@@ -2365,7 +2392,8 @@ function zoomAnim(l, b, k, ms = 1200, done) {
   requestAnimationFrame(step);
 }
 export const api = (K.ns.stars = { enter, leave, zoomTo, zoomAnim, resetView, hrZoomTo, hrView, eq2gal, hammer, hooks, loadTiles, setPlay, redraw, renderCard, applyFilter, humanName, hookOf, fmtPer, fmtAgo, fmtPc, fmtD, nameOf, catOf, famLabel,
-  S, Ob, get N() { return N; }, get lanternRa() { return lan.ra; }, zenithRa: (t) => zenith(t).ra, GROUPS, FKEY, get grp() { return grp; }, get vis() { return vis; }, rebuildData, get gcol() { return gcol; }, get sprites() { return sprites; }, get view() { return view; }, get skyS() { return skyS; }, get ribS() { return ribS; }, get lanGrid() { return lanGrid; }, invalidateSky: () => { skyKey = ''; emberN = -1; }, get entered() { return entered; }, get state() { return st; }, select, setT, runPreset, perf, get projection() { return { cur: proj.cur, animating: !!proj.anim }; }, setProjection });
+  S, Ob, get N() { return N; }, get lanternRa() { return lan.ra; }, zenithRa: (t) => zenith(t).ra, GROUPS, FKEY, get grp() { return grp; }, get vis() { return vis; }, rebuildData, get gcol() { return gcol; }, get sprites() { return sprites; }, get view() { return view; }, get skyS() { return skyS; }, get ribS() { return ribS; }, get lanGrid() { return lanGrid; }, invalidateSky: () => { skyKey = ''; emberN = -1; }, get entered() { return entered; }, get state() { return st; }, select, setT, runPreset, perf, get projection() { return { cur: proj.cur, animating: !!proj.anim }; }, setProjection,
+  get labels() { return [{ el: $('#sky'), boxes: proj.cur === 'sky' && view.k <= 1.001 ? skyBoxes : [] }, { el: $('#ribbon'), boxes: ribBoxes }]; } });
 
 const dataProvider = {
   title: 'Stars & beyond data', short: 'stars', noun: 'objects', unit: 'sample alerts', bundled: sync.BUNDLED,

@@ -115,6 +115,7 @@ const st = {
 };
 const view = { lat: (M.defaultView || [0, -60])[0], lon: (M.defaultView || [0, -60])[1], k: 1, tween: null };
 const phoneQ = matchMedia('(max-width: 699.98px)');
+const compactQ = matchMedia('(max-width: 699.98px), (min-width: 700px) and (max-height: 520px)');
 const HUD_BAND = 46;
 const box = { w: 0, h: 0, dpr: 1, R: 1, cx: 0, cy: 0, capR: 0, capN: [0, 0], capS: [0, 0], phone: false };
 let built = false, entered = false, G = null, glFail = '', imgs = null, ov = null, stripS = null, pill = null, whyEl = null;
@@ -944,7 +945,7 @@ function makeTimeDock() {
     },
     paint: {
       domain: () => [T0, tEnd()], solid: () => [T0, T1], outAfter: 'after the nightly update',
-      bars: () => (binsV = binsV || flashBins()), bin: 900, scale: 'sqrt', barColor: () => tokens.ember || K.C.ink3, cursorColor: () => K.C.gold, ticks: 'hour',
+      bars: () => (binsV = binsV || flashBins()), bin: 900, scale: 'sqrt', barColor: () => tokens.ember || K.C.ink3, cursorColor: () => K.C.goldInk, ticks: 'hour',
       lane: () => ({ pts: allSeries().bz, gap: 900, step: 300, label: 'Bz', lim: (pts) => (pts.some((p) => Math.abs(p[1]) > 10) ? 30 : 10) }),
       key: () => `${Math.floor(nowS() / 60)}|${allSeries() && seriesCache.key}|${tokens.ember}`,
     },
@@ -1023,7 +1024,7 @@ function zoomUi() {
 function layersUi() {
   const b = $('#eLayers'), z = $('#earthRoot .ezoom'), p = $('#eLayersPop .pop-body'), cl = $('#eClouds'), rs = $('#eZoomReset');
   if (!b || !z || !p) return;
-  if (phoneQ.matches) { if (cl.parentElement !== p) { p.prepend(cl); p.append(rs); } }
+  if (compactQ.matches) { if (cl.parentElement !== p) { p.prepend(cl); p.append(rs); } }
   else if (cl.parentElement !== z) { z.insertBefore(rs, b); z.insertBefore(cl, b); setLayers(false); }
   b.hidden = cl.hidden && rs.hidden;
   if (b.hidden) setLayers(false);
@@ -1040,7 +1041,7 @@ function wireLayers() {
   document.addEventListener('pointerdown', (e) => { if (!p.hidden && e.target instanceof Node && !p.contains(e.target) && !b.contains(e.target)) setLayers(false); });
   p.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); setLayers(false); b.focus(); } });
   p.querySelector('.pop-x').addEventListener('click', () => { setLayers(false); b.focus(); });
-  phoneQ.addEventListener('change', layersUi);
+  compactQ.addEventListener('change', layersUi);
   layersUi();
 }
 function resetView() { const dv = M.defaultView || [0, -60]; flyTo(dv[0], dv[1], 1); }
@@ -1916,5 +1917,18 @@ export const api = (K.ns.earth = {
   enter, leave, setT, setLive, setPlay, flyTo, zoomAt, runPreset: (id) => { const p = presetList().find((x) => x.id === id); if (p) runPreset(p); },
   eggs, stats, live, view, perf: K.perf,
   get state() { return st; }, get gl() { return !!G; }, get drawn() { return drawnFlashes; }, get tiles() { return [...tiles.keys()]; },
-  get box() { return { ...box }; }, ringList: () => ringList, proj: (lat, lon) => { const p = projLL(lat, lon); return [p.x, p.y, p.z]; }, get active() { return active.map((f) => [f.F.lat[f.k], f.F.lon[f.k], Math.round(performance.now() - f.born)]); },
+  get box() { return { ...box }; }, ringList: () => ringList,
+  get labels() {
+    if (capA() < 0.5) return [];
+    const caps = [[...box.capN, box.capR, 'north cap'], [...box.capS, box.capR, 'south cap']];
+    const tags = box.phone ? caps.map(([x, y, r], i) => [x - 6, y - r - 16, x + 6, y - r - 3, i ? 'S' : 'N']) : [];
+    if (!box.phone) {
+      ov.font = K.font(16, 600);
+      const t = fmtUtc(st.live ? nowS() : st.t), w1 = ov.measureText(t).width;
+      ov.font = K.font(12);
+      const p = provenanceLine(), w2 = ov.measureText(p).width;
+      tags.push([16, box.h - 44, 16 + w1, box.h - 26, t], [16, box.h - 22, 16 + w2, box.h - 8, p]);
+    }
+    return [{ el: $('#earthGl'), circles: caps, boxes: tags }];
+  }, proj: (lat, lon) => { const p = projLL(lat, lon); return [p.x, p.y, p.z]; }, get active() { return active.map((f) => [f.F.lat[f.k], f.F.lon[f.k], Math.round(performance.now() - f.born)]); },
 });

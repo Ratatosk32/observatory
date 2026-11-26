@@ -103,8 +103,17 @@ export function play(el, frames, { dur = DUR.base, curve = 'out', delay = 0, fil
 export function stagger(items, { each = STAGGER.each, max = STAGGER.max, dur = DUR.base, x = 0, y = 6, delay = 0, exit = false } = {}) {
   const list = [...items].filter((e) => e && e.animate);
   if (reduced || !list.length) return [];
-  const from = { opacity: 0, transform: `translate(${x}px, ${y}px)` }, to = { opacity: 1, transform: 'none' };
-  return list.map((e, i) => play(e, exit ? [to, from] : [from, to], { dur, delay: delay + Math.min(i, max - 1) * each, exit, fill: exit ? 'forwards' : 'backwards' }));
+  const away = { opacity: 0, transform: `translate(${x}px, ${y}px)` }, home = { opacity: 1, transform: 'none' };
+  const [a, b] = exit ? [home, away] : [away, home];
+  const d = exit ? Math.round(dur * EXIT) : dur, curve = CSS_EASE[exit ? 'in' : 'out'];
+  const at = (i) => Math.min(i, max - 1) * each, total = at(list.length - 1) + d;
+  return list.map((e, i) => {
+    const s = at(i) / total, f = (at(i) + d) / total;
+    const kf = s > 0 ? [{ ...a, offset: 0 }, { ...a, offset: s, easing: curve }] : [{ ...a, offset: 0, easing: curve }];
+    kf.push({ ...b, offset: f });
+    if (f < 1) kf.push({ ...b, offset: 1 });
+    return e.animate(kf, { duration: total, delay, fill: exit ? 'forwards' : 'backwards' });
+  });
 }
 
 export function popFrom(el, origin, { dur = DUR.base } = {}) {

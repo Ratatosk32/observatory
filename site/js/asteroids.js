@@ -451,6 +451,8 @@ function tipFor(o) {
 
 $('#map').dataset.lowdpr = '';
 const mapS = setupCanvas($('#map'), drawMap);
+const chromeRo = new ResizeObserver(() => { hudBox.key = ''; zoomBox.key = ''; requestAnimationFrame(() => mapS.draw(mapS)); });
+document.querySelectorAll('#astRoot .hud .pill-host, #astRoot .hud .hud-r, #astRoot .zoom.stops').forEach((e) => chromeRo.observe(e));
 let staticLayer = null, staticKey = '';
 const planetNow = {};
 
@@ -543,9 +545,9 @@ function buildStatic(s) {
 }
 let zoomBox = { key: '', r: null };
 function zoomRect(s) {
-  const key = `${s.w}x${s.h}`;
-  if (zoomBox.key === key) return zoomBox.r;
   const z = document.querySelector('#astRoot .zoom.stops'), cv = $('#map');
+  const key = `${s.w}x${s.h}|${z ? `${z.offsetLeft},${z.offsetTop},${z.offsetWidth},${z.offsetHeight}` : ''}`;
+  if (zoomBox.key === key) return zoomBox.r;
   const zr = z && z.getBoundingClientRect(), cr = cv.getBoundingClientRect();
   const r = zr && zr.width ? { left: zr.left - cr.left, top: zr.top - cr.top, right: zr.right - cr.left, bottom: zr.bottom - cr.top } : null;
   zoomBox = { key: r ? key : '', r };
@@ -590,7 +592,7 @@ function drawPlate(g, s, cx, cy) {
   return R;
 }
 const hits = (b, rects) => rects.some((q) => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]);
-const RING_TRY = [[0, 0], [-7, 0], [7, 0], [0, 16], [0, 30], [-14, 0], [14, 0], [-21, 0], [21, 0], [-7, 16], [7, 16]];
+const RING_TRY = [[0, 0], [-7, 0], [7, 0], [0, 16], [0, 30], [-14, 0], [14, 0], [-21, 0], [21, 0], [-7, 16], [7, 16], [0, 44], [0, 58], [-14, 44], [14, 44]];
 function plateLabels(g, s, cx, cy, R, avoid) {
   g.strokeStyle = C.goldSoft; g.lineWidth = 1.2; g.beginPath(); g.arc(cx, cy, R, 0, 6.2832); g.stroke();
   g.lineWidth = 1; g.beginPath();
@@ -609,7 +611,6 @@ function plateLabels(g, s, cx, cy, R, avoid) {
       const a = (deg + dd) * DEG, inset = 12 + deeper + w / 2 * Math.abs(Math.cos(a)) + 6 * Math.abs(Math.sin(a));
       const x = cx + Math.cos(a) * (R - inset), y = cy - Math.sin(a) * (R - inset), b = [x - w / 2 - 2, y - 8, x + w / 2 + 2, y + 6];
       if (b[0] < 2 || b[2] > s.w - 2 || b[1] < 2 || b[3] > s.h - 2) continue;
-      if (!pick) pick = [x, y, b];
       if (!hits(b, avoid)) { pick = [x, y, b]; break; }
     }
     if (!pick) return;
@@ -1915,7 +1916,7 @@ export function show(params) {
   if (params && !reduceMotion && params.has('play')) setPlaying(true);
 }
 export function hide() { setPlaying(false); }
-ns.asteroids = { rebuild, get meta() { return META; }, get state() { return state; }, byName: (n) => byName.get(norm(n)), runPreset, select, get labels() { return { safe: safeRects(mapS), boxes: [...plateBoxes, ...labelBoxes] }; } };
+ns.asteroids = { rebuild, get meta() { return META; }, get state() { return state; }, byName: (n) => byName.get(norm(n)), runPreset, select, get labels() { return [{ el: $('#map'), boxes: [...plateBoxes, ...labelBoxes] }]; } };
 
 export const count = () => fmtN(META.nobj);
 const geoKm = (k) => Math.hypot(posX[k] - ladderGeo.ex, posY[k] - ladderGeo.ey) / ladderGeo.sc * cosmo.KM_PER_AU;

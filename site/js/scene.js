@@ -191,7 +191,7 @@ export function closeInstruments(m = body.dataset.mode, focus = false) {
 const SHEET = ['peek', 'half', 'full'];
 const SHEET_NAME = { peek: 'peek', half: 'half height', full: 'full height' };
 const PEEK_MIN = 76, PEEK_LOW = 48;
-const FLING = 0.45;
+const FLING = 0.3, FLICK_MS = 90;
 const clampN = (x, a, b) => Math.max(a, Math.min(b, x));
 
 function makeSheet(s, card) {
@@ -214,7 +214,8 @@ function makeSheet(s, card) {
     const next = sh.pos === 'full' ? 'lower it to peek' : `raise it to ${SHEET_NAME[SHEET[SHEET.indexOf(sh.pos) + 1]]}`;
     grab.setAttribute('aria-label', `Card, ${kick.textContent.trim()}: ${SHEET_NAME[sh.pos]}. Activate to ${next}`);
   }
-  function apply(pos) {
+  function apply(pos, speed = 0) {
+    const was = current();
     sh.pos = pos;
     grab.setAttribute('aria-expanded', String(pos !== 'peek'));
     label();
@@ -226,6 +227,10 @@ function makeSheet(s, card) {
       card.style.setProperty('--sheet-h', `${h}px`);
       card.style.setProperty('--sheet-body', `${Math.max(0, h - inner.offsetTop - 8)}px`);
       card.dataset.sheet = pos;
+      if (!reduced && speed > 0 && Number.isFinite(was)) {
+        const dur = clampN((4 * Math.abs(h - was)) / speed, DUR.quick, DUR.gentle);
+        card.style.transitionDuration = `${Math.round(dur)}ms, ${DUR.travel}ms`;
+      } else card.style.removeProperty('transition-duration');
     }
     const pad = `calc(${sh.h.peek}px + env(safe-area-inset-bottom))`;
     if (body.style.paddingBottom !== pad) body.style.paddingBottom = pad;
@@ -244,18 +249,24 @@ function makeSheet(s, card) {
     body.style.removeProperty('padding-bottom');
     grab.removeAttribute('aria-expanded');
   }
-  function current() { return parseFloat(card.style.getPropertyValue('--sheet-h')) || sh.h[sh.pos]; }
+  function current() { return parseFloat(card.style.getPropertyValue('--sheet-h')) || (sh.h ? sh.h[sh.pos] : NaN); }
   function settle(v) {
     const h = current(), hs = SHEET.map((p) => sh.h[p]);
     let k = hs.reduce((b, x, i) => (Math.abs(x - h) < Math.abs(hs[b] - h) ? i : b), 0);
     if (v < -FLING) { const up = hs.findIndex((x) => x > h + 1); if (up >= 0) k = up; }
     else if (v > FLING) { for (let i = hs.length - 1; i >= 0; i--) if (hs[i] < h - 1) { k = i; break; } }
-    apply(SHEET[k]);
+    apply(SHEET[k], Math.abs(v));
+  }
+  function velocity(d, now) {
+    const pts = d.pts.filter(([t]) => now - t <= FLICK_MS);
+    if (pts.length < 2) return 0;
+    const [t0, y0] = pts[0], [t1, y1] = pts[pts.length - 1];
+    return t1 > t0 ? (y1 - y0) / (t1 - t0) : 0;
   }
 
   grab.addEventListener('pointerdown', (e) => {
     if (!sh.on || !sh.h || e.button > 0) return;
-    sh.drag = { id: e.pointerId, y0: e.clientY, h0: sh.h[sh.pos], y: e.clientY, t: e.timeStamp, v: 0 };
+    sh.drag = { id: e.pointerId, y0: e.clientY, h0: sh.h[sh.pos], pts: [[e.timeStamp, e.clientY]] };
     sh.moved = false;
     grab.setPointerCapture(e.pointerId);
   });
@@ -265,8 +276,9 @@ function makeSheet(s, card) {
     const dy = e.clientY - d.y0;
     if (!sh.moved && Math.abs(dy) < 6) return;
     if (!sh.moved) { sh.moved = true; card.classList.add('dragging'); }
-    const dt = Math.max(1, e.timeStamp - d.t);
-    d.v = 0.6 * ((e.clientY - d.y) / dt) + 0.4 * d.v; d.y = e.clientY; d.t = e.timeStamp;
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+    for (const c of evs.length ? evs : [e]) d.pts.push([c.timeStamp, c.clientY]);
+    if (d.pts.length > 24) d.pts.splice(0, d.pts.length - 24);
     card.style.setProperty('--sheet-h', `${clampN(d.h0 - dy, sh.h.peek * 0.6, sh.h.full)}px`);
   });
   const release = (e) => {
@@ -274,7 +286,7 @@ function makeSheet(s, card) {
     if (!d || e.pointerId !== d.id) return;
     sh.drag = null;
     card.classList.remove('dragging');
-    if (sh.moved) settle(e.timeStamp - d.t > 120 ? 0 : d.v);
+    if (sh.moved) { d.pts.push([e.timeStamp, e.clientY]); settle(velocity(d, e.timeStamp)); }
   };
   grab.addEventListener('pointerup', release);
   grab.addEventListener('pointercancel', release);
@@ -303,7 +315,12 @@ function makeSheet(s, card) {
     on: () => sh.on,
     pos: () => sh.pos,
     set: (p) => { if (SHEET.includes(p)) apply(p); },
-    raise: (p = 'half') => { if (sh.on && SHEET.indexOf(sh.pos) < SHEET.indexOf(p)) apply(p); },
+    raise: (p = 'half') => {
+      if (!sh.on || !sh.h || SHEET.indexOf(sh.pos) >= SHEET.indexOf(p)) return 0;
+      const top = card.getBoundingClientRect().top;
+      apply(p);
+      return Math.max(0, top - (innerHeight - sh.h[p]));
+    },
     contains: (el) => card.contains(el),
     grab,
   };
@@ -403,7 +420,6 @@ function markOf(m, sel) {
 
 const FRESH = DUR.gentle + DUR.instant;
 const FLIGHT = DUR.gentle - STAGGER.each;
-const REVEAL_R = 240;
 const tap = { t: -1e9, wrap: null, snap: null, down: null };
 let picked = null, seq = null;
 document.addEventListener('pointerdown', (e) => {
@@ -441,11 +457,19 @@ function bands(root) {
   return out;
 }
 
-const inView = (els) => els.filter((e) => { const r = e.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < innerHeight; });
-function firstBands(g) {
-  const all = bands(g);
-  all.slice(STAGGER.max).forEach((e) => { e.style.visibility = 'hidden'; });
-  return all.slice(0, STAGGER.max);
+const inView = (els, lift = 0) => els.filter((e) => { const r = e.getBoundingClientRect(); return r.height > 0 && r.bottom - lift > 0 && r.top - lift < innerHeight; });
+const LEAD = 4;
+function curtain(s, card, from, delay) {
+  const c = card.getBoundingClientRect(), r = from.getBoundingClientRect(), b = from.parentElement.closest('[aria-live]') || from.parentElement;
+  const el = document.createElement('i');
+  el.className = 'hero-wipe card-veil';
+  el.setAttribute('aria-hidden', 'true');
+  Object.assign(el.style, { left: `${b.offsetLeft}px`, top: `${Math.max(0, r.top - c.top - card.clientTop)}px`, width: `${b.clientWidth}px`, height: `${Math.max(0, c.bottom - r.top)}px` });
+  card.appendChild(el);
+  s.nodes.push(el);
+  const a = play(el, [{ opacity: 1 }, { opacity: 0 }], { dur: DUR.base, delay, curve: 'out', fill: 'backwards' });
+  s.anims.push(a);
+  if (a) a.finished.then(() => el.remove(), () => el.remove()); else el.remove();
 }
 function wipe(s, cv, at) {
   const el = document.createElement('i');
@@ -461,6 +485,7 @@ function wipe(s, cv, at) {
 
 const onScreen = (r) => !!r && r.width > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
 const centre = (r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+const lifted = (r, dy) => ({ left: r.left, right: r.right, width: r.width, height: r.height, top: r.top - dy, bottom: r.bottom - dy });
 
 function ghostOf(body, old, at) {
   const g = document.createElement('div');
@@ -503,32 +528,66 @@ function leaderReveal(s, at) {
   snap.style.setProperty('--sel-x', `${at.x - r.left}px`);
   snap.style.setProperty('--sel-y', `${at.y - r.top}px`);
   s.nodes.push(snap);
-  s.anims.push(play(snap, [{ '--sel-r': '0px' }, { '--sel-r': `${REVEAL_R}px` }], { dur: DUR.base, delay: STAGGER.each, curve: 'out', fill: 'both' }));
-  const fade = play(snap, [{ opacity: 1 }, { opacity: 0 }], { dur: DUR.base, delay: DUR.quick, curve: 'in', fill: 'forwards' });
+  const fade = play(snap, [{ opacity: 1 }, { opacity: 0 }], { dur: DUR.gentle, delay: STAGGER.each, curve: 'out', fill: 'both' });
   s.anims.push(fade);
   if (fade) fade.finished.then(() => snap.remove(), () => snap.remove());
 }
 
 const ARC_STEPS = 12;
-function fly(s, color, a, b, { dur, delay, land }) {
+const FOLLOW_MAX = 2 * DUR.travel;
+const arcAt = (a, b, p) => {
+  const e = ease.io(p), bump = Math.sin(Math.PI * e), up = Math.min(160, Math.hypot(b.x - a.x, b.y - a.y) * 0.35);
+  return `translate(${(a.x + (b.x - a.x) * e).toFixed(1)}px, ${(a.y + (b.y - a.y) * e - up * bump).toFixed(1)}px) scale(${(1 + 0.5 * bump).toFixed(3)})`;
+};
+function follow(s, el, a, b, { dur, delay, land, track, t0 = null }) {
+  let to = b, born = null, still = 0, over = false, raf = 0;
+  const stop = (ok = true) => {
+    if (over) return;
+    over = true;
+    cancelAnimationFrame(raf);
+    el.remove();
+    if (land) land(ok ? to : null);
+  };
+  const tick = (now) => {
+    if (born == null) born = now;
+    const nx = track();
+    if (nx) { still = to && Math.hypot(nx.x - to.x, nx.y - to.y) < 0.5 ? still + 1 : 0; to = nx; }
+    if (to && t0 == null) t0 = now + delay;
+    const p = t0 == null ? 0 : Math.min(1, Math.max(0, (now - t0) / dur));
+    if (to && now >= t0) { el.style.transform = arcAt(a, to, p); el.style.opacity = '1'; }
+    if ((p >= 1 && still >= 2) || now - born > FOLLOW_MAX) { stop(!!to); return; }
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+  s.anims.push({ finish: () => stop(), cancel: () => stop(false) });
+}
+function fly(s, color, a, b, { dur, delay, land, track = null }) {
   const el = document.createElement('i');
   el.className = 'sel-fly';
   el.setAttribute('aria-hidden', 'true');
   el.style.setProperty('--c', color);
   document.body.appendChild(el);
   s.nodes.push(el);
-  const lift = Math.min(160, Math.hypot(b.x - a.x, b.y - a.y) * 0.35), frames = [];
-  for (let i = 0; i <= ARC_STEPS; i++) {
-    const e = ease.io(i / ARC_STEPS), bump = Math.sin(Math.PI * e);
-    frames.push({ transform: `translate(${(a.x + (b.x - a.x) * e).toFixed(1)}px, ${(a.y + (b.y - a.y) * e - lift * bump).toFixed(1)}px) scale(${(1 + 0.5 * bump).toFixed(3)})`, opacity: 1 });
-  }
+  if (!b) { follow(s, el, a, b, { dur, delay, land, track }); return; }
+  const frames = [];
+  for (let i = 0; i <= ARC_STEPS; i++) frames.push({ transform: arcAt(a, b, i / ARC_STEPS), opacity: 1 });
+  const t0 = performance.now() + delay;
   const anim = play(el, frames, { dur, delay, curve: 'linear', fill: 'both' });
-  s.anims.push(anim);
-  const done = () => { el.remove(); if (land) land(); };
-  if (anim) anim.finished.then(done, done); else done();
+  let over = false, raf = 0;
+  const done = () => { if (over) return; over = true; cancelAnimationFrame(raf); el.remove(); if (land) land(track ? track() || b : b); };
+  s.anims.push(anim, { finish: done, cancel: done });
+  if (anim) anim.finished.then(done, () => {}); else done();
+  if (!track || !anim) return;
+  const watch = () => {
+    if (over) return;
+    const nx = track();
+    if (nx && Math.hypot(nx.x - b.x, nx.y - b.y) > 1) { over = true; anim.cancel(); follow(s, el, a, nx, { dur, delay, land, track, t0 }); return; }
+    raf = requestAnimationFrame(watch);
+  };
+  raf = requestAnimationFrame(watch);
 }
 
-function choreograph(m, card, body, old, isObj) {
+function choreograph(m, card, body, old, isObj, rise = 0) {
   endSeq();
   const now = performance.now();
   const fromMap = !!tap.wrap && now - tap.t < FRESH && card.parentElement.contains(tap.wrap);
@@ -540,10 +599,10 @@ function choreograph(m, card, body, old, isObj) {
   seq = s;
   const k = isObj ? 1 : EXIT;
   const sw = isObj ? body.querySelector(':scope > .cls .sw') : null;
-  const target = sw ? sw.getBoundingClientRect() : null;
+  const target = sw ? lifted(sw.getBoundingClientRect(), rise) : null;
   const hero = isObj ? [...body.querySelectorAll(':scope > canvas, :scope > * > canvas')].find((c) => c.getClientRects().length) : null;
   const heroAt = hero ? { x: hero.offsetLeft, y: hero.offsetTop - (hero.offsetParent === card ? body.scrollTop : 0), w: hero.offsetWidth, h: hero.offsetHeight } : null;
-  const fresh = inView(bands(body));
+  const fresh = inView(bands(body), rise);
   const mk = isObj ? markOf(m) : null;
   const slot = { x: body.offsetLeft, y: body.offsetTop - body.scrollTop, w: body.clientWidth };
   const gsw = !isObj && card.selMark && card.selMark.m === m ? old.find((n) => n.nodeType === 1 && n.matches('.cls')) : null;
@@ -551,18 +610,20 @@ function choreograph(m, card, body, old, isObj) {
   if (old.length) {
     const g = ghostOf(body, old, slot);
     s.nodes.push(g);
-    const out = stagger(firstBands(g), { dur: DUR.base * k, each: STAGGER.each * k, x: isObj ? -12 : 0, y: isObj ? 0 : 8, exit: true });
-    s.anims.push(...out);
+    const out = play(g, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translate(${isObj ? -12 : 0}px, ${isObj ? 0 : 8}px)` }], { dur: DUR.base * k, exit: true, fill: 'forwards' });
+    s.anims.push(out);
     const gone = () => g.remove();
-    if (out.length) Promise.all(out.map((a) => a && a.finished)).then(gone, gone); else gone();
+    if (out) out.finished.then(gone, gone); else gone();
   }
-  s.anims.push(...stagger(fresh, { dur: DUR.base, each: STAGGER.each * k, y: isObj ? 8 : 6, delay: (isObj ? DUR.base : DUR.quick) * k }));
+  const enter = (isObj ? DUR.base : DUR.quick) * k;
+  s.anims.push(...stagger(fresh.slice(0, LEAD), { dur: DUR.base, each: STAGGER.each * k, y: isObj ? 8 : 6, delay: enter }));
+  if (fresh.length > LEAD) curtain(s, card, fresh[LEAD], enter + (LEAD - 1) * STAGGER.each * k);
   if (isObj) {
     if (hero) wipe(s, hero, heroAt);
     card.selMark = mk ? { m, sel: mk.sel } : null;
-    if (!mk) return;
     const swOk = onScreen(target);
     if (fromMap) {
+      if (!mk) return;
       ring(s, mk);
       if (swOk) {
         sw.style.visibility = 'hidden';
@@ -572,8 +633,12 @@ function choreograph(m, card, body, old, isObj) {
       return;
     }
     const start = pick && onScreen(pick.r) ? centre(pick.r) : swOk ? centre(target) : null;
-    if (start) fly(s, mk.color, start, mk, { dur: FLIGHT, delay: STAGGER.each * 2, land: () => { if (seq === s) ring(s, markOf(m, mk.sel) || mk); } });
-    else ring(s, mk);
+    const color = mk ? mk.color : sw ? getComputedStyle(sw).backgroundColor : '';
+    if (!start || !color) { if (mk) ring(s, mk); return; }
+    fly(s, color, start, mk, {
+      dur: FLIGHT, delay: STAGGER.each * 2, track: () => markOf(m),
+      land: (at) => { if (!at) return; if (!card.selMark) card.selMark = { m, sel: at.sel }; if (seq === s) ring(s, at); },
+    });
     return;
   }
   const back = card.selMark;
@@ -613,7 +678,8 @@ function watchKicker(m, card) {
     else if (shown && now !== shown && card.getClientRects().length) {
       if (isObj || wasObj) {
         const c0 = performance.now();
-        choreograph(m, card, body, real.length ? [...real[0].removedNodes].filter((n) => !isGhost(n)) : [], isObj);
+        const sc = scenes[m], rise = isObj && sc && sc.sheet ? sc.sheet.raise('half') : 0;
+        choreograph(m, card, body, real.length ? [...real[0].removedNodes].filter((n) => !isGhost(n)) : [], isObj, rise);
         pushPerf(perf.select || (perf.select = []), performance.now() - c0);
       }
       else stagger(body.querySelectorAll(':scope > ul > li, :scope > h3, :scope > .cls, :scope > .why, :scope > .chead'));
@@ -629,7 +695,7 @@ function wake() {
   clearTimeout(wake.t);
   wake.t = setTimeout(() => {
     const m = body.dataset.mode, s = scenes[m];
-    if (openPop || (s && !s.drawer.hidden) || body.classList.contains('story') || document.querySelector('.sheet:not([hidden]), .lad-peek:not([hidden])')) { wake(); return; }
+    if (openPop || (s && (!s.drawer.hidden || s.main.querySelector('.card [aria-live] > h3:not(.ph)'))) || body.classList.contains('story') || document.querySelector('.sheet:not([hidden]), .lad-peek:not([hidden])')) { wake(); return; }
     body.classList.add('idle');
   }, 9000);
 }
