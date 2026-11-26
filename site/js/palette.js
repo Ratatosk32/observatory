@@ -232,7 +232,8 @@ function objects(q, raw) {
   const p = shell.search();
   let got = [];
   try { got = (p && p.items(raw)) || []; } catch { got = []; }
-  return got.slice(0, q ? 7 : 5).map((o) => ({ id: `obj:${m}:${o.label}`, g: q ? 'Objects' : 'Worth a look', label: o.label + (o.des ? ` (${o.des})` : ''), meta: o.meta || '', dot: o.color, m, tag: TAG[m], score: 2000, run: () => o.pick(), recent: /^Rubin object/.test(o.label) ? null : { m, q: o.label } }));
+  const seen = new Set();
+  return got.filter((o) => !seen.has(o.label) && seen.add(o.label)).slice(0, q ? 7 : 5).map((o) => ({ id: `obj:${m}:${o.label}`, g: q ? 'Objects' : 'Worth a look', label: o.label + (o.des ? ` (${o.des})` : ''), meta: o.meta || '', dot: o.color, m, tag: TAG[m], score: 2000, run: () => o.pick(), recent: /^Rubin object/.test(o.label) ? null : { m, q: o.label } }));
 }
 
 function loadIndex() {

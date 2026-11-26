@@ -2173,10 +2173,11 @@ function redraw() {
 function searchItems(q) {
   const v = q.trim().toLowerCase();
   const out = [];
-  if (!v) return S.featured.slice(0, 8).map((f) => item(f.o));
+  const seen = new Set(), fresh = (i) => { const k = Ob.name[i] || Ob.id[i]; if (seen.has(k)) return false; seen.add(k); return true; };
+  if (!v) return S.featured.filter((f) => fresh(f.o)).slice(0, 8).map((f) => item(f.o));
   for (let i = 0; i < N && out.length < 8; i++) {
     const nm = (Ob.name[i] || '').toLowerCase();
-    if (nm.includes(v) || Ob.id[i].includes(v) || catOf(i).toLowerCase().includes(v) || famLabel(i).toLowerCase().includes(v)) out.push(item(i));
+    if ((nm.includes(v) || Ob.id[i].includes(v) || catOf(i).toLowerCase().includes(v) || famLabel(i).toLowerCase().includes(v)) && fresh(i)) out.push(item(i));
   }
   return out;
 }
