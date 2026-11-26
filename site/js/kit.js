@@ -4,7 +4,7 @@ export const DEG = Math.PI / 180;
 export const BANDS = ['u', 'g', 'r', 'i', 'z', 'y'];
 export const ns = (window.Observatory = window.Observatory || {});
 export const perf = (ns.perf = { draw: [], frame: [] });
-export const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+export { reduced as reduceMotion } from './motion.js';
 export const $ = (s) => document.querySelector(s);
 export const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const mjdDate = (m) => new Date((m - 40587) * 864e5);

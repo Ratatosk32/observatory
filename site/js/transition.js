@@ -1,11 +1,10 @@
 import { reduceMotion } from './kit.js';
+import { ease as EASE, smoothstep, CSS_EASE } from './motion.js';
 import { FLOORS, MODES } from './ladder.js';
 import { KM_PER_LY, KM_PER_AU } from './cosmo.js';
 
 const FADE_MS = 150;
 const font = (px, w) => `${w} ${px}px 'IBM Plex Sans', system-ui, sans-serif`;
-const ease = (p) => (p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2);
-const smooth = (p) => p * p * (3 - 2 * p);
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 let current = null;
 
@@ -80,7 +79,7 @@ function overlay(r) {
 function drawFade(run, p) {
   const { g, W, H, snap, from } = run;
   g.clearRect(0, 0, W, H);
-  g.globalAlpha = 1 - smooth(p);
+  g.globalAlpha = 1 - smoothstep(0, 1, p);
   g.drawImage(snap, from.r.left, from.r.top, from.r.width, from.r.height);
   g.globalAlpha = 1;
 }
@@ -111,7 +110,7 @@ function drawDust(run, veil, speed, travel) {
 function drawOld(run, p) {
   const { g, c, snap, from, up } = run;
   if (!from || p > 0.5) return;
-  const q = ease(clamp01(p / 0.5)), r = from.r;
+  const q = EASE.io(clamp01(p / 0.5)), r = from.r;
   const sc = up ? 1 - 0.06 * q : 1 + 0.06 * q, dy = (up ? 1 : -1) * r.height * 0.07 * q;
   const w = r.width * sc, h = r.height * sc, x0 = r.left + (r.width - w) / 2, y0 = r.top + (r.height - h) / 2 + dy;
   g.globalAlpha = 1 - q;
@@ -129,7 +128,7 @@ function drawFloors(run, u, veil, px, cx, cy, big) {
   for (const f of FLOORS) {
     const mid = (f.a + f.b) / 2, y = cy - (mid - u) * px;
     if (y < T - 30 || y > H + 30) continue;
-    const a = veil * Math.exp(-(((mid - u) / 3.4) ** 2)) * smooth(clamp01((Math.abs(y - cy) - big * 0.7) / (big * 0.8)));
+    const a = veil * Math.exp(-(((mid - u) / 3.4) ** 2)) * smoothstep(0, 1, clamp01((Math.abs(y - cy) - big * 0.7) / (big * 0.8)));
     if (a >= 0.02) seen.push([f, y, a]);
   }
   g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -144,11 +143,11 @@ function drawFloors(run, u, veil, px, cx, cy, big) {
 function drawClimb(run, p) {
   const { g, W, H, c, up, uFrom, uTo, L, T, cw, ch, phone } = run;
   g.clearRect(0, 0, W, H);
-  const veil = p < 0.16 ? smooth(p / 0.16) : p > 0.62 ? 1 - smooth((p - 0.62) / 0.38) : 1;
+  const veil = p < 0.16 ? smoothstep(0, 1, p / 0.16) : p > 0.62 ? 1 - smoothstep(0, 1, (p - 0.62) / 0.38) : 1;
   const speed = Math.sin(Math.PI * Math.min(1, p * 1.08));
   g.globalAlpha = 0.93 * veil; g.fillStyle = c.paper; g.fillRect(L, T, cw, ch);
   drawOld(run, p);
-  const u = uFrom + (uTo - uFrom) * ease(p);
+  const u = uFrom + (uTo - uFrom) * EASE.io(p);
   const px = phone ? Math.max(44, Math.min(64, ch / 11)) : Math.max(52, Math.min(80, ch / 10));
   drawDust(run, veil, speed, (u - uFrom) * px);
   const cx = L + cw / 2, cy = T + ch * (phone ? 0.4 : 0.45), big = phone ? 50 : 84;
@@ -177,7 +176,7 @@ function grow(run, elapsed) {
   return to.el.animate([
     { clipPath: `circle(12px at ${ox}px ${oy}px)`, opacity: 0 },
     { clipPath: `circle(${far}px at ${ox}px ${oy}px)`, opacity: 1 },
-  ], { duration: Math.round(run.dur * 0.48), delay: Math.max(0, run.dur * 0.5 - elapsed), fill: 'backwards', easing: 'cubic-bezier(.3,.6,.25,1)' });
+  ], { duration: Math.round(run.dur * 0.48), delay: Math.max(0, run.dur * 0.5 - elapsed), fill: 'backwards', easing: CSS_EASE.out });
 }
 
 export function floorTransition(from, to) {

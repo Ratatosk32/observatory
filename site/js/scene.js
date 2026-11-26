@@ -1,5 +1,6 @@
 import { esc, ns, onKey, shell, setCollapsed, reduceMotion } from './kit.js';
 import { icon } from './icons.js';
+import { popFrom, play, stagger, watchSegments, slideTab, reduced } from './motion.js';
 
 export const ICON = Object.fromEntries(['chev', 'views', 'book', 'inst', 'info', 'close'].map((k) => [k, icon(k)]));
 
@@ -58,7 +59,7 @@ export function sceneHtml(m, o) {
     <div class="time dock${o.dockCls ? ' ' + o.dockCls : ''}">${o.dock}</div>
     <p class="credit"><span>${esc(CREDITS[m].line)}</span><button type="button" class="link credit-more">Sources and credits</button></p>
     <section class="drawer" id="${m}Drawer" aria-label="Instruments" hidden>
-      <div class="dhead"><div class="tabs" role="tablist" aria-label="Instruments">${tabs}</div><button type="button" class="btn icon quiet sm dclose" aria-label="Close instruments" title="Close (Esc or I)">${ICON.close}</button></div>
+      <div class="dhead"><div class="tabs" role="tablist" aria-label="Instruments">${tabs}<span class="tab-line" aria-hidden="true"></span></div><button type="button" class="btn icon quiet sm dclose" aria-label="Close instruments" title="Close (Esc or I)">${ICON.close}</button></div>
       <div class="dpane">${panes}</div>
     </section>
   </section>
@@ -88,11 +89,18 @@ const body = document.body;
 const phoneQ = matchMedia('(max-width: 699.98px)');
 let openPop = null, popReturn = null;
 
+function hidePop(p) {
+  if (reduced || !p.animate) { p.hidden = true; return; }
+  p.style.pointerEvents = 'none';
+  const a = play(p, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.98)' }], { exit: true, fill: 'forwards' });
+  const done = () => { p.style.pointerEvents = ''; if (a) a.cancel(); if (openPop !== p) p.hidden = true; };
+  if (a) a.finished.then(done, done); else done();
+}
 function closePop(restore = true) {
   if (!openPop) return false;
   const p = openPop;
   openPop = null;
-  p.hidden = true;
+  hidePop(p);
   const b = document.querySelector(`[aria-controls="${p.id}"][aria-expanded="true"]`);
   if (b) b.setAttribute('aria-expanded', 'false');
   if (restore && popReturn && popReturn.isConnected && p.contains(document.activeElement)) popReturn.focus({ preventScroll: true });
@@ -103,7 +111,10 @@ function showPop(p, opener) {
   if (openPop === p) { closePop(); return; }
   closePop(false);
   openPop = p; popReturn = opener;
+  p.getAnimations().forEach((a) => a.cancel());
+  p.style.pointerEvents = '';
   p.hidden = false;
+  if (!phoneQ.matches) popFrom(p, opener); else play(p, [{ opacity: 0, transform: 'translateY(16px)' }, { opacity: 1, transform: 'none' }], { fill: 'backwards' });
   if (opener) opener.setAttribute('aria-expanded', 'true');
   const f = p.querySelector('.pop-body button, .pop-body input, .pop-body select, .pop-body a[href]');
   if (f && !phoneQ.matches) f.focus({ preventScroll: true }); else p.querySelector('.pop-x').focus({ preventScroll: true });
@@ -126,6 +137,7 @@ export function openInstrument(m, which = null, el = null) {
   s.stage.classList.add('drawer-open');
   s.inst.setAttribute('aria-expanded', 'true'); s.inst.classList.add('on');
   s.tabs.forEach((t, i) => { t.setAttribute('aria-selected', String(i === k)); t.tabIndex = i === k ? 0 : -1; t.classList.toggle('on', i === k); s.panes[i].hidden = i !== k; });
+  slideTab(s.tabs[0].parentElement);
   return true;
 }
 export function openCredits(m = body.dataset.mode) {
@@ -365,6 +377,7 @@ export function wireScene(m, root) {
 }
 
 export const sceneOf = (m) => scenes[m];
+watchSegments(document.body);
 
 function kickerOf(body, fallback) {
   const h = body.querySelector('h3[data-kind]');
@@ -384,10 +397,15 @@ function typeset(root) {
 }
 function watchKicker(card) {
   const h2 = card.querySelector('.pbar h2'), body = card.querySelector('[aria-live]');
+  let shown = '';
   const sync = () => {
     const t = kickerOf(body, h2.dataset.list);
     if (h2.textContent !== t) h2.textContent = t;
     typeset(body);
+    const head = body.querySelector('h3');
+    const now = `${t}|${head ? head.textContent : ''}`;
+    if (shown && now !== shown && card.getClientRects().length) stagger(body.querySelectorAll(':scope > ul > li, :scope > h3, :scope > .cls, :scope > .why, :scope > .chead'));
+    shown = now;
   };
   new MutationObserver(sync).observe(body, { childList: true });
   sync();

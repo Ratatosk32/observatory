@@ -9,7 +9,6 @@ import { cardHead } from './cardhead.js';
 const [D, SCD] = await Promise.all([K.loadJson('data/cmb.json'), SC.loadShowcase()]);
 const { $, fmtN, MON, clamp, esc, text, annotate } = K;
 const C = () => K.C;
-const reduceMotion = K.reduceMotion;
 const DEG = Math.PI / 180;
 const GAL = [[-0.0548755604, 0.4941094279, -0.867666149], [-0.8734370902, -0.44482963, -0.1980763734], [-0.4838350155, 0.7469822445, 0.4559837762]];
 function gal2eq(l, b) {
@@ -196,7 +195,7 @@ function sizeSky() {
 }
 function defaultLantern() { const f = frameOf(skyBox), [u, v] = hammer(240, -35); return [f.cx + u * f.sc, f.cy - v * f.sc]; }
 const LENS_ZOOM = 3, BREATH_S = 7, LENS_RINGS = 150;
-const breathing = () => !reduceMotion && st.amp > 1 && st.shadowTarget === 0;
+const breathing = () => !K.reduceMotion && st.amp > 1 && st.shadowTarget === 0;
 function ampNow() { return breathing() ? 1 + (st.amp - 1) * (0.5 - 0.5 * Math.cos(performance.now() / 1000 * 2 * Math.PI / BREATH_S)) : st.amp; }
 function lanRadius() { return Math.max(56, Math.min(skyBox.w, skyBox.h) * st.lanR); }
 
@@ -276,7 +275,7 @@ function buildRings() {
 }
 const isBusy = (i) => busyZ(i) / 3 >= 0.5;
 function drawFront(g, now) {
-  const n = nFront(), a = reduceMotion ? 0.75 : 0.725 + 0.175 * Math.sin(now * 1.1);
+  const n = nFront(), a = K.reduceMotion ? 0.75 : 0.725 + 0.175 * Math.sin(now * 1.1);
   g.strokeStyle = C().gold; g.lineWidth = 1;
   g.globalAlpha = a * wrapAlpha; g.beginPath();
   for (let q = 0; q < n; q++) { const i = RANK[q], r = Math.max(2.5, ringR(i)); g.moveTo(cx[i] + r, cy[i]); g.arc(cx[i], cy[i], r, 0, 6.283); }
@@ -417,7 +416,7 @@ function drawOverlay() {
   const i0 = lb(aT, st.t - 3, NA);
   g.fillStyle = C().gold;
   for (let k = Math.max(i0, nNow - 2500); k < nNow; k++) {
-    const age = st.t - aT[k], a = reduceMotion ? 0.8 : Math.exp(-age / 1.2), r = 1 + 2.2 * a;
+    const age = st.t - aT[k], a = K.reduceMotion ? 0.8 : Math.exp(-age / 1.2), r = 1 + 2.2 * a;
     g.globalAlpha = (0.15 + 0.6 * a) * wrapAlpha;
     g.beginPath(); g.arc(ax[k], ay[k], r, 0, 6.283); g.fill();
   }
@@ -756,7 +755,7 @@ function wire() {
   makeTimeDock();
   const setAmp = () => { const x = +amp.value; ampX = x / 1000; st.amp = Math.round(Math.pow(300, x / 1000)); ampV.textContent = `×${st.amp}`; $('#dAmpNote').textContent = st.amp === 1 ? `At ×1 the bending is real but about ${M.deflectionRmsArcmin.toFixed(1)}′, too small to see.` : `Bending breathes up to ×${st.amp}: ${(M.deflectionRmsArcmin * st.amp / 60).toFixed(1)}° typical shift. The gold grid bends with it.`; st.glDirty = true; };
   amp.addEventListener('input', setAmp); setAmp();
-  $('#dShadow').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); e.currentTarget.classList.toggle('on', on); st.shadowTarget = on ? 1 : 0; if (reduceMotion) { st.shadow = st.shadowTarget; st.glDirty = true; } });
+  $('#dShadow').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); e.currentTarget.classList.toggle('on', on); st.shadowTarget = on ? 1 : 0; if (K.reduceMotion) { st.shadow = st.shadowTarget; st.glDirty = true; } });
   new ResizeObserver(() => { if (entered) sizeSky(); }).observe(cv);
   K.onTheme(() => { if (!built) return; buildRings(); emberCv = null; legend(); st.glDirty = true; meterS && meterS.draw(meterS); ctestS && ctestS.draw(ctestS); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loop(); });
@@ -803,7 +802,7 @@ async function enter(objId) {
   K.pingLadder();
   requestAnimationFrame(() => { sizeSky(); syncTime(); pillText(); K.pingLadder(); [meterS, ctestS].forEach((s) => s.resize()); });
   const params = new URLSearchParams(location.search);
-  if (!reduceMotion && params.has('play')) { st.t = T0; emberN = 0; emberCv = null; setPlay(true); } else syncTime();
+  if (!K.reduceMotion && params.has('play')) { st.t = T0; emberN = 0; emberCv = null; setPlay(true); } else syncTime();
   loop();
 }
 function leave() { entered = false; if (dock) setPlay(false); K.hideTip(); }

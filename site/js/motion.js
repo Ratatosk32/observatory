@@ -1,4 +1,4 @@
-export const DUR = { instant: 80, quick: 140, base: 220, gentle: 360, travel: 600, fade: 120 };
+export const DUR = { instant: 80, quick: 140, base: 220, gentle: 360, travel: 600, fade: 120, count: 2200 };
 export const EXIT = 0.6;
 export const STAGGER = { each: 24, max: 8 };
 const CURVES = { out: [0.2, 0.8, 0.2, 1], in: [0.4, 0, 1, 1], io: [0.65, 0, 0.35, 1] };

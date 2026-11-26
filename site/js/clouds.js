@@ -1,3 +1,4 @@
+import { smoothstep as smooth } from './motion.js';
 const GIBS = 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi';
 const EUMV = 'https://view.eumetsat.int/geoserver/wms';
 const CACHE = 'observatory-clouds';
@@ -34,7 +35,6 @@ async function getBlob(cache, url) {
   return r.blob();
 }
 
-const smooth = (a, b, x) => { const u = Math.max(0, Math.min(1, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
 function decodePx(kind, r, g, b) {
   if (kind === 'gray') { const v = r / 255; return [smooth(0.4, 0.86, v), smooth(0.72, 1, v)]; }
   const mx = Math.max(r, g, b), mn = Math.min(r, g, b);

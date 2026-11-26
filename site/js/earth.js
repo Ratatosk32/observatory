@@ -1,4 +1,5 @@
 import * as K from './kit.js';
+import { smoothstep as smooth, DUR } from './motion.js';
 import { sceneHtml, wireScene } from './scene.js';
 import { dockHtml, makeDock } from './dock.js';
 import * as SC from './showcase.js';
@@ -13,7 +14,6 @@ import { cardHead } from './cardhead.js';
 const [E, LT, AU] = await Promise.all([K.loadJson('data/earth.json'), K.loadJson('data/earth-lightning.json'), K.loadJson('data/earth-aurora.json').catch(() => null)]);
 const { $, esc, fmtN, MON, clamp, text, annotate } = K;
 const C = () => K.C;
-const reduceMotion = K.reduceMotion;
 const DEG = Math.PI / 180;
 const M = E.meta, SW = E.sw || {}, CELLS = E.cells || [], REGIONS = E.regions || [], COV = E.coverage || [];
 const T0 = M.t0, T1 = M.t1, HOURS = Math.round((T1 - T0) / 3600);
@@ -142,7 +142,7 @@ async function loadCloudLayer(fresh) {
 }
 function fadeClouds(to) {
   const from = clouds.alpha, t0 = performance.now();
-  const step = (ts) => { const p = reduceMotion ? 1 : clamp((ts - t0) / 400, 0, 1); clouds.alpha = from + (to - from) * p; glDirty = true; if (entered) drawGl(); if (p < 1) requestAnimationFrame(step); };
+  const step = (ts) => { const p = K.reduceMotion ? 1 : clamp((ts - t0) / DUR.gentle, 0, 1); clouds.alpha = from + (to - from) * p; glDirty = true; if (entered) drawGl(); if (p < 1) requestAnimationFrame(step); };
   requestAnimationFrame(step);
 }
 function setClouds(on) {
@@ -413,7 +413,6 @@ function buildHaze(h) {
   K.pushPerf(K.perf.haze || (K.perf.haze = []), performance.now() - t0);
   return out;
 }
-const smooth = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
 
 const tiles = new Map();
 function tileIdAt(lat, lon) {
@@ -483,7 +482,7 @@ function pillText() {
 const active = [];
 const IDLE_WIN = 120;
 const idle = { on: false, t0: 0, prev: 0, timer: 0, wake: false };
-const idleOk = () => entered && !st.playing && !st.live && !reduceMotion && !document.hidden;
+const idleOk = () => entered && !st.playing && !st.live && !K.reduceMotion && !document.hidden;
 function idleSpawn(nowMs) {
   if (!idle.on) { idle.on = true; idle.t0 = nowMs; idle.prev = 0; return; }
   const a = idle.prev, b = (nowMs - idle.t0) / 1000;
@@ -549,12 +548,12 @@ function drawFlashes(g, now) {
     const p = projV(F.x[k], F.y[k], F.z[k]);
     if (p.z <= 0) continue;
     let a;
-    if (reduceMotion) a = age < 150 ? age / 150 : 1 - (age - 150) / 200;
+    if (K.reduceMotion) a = age < 150 ? age / 150 : 1 - (age - 150) / 200;
     else { a = age < 40 ? age / 40 : Math.exp(-(age - 40) / 120); if (f.dbl && age > 80) a += 0.6 * Math.exp(-Math.max(0, age - 120) / 90) * Math.min(1, (age - 80) / 40); }
     a = clamp(a * f.boost * a0 * smooth(0, 0.06, p.z) * (dk ? 1 : 1.15), 0, 1);
     if (a < 0.01) continue;
     const r = (2.6 + 3.2 * F.e[k] / 255) * sk;
-    if (dots || reduceMotion) { g.globalAlpha = a; g.fillStyle = reduceMotion ? tokens.ember : tokens.bolt; g.fillRect(p.x - r / 2, p.y - r / 2, r, r); continue; }
+    if (dots || K.reduceMotion) { g.globalAlpha = a; g.fillStyle = K.reduceMotion ? tokens.ember : tokens.bolt; g.fillRect(p.x - r / 2, p.y - r / 2, r, r); continue; }
     const S = r * 6.2;
     g.globalAlpha = a;
     g.drawImage(atlas.c, 0, 0, atlas.s, atlas.s, p.x - S / 2, p.y - S / 2, S, S);
@@ -597,7 +596,7 @@ function drawEggs(g, now) {
   if (!eggList.length) return;
   const dk = C().dark;
   for (let i = eggList.length - 1; i >= 0; i--) {
-    const e = eggList[i], age = now - e.born, life = reduceMotion ? 900 : e.type === 'sprite' ? 800 : 700;
+    const e = eggList[i], age = now - e.born, life = K.reduceMotion ? 900 : e.type === 'sprite' ? 800 : 700;
     if (age > life) { eggList.splice(i, 1); if (eggQueue.length) { const n = eggQueue.shift(); n.born = now + 20; eggList.push(n); } continue; }
     if (age < 0) continue;
     const { F, k } = e, p = projV(F.x[k], F.y[k], F.z[k]);
@@ -613,7 +612,7 @@ function drawEggs(g, now) {
 }
 function drawSprite(g, x, y, dir, um, age, r, dk) {
   let grow, alpha;
-  if (reduceMotion) { grow = 1; alpha = age < 150 ? age / 150 : age < 750 ? 1 : 1 - (age - 750) / 150; }
+  if (K.reduceMotion) { grow = 1; alpha = age < 150 ? age / 150 : age < 750 ? 1 : 1 - (age - 750) / 150; }
   else { const p = clamp(age / 120, 0, 1); grow = 1 - (1 - p) ** 3; alpha = age < 320 ? 1 : 1 - (age - 320) / 480; }
   alpha = clamp(alpha, 0, 1) * (dk ? 0.85 : 0.8) * st.lightA;
   if (alpha <= 0.01) return;
@@ -639,7 +638,7 @@ function drawSprite(g, x, y, dir, um, age, r, dk) {
 function drawElves(g, x, y, dir, um, z, age, r, dk) {
   const rmax = Math.max(300 / 6371 * r, 40);
   let rho, alpha;
-  if (reduceMotion) { rho = 0.7 * rmax; alpha = age < 150 ? age / 150 : age < 750 ? 1 : 1 - (age - 750) / 150; }
+  if (K.reduceMotion) { rho = 0.7 * rmax; alpha = age < 150 ? age / 150 : age < 750 ? 1 : 1 - (age - 750) / 150; }
   else { const p = clamp(age / 700, 0, 1); rho = rmax * (1 - (1 - p) ** 3); alpha = (1 - p) ** 2; }
   alpha = clamp(alpha, 0, 1) * st.lightA;
   if (alpha <= 0.01 || rho < 1) return;
@@ -921,7 +920,7 @@ function setLive(on) {
     st.liveFade = { from: st.lightA, to: 1, t0: performance.now() };
     if (st.t > T1) st.t = T1;
   }
-  if (reduceMotion) { st.lightA = on ? 0 : 1; st.liveFade = null; }
+  if (K.reduceMotion) { st.lightA = on ? 0 : 1; st.liveFade = null; }
   K.setUrl({ live: on ? '1' : null });
   glDirty = true; syncTime(); loop();
 }
@@ -935,7 +934,7 @@ function stepTween(ts) {
   if (p >= 1) { view.tween = null; zoomUi(); loadTiles(); if (w.done) w.done(); }
 }
 function flyTo(lat, lon, k, done) {
-  const ms = reduceMotion ? 0 : 1200;
+  const ms = K.reduceMotion ? 0 : 1200;
   k = clamp(k, 1, 12); lat = clamp(lat, -85, 85);
   if (!ms) { view.lat = lat; view.lon = wrapLon(lon); view.k = k; viewChanged(); zoomUi(); loadTiles(); redraw(); if (done) done(); return; }
   view.tween = { lat0: view.lat, lon0: view.lon, k0: view.k, lat1: lat, dlon: wrapLon(lon - view.lon), k1: k, t0: performance.now(), ms, done };
@@ -1772,7 +1771,7 @@ async function enter(objId) {
   requestAnimationFrame(() => {
     layout(); makeBasis(); stripS.resize(); renderCard(); scalesRow(); syncTime();
     if (params.has('live')) setLive(true);
-    else if (!reduceMotion && (params.has('play') || (!tp && !objId && !params.has('pause')))) setPlay(true);
+    else if (!K.reduceMotion && (params.has('play') || (!tp && !objId && !params.has('pause')))) setPlay(true);
     redraw();
   });
   if (live.enabled) live.start();

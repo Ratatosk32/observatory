@@ -1,4 +1,5 @@
 import * as K from './kit.js';
+import { ease, DUR } from './motion.js';
 import { api as R, ext } from './stars.js';
 
 const { $, text, annotate, pencilLine, setupCanvas, fmtN, clamp, esc } = K;
@@ -6,12 +7,10 @@ const C = () => K.C;
 const S = R.S, Ob = R.Ob, ST = S.stories, OFF = S.meta.mjdOffset;
 const BANDS = S.meta.bands;
 const DEG = Math.PI / 180;
-const reduceMotion = K.reduceMotion;
 const oid = (id) => Ob.id.indexOf(id);
 const dateOf = (t) => new Date((t + OFF - 40587) * 864e5);
 const fmtD = (t) => { const d = dateOf(t); return `${d.getUTCDate()} ${K.MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
 const pct = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.max(0, Math.floor(p * (s.length - 1))))]; };
-const ease = (x) => x < 0.5 ? 2 * x * x : 1 - (-2 * x + 2) ** 2 / 2;
 const loops = new Set();
 function loop(fn) {
   let id = 0, alive = true;
@@ -180,7 +179,7 @@ function makeDial(host, cfg) {
     const t0 = performance.now();
     if (glide) glide();
     glide = loop((ts) => {
-      const p = Math.min(1, (ts - t0) / 300), e = ease(p);
+      const p = Math.min(1, (ts - t0) / DUR.gentle), e = ease.io(p);
       for (let k = 0; k < src.t.length; k++) curX[k] = fromX[k] + (target[k] - fromX[k]) * e;
       fold.draw(fold);
       if (p >= 1) { glide(); glide = 0; }
@@ -199,7 +198,7 @@ function makeDial(host, cfg) {
     d.refined = ref;
     const l0 = d.logP, l1 = Math.log10(ref.P), t0 = performance.now();
     const hnd = loop((ts) => {
-      const p = Math.min(1, (ts - t0) / 200);
+      const p = Math.min(1, (ts - t0) / DUR.base);
       d.logP = l0 + (l1 - l0) * (1 - (1 - p) ** 2);
       d.burst = 1 - p;
       strip.draw(strip); readout();
@@ -286,7 +285,7 @@ function makeHalo(cv, opts) {
   for (let i = 0; i < R.N; i++) { const gc = Ob.gc && Ob.gc[i]; if (gc) pts.push({ i, x: gc[0], y: gc[1], z: gc[2], r: Math.hypot(gc[0], gc[1], gc[2]), rr: R.FKEY[Ob.fam[i]] === 'rrlyr' }); }
   const radii = pts.map((p) => p.r).sort((a, b) => a - b);
   const fitR = opts.spheres ? 640 : Math.max(20, radii[Math.floor(radii.length * 0.97)] || 60) * 1.05;
-  const h = { yaw: opts.yaw != null ? opts.yaw : -0.9, pitch: opts.pitch != null ? opts.pitch : 0.38, vy: 0, vp: 0, zoom: 1, spheres: !!opts.spheres, hover: -1, auto: !reduceMotion, D: fitR * 4.5 };
+  const h = { yaw: opts.yaw != null ? opts.yaw : -0.9, pitch: opts.pitch != null ? opts.pitch : 0.38, vy: 0, vp: 0, zoom: 1, spheres: !!opts.spheres, hover: -1, auto: !K.reduceMotion, D: fitR * 4.5 };
   const MC = [['LMC', -0.6, -41.3, -27.1, 50], ['SMC', 15.3, -36.9, -43.3, 62]];
   let proj = [];
   const s = setupCanvas(cv, draw);
@@ -500,7 +499,7 @@ function playTo(t0, t1, speed, done) {
   const st = R.state;
   st.speed = speed; st.stopAt = t1;
   R.hooks.onStop = done || null;
-  if (reduceMotion) { R.setT(t1); st.stopAt = null; if (done) done(); return; }
+  if (K.reduceMotion) { R.setT(t1); st.stopAt = null; if (done) done(); return; }
   R.setPlay(true);
 }
 function resetHooks() {
@@ -549,7 +548,7 @@ const BEATS = {
       const pk = sni.peak, dpc = Ob.dist[sni.o], mu = 5 * Math.log10(dpc / 10);
       const rows = [['Peak brightness (r)', `${pk.diffMag.toFixed(2)} mag`], ['Distance from the redshift z = ' + (Ob.z[sni.o] || 0.09).toFixed(3), R.fmtPc(dpc)], ['Distance modulus 5 log₁₀(d / 10 pc)', mu.toFixed(2)], ['Absolute magnitude = peak − modulus', `<b>${pk.absMag.toFixed(2)}</b>`], ['Every SN Ia peaks near', '−19.3']];
       const b = stageSet('The standard candle, live', `<table class="calc">${rows.map((r) => `<tr hidden><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table><p class="takeaway">−19.1: a standard candle, and it checks out.</p>`);
-      b.querySelectorAll('tr').forEach((tr, k) => later(() => { tr.hidden = false; }, reduceMotion ? 0 : 450 * (k + 1)));
+      b.querySelectorAll('tr').forEach((tr, k) => later(() => { tr.hidden = false; }, K.reduceMotion ? 0 : 450 * (k + 1)));
       R.hooks.overlay = ringOverlay(sni.o, 'AT 2026ivl');
     } },
     { text: 'The light left this galaxy before animals existed on Earth.', run() {
@@ -637,7 +636,7 @@ const BEATS = {
       const target = Ob.lookbackGyr[slsn.o], t0 = performance.now();
       let cur = 0;
       stage = drawClock(b.querySelector('.clock'), [{ gyr: () => cur, label: 'AT 2025altn' }]);
-      loop((ts) => { const p = reduceMotion ? 1 : Math.min(1, (ts - t0) / 2200); cur = 1e-9 + target * ease(p); stage.draw(stage); });
+      loop((ts) => { const p = K.reduceMotion ? 1 : Math.min(1, (ts - t0) / DUR.count); cur = 1e-9 + target * ease.io(p); stage.draw(stage); });
     } },
     { text: 'Time dilation, visible. AT 2025altn rises over about 90 days in i. Its clock runs 2.06× slow as seen from here (1 + z): the 90-day rise was about 44 days at home.', honest: 'Peak i = 21.16 gives M ≈ −23.1 with no K-correction: ±0.3 mag at best, worse at this redshift.', run() {
       R.hooks.overlay = ringOverlay(slsn.o, 'AT 2025altn');

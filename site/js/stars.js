@@ -1,5 +1,6 @@
 import * as K from './kit.js';
 import { icon } from './icons.js';
+import { ease, smoothstep, DUR } from './motion.js';
 import { sceneHtml, wireScene, openInstrument, showCard } from './scene.js';
 import { dockHtml, makeDock, fmtSpeed, dataLoop, LOOP_NOTE } from './dock.js';
 import { cardHead } from './cardhead.js';
@@ -15,7 +16,6 @@ let lastInfo = (await sync.loadStored()).info;
 const { $, pencilLine, pencilCircle, hatch, text, annotate, setupCanvas, MON, clamp, esc } = K;
 const fmtMemo = new Map();
 const fmtN = (n) => { let v = fmtMemo.get(n); if (v === undefined) { if (fmtMemo.size > 4000) fmtMemo.clear(); v = K.fmtN(n); fmtMemo.set(n, v); } return v; };
-const reduceMotion = K.reduceMotion;
 const DEG = Math.PI / 180;
 const OFF = S.meta.mjdOffset;
 const BANDS = S.meta.bands;
@@ -445,7 +445,7 @@ function* skyStaticSteps(s, key) {
   }
   lanGrid = nextLanGrid; lanCv = nextLanCv;
   if (hooks.staticOverlay) hooks.staticOverlay(g, s, f);
-  if (!reduceMotion) skyFade = { cv: skyStatic, lab: skyLabels, view: staticView, t0: performance.now() };
+  if (!K.reduceMotion) skyFade = { cv: skyStatic, lab: skyLabels, view: staticView, t0: performance.now() };
   staticView = atView;
   skyStatic = cv;
   skyLabels = lcv;
@@ -600,11 +600,11 @@ function siteLabel(g, s) {
 function lanAim() { return tonightOn() ? tn.lanternTarget() : { ra: zenith(st.t).ra, dec: LAN_DEC }; }
 function stepLantern(now) {
   const aim = lanAim(), target = aim.ra;
-  if (lan.dec == null || reduceMotion) lan.dec = aim.dec;
+  if (lan.dec == null || K.reduceMotion) lan.dec = aim.dec;
   else if (Math.abs(aim.dec - lan.dec) > 0.01) { lan.dec += (aim.dec - lan.dec) * Math.min(1, ((now - lan.last) / 1000 || 0) / 0.4); lan.decMoving = true; } else { lan.dec = aim.dec; lan.decMoving = false; }
   const dt = lan.ra == null ? 0 : clamp((now - lan.last) / 1000, 0, 0.05);
   lan.last = now;
-  if (lan.ra == null || reduceMotion) { lan.ra = target; lan.v = 0; return true; }
+  if (lan.ra == null || K.reduceMotion) { lan.ra = target; lan.v = 0; return true; }
   if (!dt) return false;
   const diff = wrap180(target - lan.ra), ad = Math.abs(diff);
   const rate = st.playing && !st.tween ? st.speed * 0.9856 : 0;
@@ -732,12 +732,12 @@ function drawSky(s) {
   let moving = SC.stepWeights(W, now);
   const hk = [s.w, s.h, s.dpr, view.k.toFixed(3), Math.round(view.px), Math.round(view.py), Math.floor(st.t), st.preset, [...st.groupsOn].join(''), C().dark, emberN, lodKey].join('|');
   if (hk !== hazeKey || !hazeCv) {
-    const crossfade = s.w >= 600 && hazeCv && hazeKey && hazeKey.split('|').slice(0, 9).join('|') === hk.split('|').slice(0, 9).join('|') && !reduceMotion;
+    const crossfade = s.w >= 600 && hazeCv && hazeKey && hazeKey.split('|').slice(0, 9).join('|') === hk.split('|').slice(0, 9).join('|') && !K.reduceMotion;
     hazeKey = hk;
     if (crossfade) { const t = hazePrev; hazePrev = hazeCv; hazeCv = t; hazeFade = now; } else hazeFade = -1e9;
     const h0 = performance.now(); buildHaze(s); K.pushPerf(perf.haze || (perf.haze = []), performance.now() - h0); emberN = 0;
   }
-  const hf = Math.min(1, (now - hazeFade) / 600);
+  const hf = Math.min(1, (now - hazeFade) / DUR.travel);
   if (hf < 1) moving = true;
   if (moving && !st.playing && !weightRaf && !pulseRaf && !inPulse) weightRaf = requestAnimationFrame(() => { weightRaf = 0; drawSky(skyS); });
   if (hf < 1 && hazePrev) { g.globalAlpha = hooks.emberAlpha * wrapAlpha * (1 - hf); g.drawImage(hazePrev, 0, 0, s.w, s.h); }
@@ -745,7 +745,7 @@ function drawSky(s) {
   g.drawImage(hazeCv, 0, 0, s.w, s.h);
   g.globalAlpha = 1;
   drawStarsOnSky(g, s, Math.min(2, Math.sqrt(view.k)));
-  const win = reduceMotion ? [Math.floor(st.t), Math.floor(st.t) + 1] : [st.t - 4, st.t];
+  const win = K.reduceMotion ? [Math.floor(st.t), Math.floor(st.t) + 1] : [st.t - 4, st.t];
   let i0 = lb(AL.t, win[0]), i1 = lb(AL.t, win[1] + 1e-9);
   if (i1 - i0 > 1500) i0 = i1 - 1500;
   const dark = C().dark, add = dark && i1 - i0 < 300, sk = Math.min(2, Math.sqrt(view.k));
@@ -757,7 +757,7 @@ function drawSky(s) {
     if (!vis[o]) continue;
     const x = qx[o], y = qy[o];
     if (x < -20 || y < -20 || x > s.w + 20 || y > s.h + 20) continue;
-    const age = st.t - AL.t[k], a0 = (reduceMotion ? 1 : Math.exp(-age / 1.5)) * wrapAlpha;
+    const age = st.t - AL.t[k], a0 = (K.reduceMotion ? 1 : Math.exp(-age / 1.5)) * wrapAlpha;
     const rad = clamp(10 - (AL.m[k] - 16) * 7.5 / 8, 2.5, 10) * sk, wo = W.w[o];
     if (wo < 0.98) { const ga = a0 * 0.35 * (1 - wo); if (ga > 0.02) glints[grp[o] * 4 + Math.min(3, Math.floor(ga * 8))].push(x, y, rad * 0.22); }
     if (wo < 0.02) continue;
@@ -782,13 +782,13 @@ function drawSky(s) {
   }
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   if (tonightOn()) tn.drawSky(g, (ra, dec) => { const [l, b] = eq2gal(ra, dec), [u, v] = hammer(l, b); const x = f.X(u), y = f.Y(v); return x < -20 || y < -20 || x > s.w + 20 || y > s.h + 20 ? null : [x, y]; }, now / 1000, Math.min(2, Math.sqrt(view.k)));
-  if (tonightOn() && tn.pulsing() && !reduceMotion && !st.playing && !weightRaf && !pulseRaf && !inPulse) weightRaf = requestAnimationFrame(() => { weightRaf = 0; drawSky(skyS); });
+  if (tonightOn() && tn.pulsing() && !K.reduceMotion && !st.playing && !weightRaf && !pulseRaf && !inPulse) weightRaf = requestAnimationFrame(() => { weightRaf = 0; drawSky(skyS); });
   if (skyLabels) {
     if (skyFade && skyFade.lab && skyFade.view) { const [ox, oy, orr] = place(skyFade.view); g.globalAlpha = hooks.skyAlpha * (1 - fa); g.drawImage(skyFade.lab, ox, oy, s.w * orr, s.h * orr); }
     g.globalAlpha = hooks.skyAlpha * fa; g.drawImage(skyLabels, dx, dy, s.w * r, s.h * r); g.globalAlpha = 1;
   }
   if (tonightOn()) siteLabel(g, s);
-  if (s.w >= 600) text(g, `${fmtN(i1 - i0)} sample alerts in the last ${reduceMotion ? 'night' : '4 nights'} · ${fmtN(Math.min(nNow, N))} objects seen so far`, 16, s.h - 12, { size: 'micro', color: C().ink2, halo: true });
+  if (s.w >= 600) text(g, `${fmtN(i1 - i0)} sample alerts in the last ${K.reduceMotion ? 'night' : '4 nights'} · ${fmtN(Math.min(nNow, N))} objects seen so far`, 16, s.h - 12, { size: 'micro', color: C().ink2, halo: true });
   for (const [i, col, w] of [[st.hover, C().ink, 1.5], [st.sel, C().hi, 2]]) {
     if (i < 0) continue;
     const x = qx[i], y = qy[i];
@@ -939,7 +939,7 @@ function drawLadder(s) {
   const g = s.ctx;
   g.clearRect(0, 0, s.w, s.h);
   g.drawImage(ladderCv, 0, 0, s.w, s.h);
-  if (!reduceMotion) {
+  if (!K.reduceMotion) {
     let i0 = lb(AL.t, st.t - 2), i1 = lb(AL.t, st.t + 1e-9);
     g.globalCompositeOperation = C().dark ? 'lighter' : 'source-over';
     for (let k = Math.max(i0, i1 - 400); k < i1; k++) {
@@ -1426,19 +1426,17 @@ function copyCanvas(cv) {
   c.getContext('2d').drawImage(cv, 0, 0);
   return c;
 }
-const easeIO = (x) => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2);
-const smooth01 = (x) => { const c = clamp(x, 0, 1); return c * c * (3 - 2 * c); };
 function drawMorph(s, m) {
   const p = clamp((performance.now() - m.t0) / m.ms, 0, 1), g = s.ctx, phone = s.w < 600;
   g.clearRect(0, 0, s.w, s.h);
-  const fa = 1 - smooth01(p / 0.35), ta = smooth01((p - 0.72) / 0.28);
+  const fa = 1 - smoothstep(0, 1, p / 0.35), ta = smoothstep(0, 1, (p - 0.72) / 0.28);
   if (fa > 0) { g.globalAlpha = fa; g.drawImage(m.fromCv, 0, 0, m.fromW, m.fromH); }
   if (ta > 0) { g.globalAlpha = ta; g.drawImage(m.toCv, 0, 0, m.toW, m.toH); }
-  const fly = (1 - smooth01((p - 0.86) / 0.14)) * smooth01(p / 0.06), A = m.A, B = m.B, r = phone ? 1.6 : 2.1, d = 2 * r;
+  const fly = (1 - smoothstep(0, 1, (p - 0.86) / 0.14)) * smoothstep(0, 1, p / 0.06), A = m.A, B = m.B, r = phone ? 1.6 : 2.1, d = 2 * r;
   if (fly > 0) for (let gi = 0; gi < GROUPS.length; gi++) {
     const bands = [[], [], []];
     for (const i of m.ids[gi]) {
-      const e = easeIO(clamp((p - jit[i] * 0.22) / 0.78, 0, 1)), al = A.a[i] + (B.a[i] - A.a[i]) * e;
+      const e = ease.io(clamp((p - jit[i] * 0.22) / 0.78, 0, 1)), al = A.a[i] + (B.a[i] - A.a[i]) * e;
       if (al < 0.05) continue;
       const x0 = A.x[i], y0 = A.y[i], x1 = B.x[i] === B.x[i] ? B.x[i] : x0, y1 = B.y[i] === B.y[i] ? B.y[i] : y0;
       const bow = Math.sin(Math.PI * e) * (jit[i] - 0.5) * 60 / (Math.abs(x1 - x0) + Math.abs(y1 - y0) + 1);
@@ -1482,7 +1480,7 @@ function setProjection(to, instant = false) {
   if (proj.anim) proj.anim = null;
   if (to === proj.cur) { markProj(); return; }
   const s = skyS;
-  if (instant || reduceMotion || !entered || !s || !s.w) { proj.cur = to; markProj(); if (entered && s) { if (s.cv.getBoundingClientRect().height !== s.h) s.resize(); else drawSky(s); } return; }
+  if (instant || K.reduceMotion || !entered || !s || !s.w) { proj.cur = to; markProj(); if (entered && s) { if (s.cv.getBoundingClientRect().height !== s.h) s.resize(); else drawSky(s); } return; }
   const fromCv = copyCanvas(s.cv), A = projPositions(proj.cur, s), fromW = s.w, fromH = s.h;
   proj.cur = to; markProj();
   if (s.cv.getBoundingClientRect().height !== s.h) s.resize(); else drawSky(s);
@@ -1507,7 +1505,7 @@ function wireProjSwitch() {
   K.shell.keyHelp.push({ keys: ['D'], label: 'Sky, distance, HR diagram: the same stars', kw: 'projection drop distance hr diagram morph', mode: 'stars', run: () => cycleProjection(1) });
 }
 const SPIKE_MAG = 18.8;
-const pulsesOn = () => st.secPerDay > 0 && !reduceMotion;
+const pulsesOn = () => st.secPerDay > 0 && !K.reduceMotion;
 const tauNow = () => performance.now() / 1000 / st.secPerDay + OFF + T1;
 const starR = (m, sk) => clamp(3.4 - (m - 18) * 0.38, 1.3, 4.4) * sk;
 function blit(g, bk, spiked, x, y, r, a) {
@@ -1529,7 +1527,7 @@ const tn = TND ? TN.createTonight(TND, {
   selected: () => st.selT,
   pick: (k) => { st.selT = k; const r = k >= 0 ? TND.recent[k] : null; st.sel = r && r.inSample != null && r.inSample < N ? r.inSample : -1; lodKey = ''; renderCard(); redraw(); },
   changed: () => { tonightChip(); lodKey = ''; lanPainted.ra = null; renderCard(); redraw(); },
-  toMap: () => { const m = $('#sky'); if (m) m.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' }); },
+  toMap: () => { const m = $('#sky'); if (m) m.scrollIntoView({ behavior: K.reduceMotion ? 'auto' : 'smooth', block: 'center' }); },
 }) : null;
 function tonightChip() { const b = document.querySelector('#sPresets [data-p="tonight"]'); if (b && tn) b.textContent = tn.chipLabel(); }
 function tonightSample() { return tn ? tn.targets().map((k) => TND.recent[k].inSample).filter((i) => i != null && i < N) : []; }
@@ -1672,7 +1670,7 @@ function drawStarsOnSky(g, s, sk) {
     if (young === 0 && spare(i)) { soft.push(x, y, starR(magOf[i], sk) * 0.5, Math.min(1, 0.08 + 0.6 * fade) * ea * wi); continue; }
     const bk = tr ? SL.bucketOf(SL.trackAt(tr, st.t)) : SL.NB;
     blit(g, bk, young > 0 && magOf[i] < SPIKE_MAG + 1.5, x, y, starR(magOf[i], sk) * (0.7 + 0.7 * fade + 1.3 * young), Math.min(1, 0.08 + 0.6 * fade + 0.4 * young) * ea * wi);
-    if (age < 10 && !reduceMotion) rings.push(x, y, (3 + age * 2.6) * sk, (1 - age / 10) * wi);
+    if (age < 10 && !K.reduceMotion) rings.push(x, y, (3 + age * 2.6) * sk, (1 - age / 10) * wi);
   }
   g.globalCompositeOperation = 'source-over';
   if (soft.length) {
@@ -1759,7 +1757,7 @@ function startPulses() { if (!pulseRaf && entered && pulsesOn()) pulseRaf = requ
 function pulseCaption() {
   const el = $('#sPulseCap'); if (!el) return;
   const n = pl.list.length, own = pl.list.filter((i) => pl.own[i]).length;
-  if (reduceMotion) { el.textContent = `${fmtN(n)} periodic stars shown steady: your system asks for reduced motion.`; return; }
+  if (K.reduceMotion) { el.textContent = `${fmtN(n)} periodic stars shown steady: your system asks for reduced motion.`; return; }
   if (!st.secPerDay) { el.textContent = `Pulsing off. ${fmtN(n)} stars have a known period.`; return; }
   el.textContent = `1 day = ${st.secPerDay} s · relative rhythms are real · ${fmtN(n)} stars pulse at their own period, shaped by their own folded light curve (${fmtN(own)}) or their family's average (${fmtN(n - own)}). A ring: too fast to show (over 3 per second).`;
 }
@@ -1845,7 +1843,7 @@ function startTour() {
     select(o, { keepTour: true });
     st.t = clamp(Ob.t0[o] + Math.min(20, (Ob.t1[o] - Ob.t0[o]) / 2), T0, T1);
     emberN = -1;
-    if (!reduceMotion) setPlay(true);
+    if (!K.reduceMotion) setPlay(true);
   };
   step();
   st.tour = setInterval(step, 20000);
@@ -2215,7 +2213,7 @@ function build() {
   $('#dropBtn').addEventListener('click', () => setProjection('dist'));
   wireProjSwitch();
   const sp = $('#sPulse');
-  if (reduceMotion) sp.disabled = true;
+  if (K.reduceMotion) sp.disabled = true;
   sp.addEventListener('change', () => { st.secPerDay = +sp.value; pulseCaption(); redraw(); startPulses(); });
   const io = new IntersectionObserver((es) => { for (const e of es) onScreen[e.target.id === 'sky' ? 'sky' : e.target.id === 'ladder' ? 'ladder' : 'hr'] = e.isIntersecting; startPulses(); });
   ['#sky', '#ladder', '#hr'].forEach((q) => io.observe($(q)));
@@ -2254,7 +2252,7 @@ function enter(objId) {
   requestAnimationFrame(() => { [skyS, ladS, ribS, hrS].forEach((s) => s.resize()); redraw(); });
   const params = new URLSearchParams(location.search);
   const handled = ext.story ? ext.story.onEnter(params) : false;
-  if (!handled && !reduceMotion && params.has('play')) setPlay(true);
+  if (!handled && !K.reduceMotion && params.has('play')) setPlay(true);
   startPulses();
 }
 function leave() { lan.ra = null; st.tween = null; if (ext.story && ext.story.chapter) ext.story.exitStory(); entered = false; setPlay(false); stopTour(); K.hideTip(); }
@@ -2266,7 +2264,7 @@ function zoomAnim(l, b, k, ms = 1200, done) {
   const u0 = view.cu || 0, v0 = view.cv || 0, [u1, v1] = hammer(l, b);
   const k1 = clamp(k, 1, KMAX);
   if (k1 >= 4) loadTiles();
-  if (reduceMotion || ms <= 0) { zoomTo(l, b, k); if (done) done(); return; }
+  if (K.reduceMotion || ms <= 0) { zoomTo(l, b, k); if (done) done(); return; }
   const t0 = performance.now();
   const lk0 = Math.log(k0), lk1 = Math.log(k1);
   const step = (ts) => {

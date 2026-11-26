@@ -119,7 +119,7 @@ jobs:
       - name: Site checks
         run: |
           node scripts/check_site.mjs
-          node scripts/style_lint.mjs --report
+          node scripts/style_lint.mjs
           node scripts/test_skycalc.mjs
           node scripts/test_cosmo.mjs
           python -I scripts/test_archive_week.py

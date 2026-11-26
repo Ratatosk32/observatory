@@ -1,4 +1,5 @@
 import { reduceMotion, esc, ns, perf, pushPerf } from './kit.js';
+import { smoothstep, DUR } from './motion.js';
 import { lookbackGyr, comovingLy, KM_PER_LY, KM_PER_AU } from './cosmo.js';
 
 const uKm = (km) => Math.log10(km);
@@ -6,7 +7,6 @@ const uLy = (ly) => Math.log10(ly * KM_PER_LY);
 const uLt = (z) => uLy(lookbackGyr(z) * 1e9);
 const uCm = (z) => uLy(comovingLy(z));
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-const smooth = (p) => p * p * (3 - 2 * p);
 const r1 = (v) => Math.round(v * 10) / 10;
 
 export const U = { max: uCm(1090) + 0.05, fork: uLt(0.03), cmbLt: uLt(1090), cmbCm: uCm(1090), hidden: uKm(70) };
@@ -321,8 +321,8 @@ export function initLadder({ onPick }) {
 
   function crossFade(to) {
     for (const v of views()) {
-      if (S.u != null) { v.place(v.ghost, v.y(S.u)); v.ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, fill: 'forwards' }); }
-      v.main.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150 });
+      if (S.u != null) { v.place(v.ghost, v.y(S.u)); v.ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: DUR.quick, fill: 'forwards' }); }
+      v.main.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR.quick });
     }
     S.u = to; S.target = null; S.anim = null;
   }
@@ -356,7 +356,7 @@ export function initLadder({ onPick }) {
     let moving = false;
     const a = S.anim;
     if (a && !a.wait) {
-      const p = Math.max(a.p || 0, clamp((t - a.t0) / a.dur, 0, 1)), u = a.from + (a.to - a.from) * smooth(p);
+      const p = Math.max(a.p || 0, clamp((t - a.t0) / a.dur, 0, 1)), u = a.from + (a.to - a.from) * smoothstep(0, 1, p);
       a.p = p;
       S.u = u;
       if (a.climb) {
