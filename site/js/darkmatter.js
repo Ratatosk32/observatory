@@ -5,6 +5,7 @@ import { register as registerData, fmtBytes } from './datapanel.js';
 import { openStore, post, pool, storageUsage } from './net.js';
 import * as SC from './showcase.js';
 import { cardHead } from './cardhead.js';
+import { DUR, ease, tween, play } from './motion.js';
 
 const [D, SCD] = await Promise.all([K.loadJson('data/cmb.json'), SC.loadShowcase()]);
 const { $, fmtN, MON, clamp, esc, text, annotate } = K;
@@ -73,7 +74,7 @@ const VERT = 'attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }
 const FRAG = `precision highp float;
 uniform sampler2D uSky; uniform sampler2D uLens;
 uniform vec2 uRes; uniform vec3 uFrame; uniform vec3 uLan; uniform float uAmp; uniform float uShadow;
-uniform vec3 uCool; uniform vec3 uWarm; uniform vec3 uKLo; uniform vec3 uKHi; uniform vec3 uNeutral; uniform vec3 uGold;
+uniform vec3 uCool; uniform vec3 uWarm; uniform vec3 uMid; uniform vec3 uKLo; uniform vec3 uKHi; uniform vec3 uNeutral; uniform vec3 uGold; uniform float uDuo;
 uniform float uDefl; uniform float uDark; uniform float uZoom; uniform float uGrid; uniform float uDegPx;
 const float PI = 3.14159265;
 vec2 lonlatToUv(float l, float b) { return vec2(fract(l / 360.0), clamp((90.0 - b) / 180.0, 0.0005, 0.9995)); }
@@ -116,8 +117,14 @@ void main() {
   vec4 s0 = texture2D(uSky, lonlatToUv(l, b));
   vec4 s1 = texture2D(uSky, lonlatToUv(l2, b2));
   float t = clamp((s1.r * 255.0 - 128.0) / 110.0 * mix(1.0, 1.7, w), -1.0, 1.0);
-  vec3 cmb = mix(uCool, uWarm, 0.5 + 0.5 * t) * mix(0.86 + 0.14 * abs(t), 0.72 + 0.5 * abs(t), w);
-  cmb *= mix(0.72, 1.0, s0.g);
+  vec3 cmb;
+  if (uDuo > 0.5) {
+    cmb = mix(uMid, t < 0.0 ? uCool : uWarm, clamp(abs(t) * mix(0.85, 1.0, w), 0.0, 1.0));
+    cmb = mix(mix(uMid, cmb, 0.4), cmb, s0.g);
+  } else {
+    cmb = mix(uCool, uWarm, 0.5 + 0.5 * t) * mix(0.86 + 0.14 * abs(t), 0.72 + 0.5 * abs(t), w);
+    cmb *= mix(0.72, 1.0, s0.g);
+  }
   float k = clamp((lens.b * 255.0 - 128.0) / 110.0, -1.0, 1.0);
   vec3 kap = mix(uKLo, uKHi, smoothstep(-0.9, 0.9, k));
   kap = mix(uNeutral, kap, s0.b * step(0.5 / 255.0, lens.b));
@@ -137,10 +144,22 @@ function hexRgb(c) {
   const v = h.length === 3 ? h.split('').map((x) => x + x) : [h.slice(0, 2), h.slice(2, 4), h.slice(4, 6)];
   return v.map((x) => parseInt(x, 16) / 255);
 }
-const PALETTE = {
-  dark: { cool: [0.1, 0.14, 0.3], warm: [0.55, 0.33, 0.24], klo: [0.07, 0.08, 0.15], khi: [0.72, 0.63, 0.46], neutral: [0.12, 0.13, 0.18] },
-  light: { cool: [0.55, 0.62, 0.8], warm: [0.9, 0.7, 0.58], klo: [0.5, 0.54, 0.64], khi: [0.97, 0.93, 0.84], neutral: [0.84, 0.84, 0.86] },
-};
+const CMB_TOKENS = { cool: '--cmb-cool', warm: '--cmb-warm', mid: '--cmb-mid', klo: '--cmb-klo', khi: '--cmb-khi', neutral: '--cmb-neutral' };
+const paletteOf = { key: null, P: null };
+function palette() {
+  const dark = C().dark;
+  if (paletteOf.key === dark && paletteOf.P) return paletteOf.P;
+  const cs = getComputedStyle(document.documentElement), P = { duo: !dark };
+  for (const k in CMB_TOKENS) P[k] = hexRgb(cs.getPropertyValue(CMB_TOKENS[k]).trim() || '#808080');
+  paletteOf.key = dark; paletteOf.P = P;
+  return P;
+}
+const mix3 = (a, b, x) => a.map((v, c) => v + (b[c] - v) * x);
+function cmbColour(P, t, trusted) {
+  if (!P.duo) return mix3(P.cool, P.warm, 0.5 + 0.5 * t).map((v) => v * (0.86 + 0.14 * Math.abs(t)) * (trusted ? 1 : 0.72));
+  const c = mix3(P.mid, t < 0 ? P.cool : P.warm, Math.min(1, Math.abs(t) * 0.85));
+  return trusted ? c : mix3(P.mid, c, 0.4);
+}
 
 function initGl(cv) {
   let g = null;
@@ -156,7 +175,7 @@ function initGl(cv) {
     g.bufferData(g.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), g.STATIC_DRAW);
     const loc = g.getAttribLocation(pr, 'p'); g.enableVertexAttribArray(loc); g.vertexAttribPointer(loc, 2, g.FLOAT, false, 0, 0);
     const U = {};
-    for (const n of ['uSky', 'uLens', 'uRes', 'uFrame', 'uLan', 'uAmp', 'uShadow', 'uCool', 'uWarm', 'uKLo', 'uKHi', 'uNeutral', 'uGold', 'uDefl', 'uDark', 'uZoom', 'uGrid', 'uDegPx']) U[n] = g.getUniformLocation(pr, n);
+    for (const n of ['uSky', 'uLens', 'uRes', 'uFrame', 'uLan', 'uAmp', 'uShadow', 'uCool', 'uWarm', 'uMid', 'uKLo', 'uKHi', 'uNeutral', 'uGold', 'uDuo', 'uDefl', 'uDark', 'uZoom', 'uGrid', 'uDegPx']) U[n] = g.getUniformLocation(pr, n);
     return { g, pr, U, tex: [] };
   } catch (e) { glFail = 'WebGL could not start here, so the map is drawn once without the bending lens.'; return null; }
 }
@@ -195,14 +214,14 @@ function sizeSky() {
 }
 function defaultLantern() { const f = frameOf(skyBox), [u, v] = hammer(240, -35); return [f.cx + u * f.sc, f.cy - v * f.sc]; }
 const LENS_ZOOM = 3, BREATH_S = 7, LENS_RINGS = 150;
-const breathing = () => !K.reduceMotion && st.amp > 1 && st.shadowTarget === 0;
+const breathing = () => !K.reduceMotion && !demo && st.amp > 1 && st.shadowTarget === 0;
 function ampNow() { return breathing() ? 1 + (st.amp - 1) * (0.5 - 0.5 * Math.cos(performance.now() / 1000 * 2 * Math.PI / BREATH_S)) : st.amp; }
 function lanRadius() { return Math.max(56, Math.min(skyBox.w, skyBox.h) * st.lanR); }
 
 let fallbackCv = null;
 function drawGl() {
   if (!skyBox.w || !imgs) return;
-  const f = frameOf(skyBox), dk = C().dark, P = dk ? PALETTE.dark : PALETTE.light;
+  const f = frameOf(skyBox), dk = C().dark, P = palette();
   if (!gl) { drawFallback(f, P); return; }
   const { g, U } = gl, d = skyBox.dpr;
   g.viewport(0, 0, g.canvas.width, g.canvas.height);
@@ -214,7 +233,7 @@ function drawGl() {
   const degPx = 40.5 / (f.sc * d), lensDeg = lanRadius() * d * degPx / LENS_ZOOM;
   g.uniform1f(U.uZoom, LENS_ZOOM); g.uniform1f(U.uDegPx, degPx); g.uniform1f(U.uGrid, [0.5, 1, 2, 5, 10].find((x) => x >= lensDeg / 3.5) || 10);
   g.uniform3fv(U.uGold, hexRgb(C().gold));
-  g.uniform3fv(U.uCool, P.cool); g.uniform3fv(U.uWarm, P.warm); g.uniform3fv(U.uKLo, P.klo); g.uniform3fv(U.uKHi, P.khi); g.uniform3fv(U.uNeutral, P.neutral);
+  g.uniform3fv(U.uCool, P.cool); g.uniform3fv(U.uWarm, P.warm); g.uniform3fv(U.uMid, P.mid); g.uniform3fv(U.uKLo, P.klo); g.uniform3fv(U.uKHi, P.khi); g.uniform3fv(U.uNeutral, P.neutral); g.uniform1f(U.uDuo, P.duo ? 1 : 0);
   g.uniform1f(U.uDefl, M.deflectionScaleArcmin); g.uniform1f(U.uDark, dk ? 1 : 0);
   g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
 }
@@ -233,9 +252,9 @@ function drawFallback(f, P) {
     const z = Math.sqrt(q), lam = 2 * Math.atan2(z * u, 2 * (2 * z * z - 1)), b = Math.asin(clamp(z * v, -1, 1)) / DEG;
     const l = ((-lam / DEG) % 360 + 360) % 360;
     const px = Math.min(1023, Math.floor(l / 360 * 1024)), py = Math.min(511, Math.floor((90 - b) / 180 * 512)), k = (py * 1024 + px) * 4;
-    const t = clamp((fallbackCv[k] - 128) / 110, -1, 1), m = 0.5 + 0.5 * t, sh = (0.86 + 0.14 * Math.abs(t)) * (fallbackCv[k + 1] > 127 ? 1 : 0.72);
+    const t = clamp((fallbackCv[k] - 128) / 110, -1, 1), col = cmbColour(P, t, fallbackCv[k + 1] > 127);
     const p = (y * W + x) * 4;
-    for (let c = 0; c < 3; c++) im.data[p + c] = 255 * (P.cool[c] + (P.warm[c] - P.cool[c]) * m) * sh;
+    for (let c = 0; c < 3; c++) im.data[p + c] = 255 * col[c];
     im.data[p + 3] = 255;
   }
   ctx.putImageData(im, 0, 0);
@@ -274,12 +293,16 @@ function buildRings() {
   });
 }
 const isBusy = (i) => busyZ(i) / 3 >= 0.5;
+const BREATH_PERIODS = [6, 7.4, 6.6, 8, 7];
 function drawFront(g, now) {
-  const n = nFront(), a = K.reduceMotion ? 0.75 : 0.725 + 0.175 * Math.sin(now * 1.1);
+  const n = nFront(), lanes = K.reduceMotion ? 1 : BREATH_PERIODS.length;
   g.strokeStyle = C().gold; g.lineWidth = 1;
-  g.globalAlpha = a * wrapAlpha; g.beginPath();
-  for (let q = 0; q < n; q++) { const i = RANK[q], r = Math.max(2.5, ringR(i)); g.moveTo(cx[i] + r, cy[i]); g.arc(cx[i], cy[i], r, 0, 6.283); }
-  g.stroke();
+  for (let b = 0; b < lanes; b++) {
+    const a = K.reduceMotion ? 0.75 : 0.725 + 0.175 * Math.sin(2 * Math.PI * now / BREATH_PERIODS[b] + b * 2.4);
+    g.globalAlpha = a * wrapAlpha; g.beginPath();
+    for (let q = 0; q < n; q++) { const i = RANK[q]; if (i % lanes !== b) continue; const r = Math.max(2.5, ringR(i)); g.moveTo(cx[i] + r, cy[i]); g.arc(cx[i], cy[i], r, 0, 6.283); }
+    g.stroke();
+  }
   g.globalAlpha = 0.45 * wrapAlpha; g.beginPath();
   for (let q = 0; q < n; q++) { const i = RANK[q]; if (!isBusy(i)) continue; const r = 1.35 * Math.max(2.5, ringR(i)); g.moveTo(cx[i] + r, cy[i]); g.arc(cx[i], cy[i], r, 0, 6.283); }
   g.stroke();
@@ -711,8 +734,12 @@ function presets() {
     nav.appendChild(b);
   }
 }
+function legendStops() {
+  const P = palette(), rgb = (c) => `rgb(${c.map((x) => Math.round(x * 255)).join(',')})`;
+  return (P.duo ? [P.cool, P.mid, P.warm] : [P.cool, P.warm]).map(rgb).join(',');
+}
 function legend() {
-  $('#dLegend').innerHTML = `<span class="k"><span class="sw" style="background:${C().gold}"></span>SN-like alert (spark, then ember)</span><span class="k"><span class="sw ring" style="border-color:${C().gold}"></span>${CL.catalogue} cluster: faint lace; in front ◯ heaviest · ◎ most SN-like alerts inside</span><span class="k"><span class="sw" style="background:${C().gold};box-shadow:0 0 0 2px var(--paper),0 0 0 3px ${C().gold}"></span>a confident supernova</span><span class="k"><span class="sw" style="background:linear-gradient(90deg,rgb(${PALETTE.dark.cool.map((x) => Math.round(x * 255)).join(',')}),rgb(${PALETTE.dark.warm.map((x) => Math.round(x * 255)).join(',')}))"></span>CMB cooler · warmer (about ±250 μK)</span>`;
+  $('#dLegend').innerHTML = `<span class="k"><span class="sw" style="background:${C().gold}"></span>SN-like alert (spark, then ember)</span><span class="k"><span class="sw ring" style="border-color:${C().gold}"></span>${CL.catalogue} cluster: faint lace; in front ◯ heaviest · ◎ most SN-like alerts inside</span><span class="k"><span class="sw" style="background:${C().gold};box-shadow:0 0 0 2px var(--paper),0 0 0 3px ${C().gold}"></span>a confident supernova</span><span class="k"><span class="sw" style="background:linear-gradient(90deg,${legendStops()})"></span>CMB cooler · warmer (about ±250 μK)</span>`;
 }
 
 function wire() {
@@ -753,7 +780,7 @@ function wire() {
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
   cv.addEventListener('pointerleave', () => { st.hover = -1; K.hideTip(); });
   makeTimeDock();
-  const setAmp = () => { const x = +amp.value; ampX = x / 1000; st.amp = Math.round(Math.pow(300, x / 1000)); ampV.textContent = `×${st.amp}`; $('#dAmpNote').textContent = st.amp === 1 ? `At ×1 the bending is real but about ${M.deflectionRmsArcmin.toFixed(1)}′, too small to see.` : `Bending breathes up to ×${st.amp}: ${(M.deflectionRmsArcmin * st.amp / 60).toFixed(1)}° typical shift. The gold grid bends with it.`; st.glDirty = true; };
+  const setAmp = () => { const x = +amp.value; ampX = x / 1000; st.amp = Math.round(Math.pow(300, x / 1000)); ampV.textContent = `×${st.amp}`; if (!demo) $('#dAmpNote').textContent = st.amp === 1 ? `At ×1 the bending is real but about ${M.deflectionRmsArcmin.toFixed(1)}′, too small to see.` : `Bending breathes up to ×${st.amp}: ${(M.deflectionRmsArcmin * st.amp / 60).toFixed(1)}° typical shift. The gold grid bends with it.`; st.glDirty = true; };
   amp.addEventListener('input', setAmp); setAmp();
   $('#dShadow').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); e.currentTarget.classList.toggle('on', on); st.shadowTarget = on ? 1 : 0; if (K.reduceMotion) { st.shadow = st.shadowTarget; st.glDirty = true; } });
   new ResizeObserver(() => { if (entered) sizeSky(); }).observe(cv);
@@ -767,14 +794,89 @@ async function loadImages() {
   return { sky: skyIm, lens: lensIm };
 }
 
+const sessionMemo = new Set();
+function firstInSession(key) {
+  try {
+    if (sessionStorage.getItem(key)) return false;
+    sessionStorage.setItem(key, '1');
+    return true;
+  } catch {
+    if (sessionMemo.has(key)) return false;
+    sessionMemo.add(key);
+    return true;
+  }
+}
+function afterArrival(fn) {
+  const t0 = performance.now();
+  const wait = () => {
+    if (!entered) return;
+    if (document.querySelector('.floor-climb') && performance.now() - t0 < 2 * DUR.count) { requestAnimationFrame(wait); return; }
+    setTimeout(() => { if (entered) fn(); }, DUR.gentle);
+  };
+  requestAnimationFrame(wait);
+}
+
+const DEMO = { peak: 50, ms: 4 * DUR.travel, rise: 0.4 };
+let demo = null;
+function setAmpX(x) { const amp = $('#dAmp'); amp.value = String(Math.round(clamp(x, 0, 1) * 1000)); amp.dispatchEvent(new Event('input')); }
+function endDemo() {
+  if (!demo) return;
+  const d = demo;
+  demo = null;
+  d.job.cancel();
+  ['pointerdown', 'keydown', 'wheel'].forEach((ev) => document.removeEventListener(ev, d.stop, { capture: true }));
+  setAmpX(0);
+  $('#lensbar').removeAttribute('aria-busy');
+}
+function lensDemo() {
+  if (demo || K.reduceMotion || !entered || document.hidden || st.amp !== 1 || st.shadowTarget) return;
+  if (!firstInSession('observatory-dm-lens-demo')) return;
+  const top = Math.log(DEMO.peak) / Math.log(DIAL.max), r = DEMO.rise;
+  const d = { stop: () => endDemo() };
+  ['pointerdown', 'keydown', 'wheel'].forEach((ev) => document.addEventListener(ev, d.stop, { capture: true }));
+  demo = d;
+  $('#lensbar').setAttribute('aria-busy', 'true');
+  d.job = tween({
+    from: 0, to: 1, dur: DEMO.ms, curve: 'linear',
+    step: (v) => { if (demo === d) setAmpX(top * (v < r ? ease.io(v / r) : v < 1 - r ? 1 : ease.io((1 - v) / r))); },
+    done: () => { if (demo === d) endDemo(); },
+  });
+}
+
+function sweepVerdict() {
+  const v = $('#dmRoot .verdict'), zero = v && v.querySelector('.zero');
+  if (!zero || K.reduceMotion || !v.getClientRects().length || !firstInSession('observatory-dm-needles')) return;
+  const z = zero.offsetLeft + zero.offsetWidth / 2;
+  const vals = { lens: LT.sigma, cl: CT.sigma };
+  for (const n of v.querySelectorAll('.ndl')) {
+    play(n, [{ transform: `translateX(${Math.round(z - n.offsetLeft - n.offsetWidth / 2)}px)` }, { transform: 'none' }], { dur: DUR.travel, curve: 'out' });
+    const lab = n.querySelector('i'), key = Object.keys(vals).find((k) => n.classList.contains(k));
+    if (!lab || !key) continue;
+    const pre = lab.textContent.slice(0, lab.textContent.lastIndexOf(' ') + 1), to = vals[key];
+    tween({ from: 0, to, dur: DUR.travel, curve: 'out', step: (x) => { lab.textContent = pre + sig(x === to ? to : x); } });
+  }
+}
+const meterSweep = { p: 1, started: false };
+function sweepMeters(s) {
+  if (meterSweep.started || !s.w) return;
+  meterSweep.started = true;
+  if (K.reduceMotion || !firstInSession('observatory-dm-meters')) return;
+  meterSweep.p = 0;
+  tween({ from: 0, to: 1, dur: DUR.travel, curve: 'out', step: (p) => { meterSweep.p = p; [meterS, ctestS].forEach((m) => m && m.w && drawMeters[m === meterS ? 0 : 1](m)); } });
+}
+const drawMeters = [
+  (s) => { sweepMeters(s); const v = LT.sigma * meterSweep.p; drawMeter(s, { range: [-4, 8], every: 2, nulls: LT.nulls, value: v, ref: LT.controlSigma, refLabel: `ACT clusters +${LT.controlSigma.toFixed(1)}σ`, big: sig(v), small: 'κ at SN-like alerts vs 300 rotated skies' }); },
+  (s) => { sweepMeters(s); const v = CT.sigma * meterSweep.p; drawMeter(s, { range: [-2, 5], every: 1, value: v, ghost: CT.dr5Ghost ? CT.dr5Ghost.sigma : null, ghostLabel: 'DR5', big: sig(v), small: `${CT.observed} seen vs ${CT.expected} expected in ${fmtN(CT.clusters)} clusters` }); },
+];
+
 async function build() {
   buildDom();
   ov = $('#dmOv').getContext('2d');
   imgs = await loadImages();
   gl = initGl($('#dmGl'));
   if (gl) { uploadTextures(); $('#dmGl').addEventListener('snapshot', drawGl); }
-  meterS = K.setupCanvas($('#dMeter'), (s) => drawMeter(s, { range: [-4, 8], every: 2, nulls: LT.nulls, value: LT.sigma, ref: LT.controlSigma, refLabel: `ACT clusters +${LT.controlSigma.toFixed(1)}σ`, big: `${LT.sigma > 0 ? '+' : '−'}${Math.abs(LT.sigma).toFixed(1)}σ`, small: 'κ at SN-like alerts vs 300 rotated skies' }));
-  ctestS = K.setupCanvas($('#dCtest'), (s) => drawMeter(s, { range: [-2, 5], every: 1, value: CT.sigma, ghost: CT.dr5Ghost ? CT.dr5Ghost.sigma : null, ghostLabel: 'DR5', big: sig(CT.sigma), small: `${CT.observed} seen vs ${CT.expected} expected in ${fmtN(CT.clusters)} clusters` }));
+  meterS = K.setupCanvas($('#dMeter'), drawMeters[0]);
+  ctestS = K.setupCanvas($('#dCtest'), drawMeters[1]);
   pill = SC.makePill($('#dmRoot .pill-host'), { onToggle: toggleShowAll, onBack: toggleShowAll });
   wire();
   presets();
@@ -804,8 +906,9 @@ async function enter(objId) {
   const params = new URLSearchParams(location.search);
   if (!K.reduceMotion && params.has('play')) { st.t = T0; emberN = 0; emberCv = null; setPlay(true); } else syncTime();
   loop();
+  afterArrival(() => { sweepVerdict(); lensDemo(); });
 }
-function leave() { entered = false; if (dock) setPlay(false); K.hideTip(); }
+function leave() { endDemo(); entered = false; if (dock) setPlay(false); K.hideTip(); }
 
 const idb = openStore('observatory-dm', ['points', 'meta']);
 let lastInfo = null;

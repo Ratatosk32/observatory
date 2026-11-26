@@ -1,9 +1,10 @@
 import * as K from './kit.js';
 import { icon } from './icons.js';
-import { ease, smoothstep, DUR } from './motion.js';
+import { ease, smoothstep, DUR, tween } from './motion.js';
 import { sceneHtml, wireScene, openInstrument, showCard } from './scene.js';
 import { dockHtml, makeDock, fmtSpeed, dataLoop, LOOP_NOTE } from './dock.js';
 import { cardHead } from './cardhead.js';
+import { health, quietNights } from './quiet.js';
 import * as SL from './starlight.js';
 import * as SC from './showcase.js';
 import * as TN from './tonight.js';
@@ -118,6 +119,21 @@ function buildRank() {
 buildRank();
 const inGap = (t) => gaps.find((g) => t >= g[0] && t < g[1]);
 const lb = (arr, x) => { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < x) lo = m + 1; else hi = m; } return lo; };
+const sparkAt = { of: null, n: -1, d: null };
+function sparkTimes() {
+  if (sparkAt.of === AL.t && sparkAt.n === NA && sparkAt.d) return sparkAt.d;
+  const t = AL.t, n = NA, d = new Float64Array(n);
+  for (let k0 = 0; k0 < n;) {
+    const night = Math.floor(t[k0] + 0.5), lo = t[k0];
+    let k1 = k0;
+    while (k1 < n && Math.floor(t[k1] + 0.5) === night) k1++;
+    const span = t[k1 - 1] - lo;
+    for (let k = k0; k < k1; k++) d[k] = night + 0.02 + (span > 1e-4 ? 0.46 * (t[k] - lo) / span : 0.23);
+    k0 = k1;
+  }
+  Object.assign(sparkAt, { of: AL.t, n, d });
+  return d;
+}
 const featuredBy = new Map(S.featured.map((f) => [f.o, f]));
 const nameOf = (i) => Ob.name[i] || 'Rubin object …' + Ob.id[i].slice(-6);
 const famLabel = (i) => FAM[Ob.fam[i]].label;
@@ -306,6 +322,18 @@ function galToEqVec(l, b) {
   return GALT.map((r) => r[0] * g[0] + r[1] * g[1] + r[2] * g[2]);
 }
 const LSTEP = 4;
+const BLOOM = { scale: 4, blur: 3, alpha: 0.15 };
+function bloomOf(src) {
+  const w = Math.max(2, Math.round(src.width / BLOOM.scale)), h = Math.max(2, Math.round(src.height / BLOOM.scale));
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const g = cv.getContext('2d');
+  g.imageSmoothingEnabled = true;
+  if ('filter' in g) { g.filter = `blur(${BLOOM.blur}px)`; g.drawImage(src, 0, 0, w, h); g.filter = 'none'; return cv; }
+  const tiny = document.createElement('canvas'); tiny.width = Math.max(2, w >> 2); tiny.height = Math.max(2, h >> 2);
+  tiny.getContext('2d').drawImage(src, 0, 0, tiny.width, tiny.height);
+  g.drawImage(tiny, 0, 0, w, h);
+  return cv;
+}
 let lanGrid = null, lanCv = null, staticView = null, skyFade = null, fadeRaf = 0, skyLabels = null;
 let skyJob = null;
 function buildSkyStatic(s) {
@@ -368,6 +396,12 @@ function* skyStaticSteps(s, key) {
     const sm = document.createElement('canvas'); sm.width = Math.max(2, Math.round(s.w / 10)); sm.height = Math.max(2, Math.round(s.h / 10));
     const sg = sm.getContext('2d'); sg.imageSmoothingEnabled = true; sg.drawImage(wash, 0, 0, sm.width, sm.height);
     g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.4; g.drawImage(sm, 0, 0, s.w, s.h);
+    g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+  }
+  yield;
+  if (mwF) {
+    g.globalCompositeOperation = dark ? 'lighter' : 'source-over'; g.globalAlpha = BLOOM.alpha;
+    g.drawImage(bloomOf(wash), 0, 0, s.w, s.h);
     g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   }
   yield;
@@ -746,7 +780,8 @@ function drawSky(s) {
   g.globalAlpha = 1;
   drawStarsOnSky(g, s, Math.min(2, Math.sqrt(view.k)));
   const win = K.reduceMotion ? [Math.floor(st.t), Math.floor(st.t) + 1] : [st.t - 4, st.t];
-  let i0 = lb(AL.t, win[0]), i1 = lb(AL.t, win[1] + 1e-9);
+  const SD = sparkTimes();
+  let i0 = lb(SD, win[0]), i1 = lb(SD, win[1] + 1e-9);
   if (i1 - i0 > 1500) i0 = i1 - 1500;
   const dark = C().dark, add = dark && i1 - i0 < 300, sk = Math.min(2, Math.sqrt(view.k));
   const glints = Array.from({ length: GROUPS.length * 4 }, () => []);
@@ -757,7 +792,7 @@ function drawSky(s) {
     if (!vis[o]) continue;
     const x = qx[o], y = qy[o];
     if (x < -20 || y < -20 || x > s.w + 20 || y > s.h + 20) continue;
-    const age = st.t - AL.t[k], a0 = (K.reduceMotion ? 1 : Math.exp(-age / 1.5)) * wrapAlpha;
+    const age = st.t - SD[k], a0 = (K.reduceMotion ? 1 : Math.exp(-age / 1.5)) * wrapAlpha;
     const rad = clamp(10 - (AL.m[k] - 16) * 7.5 / 8, 2.5, 10) * sk, wo = W.w[o];
     if (wo < 0.98) { const ga = a0 * 0.35 * (1 - wo); if (ga > 0.02) glints[grp[o] * 4 + Math.min(3, Math.floor(ga * 8))].push(x, y, rad * 0.22); }
     if (wo < 0.02) continue;
@@ -940,11 +975,11 @@ function drawLadder(s) {
   g.clearRect(0, 0, s.w, s.h);
   g.drawImage(ladderCv, 0, 0, s.w, s.h);
   if (!K.reduceMotion) {
-    let i0 = lb(AL.t, st.t - 2), i1 = lb(AL.t, st.t + 1e-9);
+    const SD = sparkTimes(), i0 = lb(SD, st.t - 2), i1 = lb(SD, st.t + 1e-9);
     g.globalCompositeOperation = C().dark ? 'lighter' : 'source-over';
     for (let k = Math.max(i0, i1 - 400); k < i1; k++) {
       const o = AL.o[k]; if (!vis[o]) continue;
-      const a = Math.exp(-(st.t - AL.t[k]) / 1.5);
+      const a = Math.exp(-(st.t - SD[k]) / 1.5);
       g.globalAlpha = a * 0.9; g.drawImage(sprites[grp[o]], lx[o] - 6, ly[o] - 6, 12, 12);
     }
     g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
@@ -957,17 +992,43 @@ function drawLadder(s) {
   }
 }
 
+const quiet = { nights: [] };
+async function loadQuiet() {
+  const h = await health(), n = quietNights(h);
+  if (!n) return;
+  const since = K.nightMjd(+h.verdict.since) - OFF;
+  quiet.nights = Array.from({ length: n }, (_, k) => since + 1 + k).filter((t) => t >= T1);
+  ribKey = '';
+  if (entered) drawRibbon(ribS);
+}
+const ribSel = { i: -1, n: -1, nights: [], p: 1, job: null };
+function selNights(i) {
+  if (ribSel.i === i && ribSel.n === NA) return ribSel.nights;
+  const set = new Set();
+  for (let k = 0; k < NA; k++) if (AL.o[k] === i) set.add(Math.floor(AL.t[k]));
+  Object.assign(ribSel, { i, n: NA, nights: [...set] });
+  return ribSel.nights;
+}
+function pulseRibbon(i) {
+  if (ribSel.job) ribSel.job.cancel();
+  ribSel.job = null; ribSel.p = 1;
+  if (i < 0) return;
+  selNights(i);
+  ribSel.p = 0;
+  ribSel.job = tween({ from: 0, to: 1, dur: DUR.travel, curve: 'out', step: (p) => { ribSel.p = p; if (entered && !st.playing) drawRibbon(ribS); }, done: () => { ribSel.job = null; } });
+}
+const ribEnd = () => (quiet.nights.length ? Math.max(T1, quiet.nights[quiet.nights.length - 1] + 1) : T1);
 function drawRibbon(s) {
   if (!s.w || !entered) return;
-  const L = 8, R = s.w - 8, top = 8, base = s.h - 30;
-  const X = (t) => L + (t - T0) / (T1 - T0) * (R - L);
-  const key = [s.w, s.h, s.dpr, C().dark].join('|');
+  const L = 8, R = s.w - 8, top = 8, base = s.h - 30, TE = ribEnd();
+  const X = (t) => L + (t - T0) / (TE - T0) * (R - L);
+  const key = [s.w, s.h, s.dpr, C().dark, TE].join('|');
   if (key !== ribKey || !ribCv) {
     ribKey = key;
     ribCv = document.createElement('canvas'); ribCv.width = Math.round(s.w * s.dpr); ribCv.height = Math.round(s.h * s.dpr);
     const g = ribCv.getContext('2d'); g.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
     const mx = Math.log10(Math.max(...nights.map((n) => n.alerts)));
-    const bw = Math.max(1.5, (R - L) / (T1 - T0) - 0.4);
+    const bw = Math.max(1.5, (R - L) / (TE - T0) - 0.4);
     const bc = BANDS.map((b) => C().band[b]);
     for (const n of nights) {
       const h = Math.log10(Math.max(1, n.alerts)) / mx * (base - top);
@@ -987,10 +1048,16 @@ function drawRibbon(s) {
     const pm = Math.max(...perDay.values());
     g.fillStyle = C().gold;
     perDay.forEach((v, d) => { const r = 0.8 + Math.sqrt(v / pm) * 3; g.beginPath(); g.arc(X(d + 0.5), base + 8, r, 0, 6.283); g.fill(); });
+    if (quiet.nights.length) {
+      const qr = clamp((R - L) / (TE - T0) * 0.42, 1, 2.2);
+      g.strokeStyle = C().ink3; g.lineWidth = 1; g.beginPath();
+      for (const t of quiet.nights) { const x = X(t + 0.5); g.moveTo(x + qr, base + 8); g.arc(x, base + 8, qr, 0, 6.283); }
+      g.stroke();
+    }
     const months = [];
     for (let y = 2025, m = 10; y < 2027 || m <= 11; m === 11 ? (y++, m = 0) : m++) {
       const t = Date.UTC(y, m, 1) / 864e5 + 40587 - OFF;
-      if (t < T0 || t > T1) { if (t > T1) break; continue; }
+      if (t < T0 || t > TE) { if (t > TE) break; continue; }
       const x = X(t);
       g.strokeStyle = C().line; g.lineWidth = 1; g.beginPath(); g.moveTo(x, base + 14); g.lineTo(x, base + 18); g.stroke();
       months.push({ x: x + 2, label: m === 0 ? `${MON[m]} ${y}` : MON[m], first: m === 0 || !months.length });
@@ -1008,11 +1075,16 @@ function drawRibbon(s) {
   const g = s.ctx;
   g.clearRect(0, 0, s.w, s.h);
   g.drawImage(ribCv, 0, 0, s.w, s.h);
-  if (st.sel >= 0) { g.fillStyle = C().hi; g.fillRect(X(Ob.t0[st.sel]), base + 15, Math.max(2, X(Ob.t1[st.sel]) - X(Ob.t0[st.sel])), 3); }
+  if (st.sel >= 0) {
+    g.fillStyle = C().hi; g.fillRect(X(Ob.t0[st.sel]), base + 15, Math.max(2, X(Ob.t1[st.sel]) - X(Ob.t0[st.sel])), 3);
+    const ns = selNights(st.sel), ring = (r) => { g.beginPath(); for (const d of ns) { const x = X(d + 0.5); g.moveTo(x + r, base + 8); g.arc(x, base + 8, r, 0, 6.283); } g.stroke(); };
+    g.strokeStyle = C().hi; g.lineWidth = 1.2; ring(4.2);
+    if (ribSel.p < 1 && ribSel.i === st.sel) { g.globalAlpha = 1 - ribSel.p; g.lineWidth = 1.5; ring(4.2 + 9 * ribSel.p); g.globalAlpha = 1; }
+  }
   const x = X(st.t);
   g.strokeStyle = C().hi; g.lineWidth = 2; g.beginPath(); g.moveTo(x, top); g.lineTo(x, base + 12); g.stroke();
   g.fillStyle = C().hi; g.beginPath(); g.moveTo(x - 5, top - 6); g.lineTo(x + 5, top - 6); g.lineTo(x, top); g.fill();
-  s.__X = X; s.__inv = (px) => T0 + (px - L) / (R - L) * (T1 - T0);
+  s.__X = X; s.__inv = (px) => T0 + (px - L) / (R - L) * (TE - T0);
 }
 
 const HR_BASE = { c0: -0.5, c1: 4.5, m0: -4, m1: 17 };
@@ -1861,7 +1933,9 @@ function stopTour() {
 
 function select(i, opts = {}) {
   if (!opts.keepTour) stopTour();
+  const was = st.sel;
   st.sel = i;
+  if (i !== was) pulseRibbon(i);
   K.setUrl({ obj: i >= 0 ? Ob.id[i] : null });
   renderCard(); redraw();
 }
@@ -2220,6 +2294,7 @@ function build() {
   document.addEventListener('visibilitychange', () => { if (document.hidden && st.playing) { st.wasPlaying = true; setPlay(false); } else if (!document.hidden && st.wasPlaying) { st.wasPlaying = false; if (entered) setPlay(true); } if (!document.hidden) startPulses(); });
   K.onTheme(() => { if (!entered) { themeStale = true; return; } readColors(); makeSprites(); skyKey = ''; ladderKey = stageLad.key = ''; ribKey = ''; hrKey = ''; emberN = -1; legend(); census(); renderCard(); redraw(); });
   legend(); census(); scaleText(); pulseCaption(); tonightChip();
+  loadQuiet();
   built = true;
 }
 

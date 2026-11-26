@@ -71,6 +71,12 @@
   --sprite: #ff4a3a;
   --sprite-tail: #aa78ff;
   --live: #86d9ae;
+  --cmb-cool: #1a244d;
+  --cmb-warm: #8c543d;
+  --cmb-mid: #533c45;
+  --cmb-klo: #121426;
+  --cmb-khi: #b8a175;
+  --cmb-neutral: #1f212e;
 
   --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --t-hero: 56px;
@@ -166,6 +172,12 @@
   --sprite: #b23a48;
   --sprite-tail: #5446a8;
   --live: #2c7656;
+  --cmb-cool: var(--bar2);
+  --cmb-warm: var(--gold-ink);
+  --cmb-mid: var(--paper-deep);
+  --cmb-klo: #dde0e4;
+  --cmb-khi: #4f4330;
+  --cmb-neutral: var(--paper-deep);
 }
 
 :root[data-theme="light"] .card {
