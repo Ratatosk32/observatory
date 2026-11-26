@@ -1280,6 +1280,16 @@ body.idle .proj-switch { opacity: 0.28; }
   .scene.skel .map-wrap { min-height: calc((100vw - 16px) * 0.62); }
   .scene.skel > .card { height: 76px; }
 }
+
+@property --sel-r { syntax: '<length>'; inherits: false; initial-value: 0px; }
+.card-ghost { position: absolute; z-index: 1; margin: 0; pointer-events: none; }
+.hero-wipe { position: absolute; z-index: 1; display: block; pointer-events: none; transform-origin: right center; background: linear-gradient(var(--panel-bg), var(--panel-bg)), var(--paper); }
+.sel-ring, .sel-fly { position: fixed; left: 0; top: 0; z-index: 70; pointer-events: none; border-radius: var(--r-full); }
+.sel-ring { width: 34px; height: 34px; margin: -17px 0 0 -17px; border: 2px solid var(--gold); opacity: 0; }
+.sel-fly { width: 10px; height: 10px; margin: -5px 0 0 -5px; background: var(--c, var(--gold)); opacity: 0; will-change: transform; }
+.sel-fly::after { content: ''; position: absolute; inset: -7px; border-radius: inherit; background: inherit; opacity: 0.25; }
+.sel-veil { position: absolute; pointer-events: none; background: var(--paper); -webkit-mask: radial-gradient(circle at var(--sel-x) var(--sel-y), transparent var(--sel-r), var(--paper) calc(var(--sel-r) + 48px)); mask: radial-gradient(circle at var(--sel-x) var(--sel-y), transparent var(--sel-r), var(--paper) calc(var(--sel-r) + 48px)); }
+.floor-ghost { position: absolute; z-index: 59; margin: 0; pointer-events: none; background: none; border-color: transparent; box-shadow: none; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .hb-view svg.ic:last-child { transition: none; }
 }
