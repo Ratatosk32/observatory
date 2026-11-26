@@ -79,7 +79,7 @@ function probe(cases) {
 }
 
 async function run() {
-  const browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--no-first-run', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--no-first-run', '--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   try {
     const page = await browser.newPage();
     await page.goto(new URL('favicon.svg', BASE).href, { waitUntil: 'load', timeout: 30000 });

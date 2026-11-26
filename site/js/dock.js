@@ -1,5 +1,5 @@
-import { wireChip } from './quiet.js';
-import { C, MON, clamp, esc, onKey, onTheme, shell, hatch, text, font, setupCanvas, showTip, hideTip, pencilLine } from './kit.js';
+import { wireChip, health, quietNights, RUBIN_FLOORS } from './quiet.js';
+import { C, MON, clamp, nightMjd, esc, onKey, onTheme, shell, hatch, text, font, setupCanvas, showTip, hideTip, pencilLine } from './kit.js';
 
 const PLAY_D = 'M8 5.5v13l10.5-6.5z', PAUSE_D = 'M8 5.5v13M16 5.5v13';
 const docks = {};
@@ -88,10 +88,11 @@ function sync(d, force = false) {
 }
 
 function paintStatic(d, s) {
-  const P = d.o.paint, [a, b] = P.domain(), L = 6, R = s.w - 6;
+  const P = d.o.paint, [a, b0] = P.domain(), quiet = d.quiet, L = 6, R = s.w - 6;
+  const b = quiet.length ? Math.max(b0, quiet[quiet.length - 1] + 1) : b0;
   const X = (t) => L + (t - a) / (b - a) * (R - L);
   const marks = P.marks ? P.marks() : null, lane = P.lane ? P.lane() : null;
-  const top = 8, lbl = 13, base = s.h - lbl - (marks ? 10 : 4);
+  const top = 8, lbl = 13, base = s.h - lbl - (marks || quiet.length ? 10 : 4);
   const split = lane ? Math.round(top + (base - top) * 0.46) : base;
   d.geo = { X, T: (x) => a + (x - L) / (R - L) * (b - a), top, base, L, R };
   const off = d.off && d.off.width === s.cv.width && d.off.height === s.cv.height ? d.off : document.createElement('canvas');
@@ -137,6 +138,12 @@ function paintStatic(d, s) {
     g.fillStyle = C.gold;
     for (const [t, v] of marks) { const r = 0.7 + Math.sqrt(v / pm) * 2.4; g.beginPath(); g.arc(X(t + 0.5), base + 6, r, 0, 6.283); g.fill(); }
   }
+  if (quiet.length) {
+    const qr = clamp((R - L) / (b - a) * 0.42, 1, 2.2);
+    g.fillStyle = C.paper; g.strokeStyle = C.ink3; g.lineWidth = 1; g.beginPath();
+    for (const t of quiet) { if (t < a) continue; const x = X(t + 0.5); g.moveTo(x + qr, base + 6); g.arc(x, base + 6, qr, 0, 6.283); }
+    g.fill(); g.stroke();
+  }
   ticks(g, s, P.ticks, a, b, X);
   d.off = off;
 }
@@ -177,7 +184,7 @@ function ticks(g, s, kind, a, b, X) {
 
 function paint(d, s) {
   if (!s.w) return;
-  const P = d.o.paint, key = [s.w, s.h, s.dpr, C.dark, P.key()].join('|');
+  const P = d.o.paint, key = [s.w, s.h, s.dpr, C.dark, d.quiet.length, P.key()].join('|');
   if (key !== d.key || !d.off) { d.key = key; paintStatic(d, s); }
   const g = s.ctx, { X, top, base } = d.geo;
   g.clearRect(0, 0, s.w, s.h);
@@ -231,7 +238,7 @@ function wire(d) {
 export function makeDock(m, o) {
   const root = document.querySelector(`.scene[data-floor="${m}"] .dock`);
   const d = {
-    m, o, root, at: 0, wasP: null, key: '', off: null, geo: null,
+    m, o, root, at: 0, wasP: null, key: '', off: null, geo: null, quiet: [],
     play: root.querySelector('.btn.play'), date: root.querySelector('output.date'), cv: root.querySelector('canvas.track'),
     spd: root.querySelector('.spd'), live: root.querySelector('.elive'),
   };
@@ -240,6 +247,7 @@ export function makeDock(m, o) {
   docks[m] = d;
   wire(d);
   wireChip(m, root, d.spd);
+  if (o.paint && RUBIN_FLOORS.includes(m)) loadQuiet(d);
   const api = {
     update: (force) => update(d, force),
     sync: () => sync(d, true),
@@ -251,6 +259,17 @@ export function makeDock(m, o) {
   };
   sync(d, true);
   return api;
+}
+
+function loadQuiet(d) {
+  health().then((h) => {
+    const n = quietNights(h);
+    if (!n) return;
+    const since = nightMjd(+h.verdict.since);
+    d.quiet = Array.from({ length: n }, (_, k) => since + 1 + k);
+    d.key = '';
+    if (d.s && d.s.w) update(d, true);
+  });
 }
 
 function update(d, force = false) {
