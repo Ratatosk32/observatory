@@ -20,6 +20,7 @@ const LIMITS = {
   buttonClasses: 4,
   contrast: 4.5,
 };
+const TEXT_TOKENS = ['--ink', '--ink2', '--ink3', '--gold-ink', '--accent-soft', '--hi'];
 const PROBE_LIMITS = { goldBorders: 2, goldTexts: 6, fontSizes: 7, radii: 4, truncated: 0 };
 
 function stripComments(s) { return s.replace(/\/\*[\s\S]*?\*\//g, ''); }
@@ -272,13 +273,15 @@ export function lintStatic() {
   for (const theme of ['dark', 'light']) {
     const v = vars[theme];
     const paper = colourOf(resolveVars('var(--paper)', v));
-    for (const ink of ['--ink', '--ink2', '--ink3']) {
+    const tint = colourOf(resolveVars('var(--gold-tint)', v));
+    for (const ink of TEXT_TOKENS) {
       const fg = colourOf(resolveVars(`var(${ink})`, v));
       if (paper && fg) contrastRows.push({ theme, ink, on: '--paper', ratio: +contrast(fg, paper).toFixed(2) });
       for (const surf of ['--field', '--paper-deep']) {
         const bg = colourOf(resolveVars(`var(${surf})`, v));
         if (bg && fg && bg[3] === 1) contrastRows.push({ theme, ink, on: surf, ratio: +contrast(fg, bg).toFixed(2) });
       }
+      if (ink === '--gold-ink' && paper && fg && tint) contrastRows.push({ theme, ink, on: '--gold-tint on --paper', ratio: +contrast(fg, over(tint, paper)).toFixed(2) });
     }
   }
   const js = jsMotion();
@@ -344,7 +347,7 @@ function staticFailures(s) {
   over('button classes', s.buttons.control.length, LIMITS.buttonClasses);
   over('JS easing helpers', s.js.helpers.length, LIMITS.jsEasingHelpers);
   over('JS raw motion', s.js.raw.length + s.js.beziers.length, LIMITS.jsRawMotion);
-  for (const c of s.contrast) if (c.on === '--paper' && c.ink !== '--ink' && c.ratio < LIMITS.contrast) f.push(`contrast ${c.theme} ${c.ink} on paper: ${c.ratio} < ${LIMITS.contrast}`);
+  for (const c of s.contrast) if (c.ratio < LIMITS.contrast) f.push(`contrast ${c.theme} ${c.ink} on ${c.on}: ${c.ratio} < ${LIMITS.contrast}`);
   if (flag('verbose')) {
     for (const x of [...s.rawDurations, ...s.rawEasings]) f.push('  ' + x);
   }

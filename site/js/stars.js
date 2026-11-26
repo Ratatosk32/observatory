@@ -399,8 +399,8 @@ function* skyStaticSteps(s, key) {
     g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   }
   yield;
-  if (mwF) {
-    g.globalCompositeOperation = dark ? 'lighter' : 'source-over'; g.globalAlpha = BLOOM.alpha;
+  if (mwF && dark) {
+    g.globalCompositeOperation = 'lighter'; g.globalAlpha = BLOOM.alpha;
     g.drawImage(bloomOf(wash), 0, 0, s.w, s.h);
     g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   }

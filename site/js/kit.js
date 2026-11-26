@@ -32,7 +32,7 @@ function tokensFrom(cs) {
   const g = (n) => cs.getPropertyValue(n).trim();
   const t = {
     bg: g('--paper'), paper: g('--paper'), line: g('--line'), grid: g('--grid'), ink: g('--ink'), ink2: g('--ink2'), ink3: g('--ink3'),
-    graphite: g('--graphite'), gold: g('--gold'), goldSoft: g('--gold-soft'), accent: g('--accent'), accentSoft: g('--accent-soft'), hi: g('--hi'), sun: g('--sun'), sunrays: g('--sunrays'),
+    graphite: g('--graphite'), gold: g('--gold'), goldInk: g('--gold-ink'), goldSoft: g('--gold-soft'), accent: g('--accent'), accentSoft: g('--accent-soft'), hi: g('--hi'), sun: g('--sun'), sunrays: g('--sunrays'),
     earth: g('--earth'), planet: g('--planet'),
     orbit: g('--orbit'), porbit: g('--porbit'), bar: g('--bar'), bar2: g('--bar2'), det: g('--det'),
     cls: {}, band: {},
@@ -109,7 +109,7 @@ export function paperTile() {
   const dark = C.dark;
   for (let i = 0; i < 14; i++) {
     const x = r() * s, y = r() * s, rad = s * (0.12 + r() * 0.3);
-    const tone = r() < 0.55 ? (dark ? '4, 6, 12' : '70, 78, 110') : (dark ? '64, 78, 118' : '250, 249, 244');
+    const tone = r() < 0.55 ? (dark ? '4, 6, 12' : '70, 78, 110') : (dark ? '64, 78, 118' : '248, 250, 253');
     for (const [dx, dy] of [[0, 0], [s, 0], [-s, 0], [0, s], [0, -s]]) {
       const gr = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, rad);
       gr.addColorStop(0, `rgba(${tone}, ${dark ? 0.16 : 0.08})`); gr.addColorStop(1, `rgba(${tone}, 0)`);

@@ -652,11 +652,11 @@ function drawMeter(s, opts) {
     g.strokeStyle = C().ink2; g.lineWidth = 2; g.beginPath(); g.moveTo(r0x, r0y); g.lineTo(r1x, r1y); g.stroke();
     text(g, opts.refLabel, r1x + 4, r1y + 16, { size: 11.5, weight: 600, color: C().ink2, align: 'right', halo: true });
   }
-  const [nx, ny] = pt(opts.value, R * 0.92);
-  g.strokeStyle = C().gold; g.lineWidth = 2.4; g.lineCap = 'round';
+  const [nx, ny] = pt(opts.value, R * 0.92), needle = C().goldInk;
+  g.strokeStyle = needle; g.lineWidth = 2.4; g.lineCap = 'round';
   g.beginPath(); g.moveTo(cxm, cym); g.lineTo(nx, ny); g.stroke(); g.lineCap = 'butt';
-  g.fillStyle = C().gold; g.beginPath(); g.arc(cxm, cym, 4, 0, 6.283); g.fill();
-  text(g, opts.big, cxm, cym - R * 0.25, { size: 22, weight: 650, color: C().gold, align: 'center', halo: true });
+  g.fillStyle = needle; g.beginPath(); g.arc(cxm, cym, 4, 0, 6.283); g.fill();
+  text(g, opts.big, cxm, cym - R * 0.25, { size: 22, weight: 650, color: needle, align: 'center', halo: true });
   text(g, opts.small, cxm, cym + 20, { size: 12, color: C().ink2, align: 'center' });
 }
 

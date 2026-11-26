@@ -19,6 +19,7 @@
   --hr-gold: #f0bf4f;
   --gold-soft: rgba(240, 191, 79, 0.5);
   --gold-tint: rgba(240, 191, 79, 0.14);
+  --lead-tint: var(--gold-tint);
   --line: rgba(236, 230, 214, 0.4);
   --grid: rgba(236, 230, 214, 0.09);
   --line-1: rgba(236, 230, 214, 0.09);
@@ -120,28 +121,29 @@
   --ink3: #505259;
   --graphite: #4a4a4a;
   --gold: #4a4a4a;
-  --gold-ink: #8a6418;
-  --hr-gold: #8a6418;
+  --gold-ink: #6b4d0f;
+  --hr-gold: #6b4d0f;
   --gold-soft: rgba(74, 74, 74, 0.5);
-  --gold-tint: rgba(138, 100, 24, 0.13);
+  --gold-tint: rgba(216, 192, 138, 0.35);
+  --lead-tint: rgba(42, 43, 48, 0.08);
   --line: rgba(74, 74, 74, 0.55);
   --grid: rgba(74, 74, 74, 0.14);
   --line-1: rgba(42, 43, 48, 0.1);
   --line-2: rgba(42, 43, 48, 0.2);
-  --line-gold: rgba(138, 100, 24, 0.62);
+  --line-gold: rgba(107, 77, 15, 0.6);
   --hover: rgba(42, 43, 48, 0.07);
   --glass: rgba(214, 217, 222, 0.78);
   --surface: rgba(226, 228, 232, 0.82);
   --panel-bg: rgba(226, 228, 232, 0.55);
   --scrim: rgba(40, 44, 56, 0.25);
-  --selection: rgba(138, 100, 24, 0.3);
+  --selection: rgba(107, 77, 15, 0.28);
   --shadow-2: 0 2px 6px rgba(30, 34, 44, 0.18), 0 8px 24px rgba(30, 34, 44, 0.16);
   --shadow-3: 0 4px 12px rgba(30, 34, 44, 0.2), 0 18px 48px rgba(30, 34, 44, 0.22);
   --shadow-up: 0 -10px 24px rgba(30, 34, 44, 0.18);
   --accent: #b23a48;
-  --accent-soft: #a8444f;
-  --hi: #b23a48;
-  --orbit: rgba(58, 60, 68, 0.07);
+  --accent-soft: #8f2f3b;
+  --hi: #922e3c;
+  --orbit: rgba(58, 60, 68, 0.035);
   --porbit: rgba(58, 60, 68, 0.5);
   --c-mba: #5d6068;
   --c-neo: #c2410c;
@@ -173,16 +175,16 @@
   --sprite-tail: #5446a8;
   --live: #2c7656;
   --cmb-cool: var(--bar2);
-  --cmb-warm: var(--gold-ink);
+  --cmb-warm: #8a6418;
   --cmb-mid: var(--paper-deep);
   --cmb-klo: #dde0e4;
-  --cmb-khi: #4f4330;
+  --cmb-khi: #3b404c;
   --cmb-neutral: var(--paper-deep);
 }
 
 :root[data-theme="light"] .card {
   --gold: var(--gold-ink);
-  --gold-soft: rgba(138, 100, 24, 0.55);
+  --gold-soft: rgba(107, 77, 15, 0.55);
   --c-mba: #4d5a73;
   --accent: #c8402e;
   --hi: #c8402e;
@@ -289,7 +291,7 @@ h1 .arw { color: var(--gold-ink); }
   border: 1px solid var(--line-2); border-radius: var(--r-full); background: none;
   font: inherit; font-size: var(--t-small); line-height: 20px; font-weight: 400; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.chip.lead, .why > .best { border-color: transparent; background: var(--gold-tint); color: var(--ink); }
+.chip.lead, .why > .best { border-color: transparent; background: var(--lead-tint); color: var(--ink); }
 button.chip { height: var(--h-sm); padding: 0 11px; cursor: pointer; transition: background-color var(--d-instant) var(--ease-out), border-color var(--d-quick) var(--ease-out), color var(--d-quick) var(--ease-out); }
 button.chip:hover { background-color: var(--hover); color: var(--ink); }
 button.chip:focus-visible { outline: 2px solid var(--gold-ink); outline-offset: 2px; }
@@ -430,7 +432,7 @@ canvas { display: block; width: 100%; touch-action: none; }
 .data-btn .long { font-size: var(--t-small); white-space: nowrap; }
 .data-btn.fresh svg.ic { color: var(--gold-ink); }
 .hdot { position: absolute; top: 7px; left: 25px; width: 7px; height: 7px; border-radius: 50%; background: var(--b-g); box-shadow: 0 0 0 2px var(--paper); }
-.hdot[data-level=quiet], .hdot[data-level=warn] { background: var(--gold); }
+.hdot[data-level=quiet], .hdot[data-level=warn] { background: var(--gold-ink); }
 .hdot[data-level=bad] { background: var(--accent); }
 .sheet .health { margin: 0 0 14px; padding: 0 0 12px; border-bottom: 1px solid var(--line-2); }
 .sheet .health h3 { margin: 0 0 4px; font-size: var(--t-small); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); }
