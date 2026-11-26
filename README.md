@@ -88,6 +88,7 @@ The stars mode has a "Tonight" view for anyone with a 20–50 cm telescope.
 - A target counts as tonight only if Rubin saw it within the last 7 days. The card lists them with the hours each spends above 30° in the dark from the viewer's place, an altitude chart in the place's clock time, the light curve against what a 30–50 cm scope reaches, a finder chart (also as a PNG) and report links.
 - The place comes from the browser's time zone, an opt-in geolocation rounded to 0.5°, or a list of 30 places. It is kept only in `localStorage` and never sent anywhere or put in the URL.
 - `site/js/skycalc.js` ports the sky calculations (GMST, a low-precision Sun, altitude); `scripts/test_skycalc.mjs` checks it against the Python reference for five sites in CI.
+- The Earth globe draws civil, nautical and astronomical twilight (the Sun 6°, 12° and 18° below the horizon) as three faint lines in the dark theme; `scripts/test_twilight.mjs --url <local server> --modules <puppeteer-core folder>` renders the shader in headless Chrome and checks that each line sits within 0.25° of the altitude `skycalc.js` gives.
 
 ### Dark matter mode
 
@@ -284,7 +285,7 @@ The frame interval stays at the display's 16.7 ms. On phones the haze swaps with
 
 Zoom re-renders the Milky Way at the new scale about 180 ms after the gesture settles. The period dial refines a snap with a 4-harmonic fit, about 30 ms once.
 
-Earth mode: measured with the machine's GPU (ANGLE on Direct3D 11); the frame interval stays at 16.7 ms with no long tasks. A haze rebuild costs 6.4 ms p95 on the throttled phone, a lightning tile decode chunk 4.1 ms. With the software renderer (SwiftShader) the JavaScript cost is the same but the GPU process limits the frame rate. While playing, the globe shader redraws at most every 100 ms, or when the terminator has moved by more than half a pixel; the space-weather strip is cached and only its cursor and values are redrawn.
+Earth mode: measured with the machine's GPU (ANGLE on Direct3D 11); the frame interval stays at 16.7 ms with no long tasks. A haze rebuild costs 6.4 ms p95 on the throttled phone, a lightning tile decode chunk 4.1 ms. With the software renderer (SwiftShader) the JavaScript cost is the same but the GPU process limits the frame rate. While playing, the globe shader redraws whenever the terminator has moved by more than a third of a pixel, so the terminator and the twilight lines glide instead of stepping (p95 2.8–3.4 ms on the throttled phone, as before); the space-weather strip is cached and only its cursor and values are redrawn. Asteroid trails and detection pings cost 0.2–0.5 ms per frame on the throttled phone (most belt tails are shorter than 2.5 px there and are skipped); zoom flights scale the cached orbit layer and redraw it once when they land.
 
 UX 2 phase 5 re-measure (25 Nov 2026, `scripts/ux_metrics.mjs --perf-only`, quiet machine, play): desktop 1920 × 1080 without throttling draws Stars 2.4 ms, Asteroids 2.8 ms, Dark matter 1.9 ms and Earth 0.7 ms p95; the 412 × 915 phone at 4× CPU draws 6.0–6.7, 8.9–9.0, 6.3–6.5 and 2.5–2.7 ms over three runs. The frame interval stays at 17 ms. Coming back to a floor gives no long task except Stars on the phone (one of about 65 ms, from redrawing its taller canvas). `--perf-size` and `--cpu` choose the viewport and the throttle.
 

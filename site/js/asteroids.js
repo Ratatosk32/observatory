@@ -9,6 +9,7 @@ import * as SC from './showcase.js';
 import { sceneHtml, wireScene, openInstrument } from './scene.js';
 import { dockHtml, makeDock, fmtSpeed, dataLoop, LOOP_NOTE } from './dock.js';
 import { cardHead } from './cardhead.js';
+import { DUR, ease, tween, flightMs } from './motion.js';
 
 function buildDom() {
   const root = $('#astRoot');
@@ -456,17 +457,32 @@ const planetNow = {};
 function mapScale(s) { return Math.min(s.w, s.h) / 2 / state.viewR * 0.94; }
 const mapCy = (s) => (s.h > s.w ? s.h - s.w / 2 : s.h / 2);
 
+let plateLayer = null, plateKey = '', staticR = 0;
+function layerCanvas(cv, s) {
+  const c = cv || document.createElement('canvas'), w = Math.round(s.w * s.dpr), h = Math.round(s.h * s.dpr);
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  const g = c.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h);
+  g.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
+  return [c, g];
+}
+function buildPlate(s) {
+  const safe = safeRects(s), bar = scaleBox(s);
+  const key = [s.w, s.h, s.dpr, C.dark, safe.map((r) => r.map(Math.round).join(',')).join(';'), bar.map(Math.round).join(',')].join('|');
+  if (key === plateKey && plateLayer) return;
+  plateKey = key;
+  const [cv, g] = layerCanvas(plateLayer, s);
+  const cx = s.w / 2, cy = mapCy(s);
+  const plateR = drawPlate(g, s, cx, cy);
+  plateLabels(g, s, cx, cy, plateR, [...safe, bar]);
+  plateLayer = cv;
+}
 function buildStatic(s) {
   const key = [s.w, s.h, s.dpr, state.viewR, state.preset, state.sel ? state.sel.idx : -1, C.dark].join('|');
   if (key === staticKey && staticLayer) return;
-  staticKey = key;
-  const cv = staticLayer || document.createElement('canvas');
-  cv.width = Math.round(s.w * s.dpr); cv.height = Math.round(s.h * s.dpr);
-  const g = cv.getContext('2d');
-  g.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
-  g.clearRect(0, 0, s.w, s.h);
+  staticKey = key; staticR = state.viewR;
+  const [cv, g] = layerCanvas(staticLayer, s);
   const sc = mapScale(s), cx = s.w / 2, cy = mapCy(s);
-  const plateR = drawPlate(g, s, cx, cy);
   const members = O.filter(inFilter);
   g.lineWidth = 1;
   g.strokeStyle = C.orbit;
@@ -513,7 +529,6 @@ function buildStatic(s) {
       return [(co * cO - so * sO * cI) * xp + (-so * cO - co * sO * cI) * yp, (co * sO + so * cO * cI) * xp + (-so * sO + co * cO * cI) * yp];
     }, 200, seedOf(a, 3), 0, C.porbit, 0.8, 1);
   }
-  plateLabels(g, s, cx, cy, plateR);
   if (state.sel) {
     const o = state.sel;
     ellipse((E) => {
@@ -536,15 +551,31 @@ function zoomRect(s) {
   zoomBox = { key: r ? key : '', r };
   return r;
 }
-function scaleBar(g, s, sc) {
-  const au = niceAU(state.viewR), len = au * sc, z = zoomRect(s);
+function scaleAnchor(s) {
+  const z = zoomRect(s);
   let x1 = s.w - 12, y0 = s.h - 14;
   if (z && z.bottom > y0 - 26 && z.left < x1) { x1 = z.left - 14; y0 = Math.min(y0, z.bottom - 6); }
+  return [x1, y0];
+}
+const scaleOf = (s, r) => Math.min(s.w, s.h) / 2 / r * 0.94;
+function scaleBox(s) {
+  const [x1, y0] = scaleAnchor(s), len = zoomFx.job ? Math.max(niceAU(zoomFx.from) * scaleOf(s, zoomFx.from), niceAU(zoomFx.to) * scaleOf(s, zoomFx.to)) : niceAU(state.viewR) * scaleOf(s, state.viewR);
+  return [x1 - len - 2, y0 - 22, x1 + 2, y0 + 3];
+}
+function scaleBar(g, s, sc) {
+  const [x1, y0] = scaleAnchor(s);
+  let au = niceAU(state.viewR), len = au * sc, label = `${au} AU`;
+  if (zoomFx.job) {
+    const l0 = niceAU(zoomFx.from) * scaleOf(s, zoomFx.from), l1 = niceAU(zoomFx.to) * scaleOf(s, zoomFx.to);
+    len = l0 + (l1 - l0) * zoomFx.e; au = len / sc;
+    label = `${au.toFixed(au < 1 ? 2 : 1)} AU`;
+  }
   const x0 = x1 - len;
   pencilLine(g, x0, y0, x1, y0, { color: C.graphite, width: 1.2 });
   pencilLine(g, x0, y0 - 5, x0, y0 + 1, { color: C.graphite, width: 1 });
   pencilLine(g, x1, y0 - 5, x1, y0 + 1, { color: C.graphite, width: 1 });
-  text(g, `${au} AU`, x0 + len / 2, y0 - 8, { size: 11, weight: 500, color: C.ink2, align: 'center', halo: true });
+  text(g, label, x0 + len / 2, y0 - 8, { size: 11, weight: 500, color: C.ink2, align: 'center', halo: true });
+  labelBoxes.push([x0, y0 - 19, x1, y0 + 2]);
   return [x0, y0, x1];
 }
 function plateFill() {
@@ -558,7 +589,9 @@ function drawPlate(g, s, cx, cy) {
   g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, R, 0, 6.2832); g.fill();
   return R;
 }
-function plateLabels(g, s, cx, cy, R) {
+const hits = (b, rects) => rects.some((q) => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]);
+const RING_TRY = [[0, 0], [-7, 0], [7, 0], [0, 16], [0, 30], [-14, 0], [14, 0], [-21, 0], [21, 0], [-7, 16], [7, 16]];
+function plateLabels(g, s, cx, cy, R, avoid) {
   g.strokeStyle = C.goldSoft; g.lineWidth = 1.2; g.beginPath(); g.arc(cx, cy, R, 0, 6.2832); g.stroke();
   g.lineWidth = 1; g.beginPath();
   for (let d = 0; d < 360; d += 10) {
@@ -566,18 +599,35 @@ function plateLabels(g, s, cx, cy, R) {
     g.moveTo(cx + Math.cos(a) * R, cy - Math.sin(a) * R); g.lineTo(cx + Math.cos(a) * (R - len), cy - Math.sin(a) * (R - len));
   }
   g.stroke();
-  const lab = { size: 11, color: C.ink3, halo: true };
-  text(g, '90°', cx, cy - R + 20, { ...lab, align: 'center' });
-  text(g, '180°', cx - R + 11, cy + 4, lab);
-  text(g, '270°', cx, cy + R - 12, { ...lab, align: 'center' });
+  const lab = { size: 11, color: C.ink3, halo: true, align: 'center' };
+  plateBoxes = [];
+  g.font = font(11);
+  const ring = (str, deg) => {
+    const w = g.measureText(str).width;
+    let pick = null;
+    for (const [dd, deeper] of RING_TRY) {
+      const a = (deg + dd) * DEG, inset = 12 + deeper + w / 2 * Math.abs(Math.cos(a)) + 6 * Math.abs(Math.sin(a));
+      const x = cx + Math.cos(a) * (R - inset), y = cy - Math.sin(a) * (R - inset), b = [x - w / 2 - 2, y - 8, x + w / 2 + 2, y + 6];
+      if (b[0] < 2 || b[2] > s.w - 2 || b[1] < 2 || b[3] > s.h - 2) continue;
+      if (!pick) pick = [x, y, b];
+      if (!hits(b, avoid)) { pick = [x, y, b]; break; }
+    }
+    if (!pick) return;
+    text(g, str, pick[0], pick[1] + 4, lab);
+    plateBoxes.push(pick[2]);
+  };
+  ring('90°', 90);
+  ring('180°', 180);
+  ring('270°', 270);
   const eq = '0° · vernal equinox';
   g.font = font(11);
   if (cx + R + 10 + g.measureText(eq).width < s.w - 8) plateEq = [eq, cx + R + 10, cy + 4, 'left'];
   else {
-    text(g, '0°', cx + R - 11, cy + 4, { ...lab, align: 'right' });
+    ring('0°', 0);
     plateEq = ['0°: vernal equinox', s.w - 12, s.h - 12, 'right'];
   }
 }
+let plateBoxes = [], labelBoxes = [];
 let plateEq = null;
 function fadeOutside(g, s) {
   const cx = s.w / 2, cy = mapCy(s), R = Math.min(s.w, s.h) / 2 - 6;
@@ -655,8 +705,13 @@ function hudRects(s) {
   hudBox = { key: cr.width ? key : '', r };
   return r;
 }
+function safeRects(s) {
+  const z = zoomRect(s), out = hudRects(s).slice();
+  if (z) out.push([z.left - 4, z.top - 4, z.right + 4, z.bottom + 4]);
+  return out;
+}
 function planetLabels(g, s, discs) {
-  const placed = hudRects(s).slice();
+  const placed = [...safeRects(s), ...plateBoxes, ...labelBoxes];
   const hit = (b) => placed.some((q) => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]) || discs.some(([x, y, r]) => b[0] < x + r && b[2] > x - r && b[1] < y + r && b[3] > y - r);
   g.font = font(12.5, 500);
   const crowd = state.viewR > 2.4;
@@ -672,6 +727,7 @@ function planetLabels(g, s, discs) {
       g.strokeStyle = C.ink3; g.lineWidth = 0.8; g.beginPath(); g.moveTo(x + Math.sign(pick[0] - x) * (r + 1), y); g.lineTo(pick[0] < x ? pick[0] + w : pick[0], pick[1] + 8); g.stroke();
     }
     text(g, p, pick[0], pick[1] + 11, { size: 12.5, weight: p === 'Earth' ? 600 : 500, color: p === 'Earth' ? C.ink : C.ink2, halo: true });
+    labelBoxes.push(placed[placed.length - 1]);
   }
 }
 const WRAP_MS = 1600;
@@ -693,13 +749,114 @@ function playLoop() {
   }
   return loopOf;
 }
+const TRAIL = { days: 3, seg: 3, selDays: 30, selSeg: 12, selBins: 3, max: 160, minPx: 2.5 };
+const trailXY = new Float32Array(2 * (TRAIL.selSeg + 1));
+function trailOf(o, days, seg, sc, cx, cy) {
+  let E = 0, Mprev = 0;
+  for (let i = 0; i <= seg; i++) {
+    const M = o.M0 + o.n * (state.t - days * i / seg - o.ep);
+    if (i === 0) {
+      let m = M % (2 * Math.PI);
+      if (m < 0) m += 2 * Math.PI;
+      E = solveE(m, o.e) + (M - m);
+    } else {
+      E += (M - Mprev) / (1 - o.e * Math.cos(E));
+      for (let it = 0; it < 2; it++) E -= (E - o.e * Math.sin(E) - M) / (1 - o.e * Math.cos(E));
+    }
+    Mprev = M;
+    const xp = o.a * (Math.cos(E) - o.e), yp = o.b * Math.sin(E);
+    trailXY[2 * i] = cx + (xp * o.Px + yp * o.Qx) * sc;
+    trailXY[2 * i + 1] = cy - (xp * o.Py + yp * o.Qy) * sc;
+  }
+}
+const trailPaths = [];
+function drawTrails(g, s, sc, cx, cy) {
+  const { seg } = TRAIL, n = Math.min(rank.length, glowBudget(), TRAIL.max), sel = state.sel ? state.sel.idx : -1;
+  for (let ci = 0; ci < CLASS_ORDER.length * seg; ci++) { if (trailPaths[ci]) trailPaths[ci].length = 0; else trailPaths[ci] = []; }
+  let any = false;
+  for (let q = 0; q < n; q++) {
+    const k = rank[q];
+    if (k === sel || W.w[k] < 0.5) continue;
+    if (posX[k] < -20 || posY[k] < -20 || posX[k] > s.w + 20 || posY[k] > s.h + 20) continue;
+    const o = O[k];
+    if (o.n * o.a * TRAIL.days * sc * Math.sqrt((1 + o.e) / Math.max(0.05, 1 - o.e)) < TRAIL.minPx) continue;
+    trailOf(o, TRAIL.days, seg, sc, cx, cy);
+    const base = clsIdx[k] * seg;
+    for (let j = 0; j < seg; j++) trailPaths[base + j].push(trailXY[2 * j], trailXY[2 * j + 1], trailXY[2 * j + 2], trailXY[2 * j + 3]);
+    any = true;
+  }
+  g.lineWidth = 1.5; g.lineCap = 'round';
+  if (any) {
+    for (let ci = 0; ci < CLASS_ORDER.length; ci++) {
+      if (!trailPaths[ci * seg].length) continue;
+      g.strokeStyle = C.cls[CLASS_ORDER[ci]];
+      for (let j = 0; j < seg; j++) {
+        const a = trailPaths[ci * seg + j];
+        if (!a.length) continue;
+        g.globalAlpha = 0.5 * (1 - (j + 0.5) / seg);
+        g.beginPath();
+        for (let i = 0; i < a.length; i += 4) { g.moveTo(a[i], a[i + 1]); g.lineTo(a[i + 2], a[i + 3]); }
+        g.stroke();
+      }
+    }
+  }
+  if (sel >= 0) {
+    trailOf(O[sel], TRAIL.selDays, TRAIL.selSeg, sc, cx, cy);
+    g.strokeStyle = C.hi; g.lineWidth = 3;
+    const per = TRAIL.selSeg / TRAIL.selBins;
+    for (let b = 0; b < TRAIL.selBins; b++) {
+      g.globalAlpha = 0.6 * (1 - (b + 0.5) / TRAIL.selBins);
+      g.beginPath(); g.moveTo(trailXY[2 * b * per], trailXY[2 * b * per + 1]);
+      for (let j = b * per + 1; j <= (b + 1) * per; j++) g.lineTo(trailXY[2 * j], trailXY[2 * j + 1]);
+      g.stroke();
+    }
+  }
+  g.globalAlpha = 1; g.lineCap = 'butt';
+}
+const pings = [], pingAt = new Map();
+const PING_MAX = 60;
+function addPings(tA, tB, now) {
+  if (!state.playing || reduceMotion || !(tB > tA) || tB - tA > 2) return;
+  const i0 = lowerBound(flatT, tA), i1 = lowerBound(flatT, tB), nGlow = glowBudget(), sel = state.sel ? state.sel.idx : -1, front = showcaseOn();
+  for (let i = i0; i < i1 && pings.length < PING_MAX; i++) {
+    const k = flat[i][3];
+    if (k !== sel && (front ? W.w[k] < 0.5 || rankPosA[k] >= nGlow : !inFilter(O[k]))) continue;
+    const last = pingAt.get(k);
+    if (last != null && now - last < DUR.travel) continue;
+    pingAt.set(k, now);
+    pings.push({ k, born: now });
+  }
+}
+function clearPings() { pings.length = 0; pingAt.clear(); }
+function drawPings(g, now) {
+  if (!pings.length) return;
+  g.strokeStyle = C.gold; g.lineWidth = 1.2;
+  let w = 0;
+  for (const p of pings) {
+    const f = (now - p.born) / DUR.travel;
+    if (f >= 1) continue;
+    pings[w++] = p;
+    const e = ease.out(f);
+    g.globalAlpha = 0.85 * (1 - f);
+    g.beginPath(); g.arc(posX[p.k], posY[p.k], 3 + 13 * e, 0, 6.2832); g.stroke();
+  }
+  pings.length = w;
+  g.globalAlpha = 1;
+}
+const zoomFx = { job: null, from: 1, to: 1, e: 0, wheelAt: -1e9, timer: 0 };
+const zoomMoving = () => !!zoomFx.job || performance.now() - zoomFx.wheelAt < DUR.base;
 function drawMap(s) {
   if (!s.w) return;
   const t0 = performance.now();
-  buildStatic(s);
+  labelBoxes = [];
+  buildPlate(s);
+  if (!zoomMoving() || !staticLayer) buildStatic(s);
   const sc = mapScale(s), cx = s.w / 2, cy = mapCy(s);
   s.ctx.clearRect(0, 0, s.w, s.h);
-  s.ctx.drawImage(staticLayer, 0, 0, s.w, s.h);
+  s.ctx.drawImage(plateLayer, 0, 0, s.w, s.h);
+  const f = staticR / state.viewR;
+  if (Math.abs(f - 1) > 1e-4) { s.ctx.save(); s.ctx.translate(cx, cy); s.ctx.scale(f, f); s.ctx.translate(-cx, -cy); s.ctx.drawImage(staticLayer, 0, 0, s.w, s.h); s.ctx.restore(); }
+  else s.ctx.drawImage(staticLayer, 0, 0, s.w, s.h);
   const g = wrapAlpha < 1 ? wrapLayer(s) : s.ctx;
   const tmp = [0, 0];
   for (let k = 0; k < N; k++) { posAt(O[k], state.t, tmp); posX[k] = cx + tmp[0] * sc; posY[k] = cy - tmp[1] * sc; }
@@ -725,6 +882,7 @@ function drawMap(s) {
   if (showcaseOn()) {
     drawHaze(g, s);
     drawArcs(g, sc, cx, cy);
+    if (state.playing && !reduceMotion) drawTrails(g, s, sc, cx, cy);
     drawFront(g, sc);
   } else for (const c of CLASS_ORDER) {
     g.fillStyle = C.cls[c];
@@ -759,6 +917,7 @@ function drawMap(s) {
     g.fill(); g.globalAlpha = 1;
     if (front.size) drawLit(g, front, sc);
   } else if (lit.size) drawLit(g, lit, sc);
+  drawPings(g, performance.now());
 
   const sunR = Math.round(clamp(sc * 0.04, 3.5, 7.5) * 2) / 2, pf = clamp(sc / 100, 0.7, 1);
   drawSprite(g, 'Sun', cx, cy, sunR);
@@ -774,24 +933,38 @@ function drawMap(s) {
   fadeOutside(g, s);
   if (g !== s.ctx) fadeOutside(s.ctx, s);
   const [bx, by, bx1] = scaleBar(g, s, sc);
-  if (plateEq && plateEq[3] !== 'right') text(g, plateEq[0], plateEq[1], plateEq[2], { size: 11, color: C.ink3, align: 'left', halo: true });
+  g.font = font(11);
+  const eqW = plateEq ? g.measureText(plateEq[0]).width : 0;
+  if (plateEq && plateEq[3] !== 'right') { text(g, plateEq[0], plateEq[1], plateEq[2], { size: 11, color: C.ink3, align: 'left', halo: true }); labelBoxes.push([plateEq[1], plateEq[2] - 10, plateEq[1] + eqW, plateEq[2] + 3]); }
   else if (plateEq) {
-    g.font = font(11);
-    const w = g.measureText(plateEq[0]).width;
-    if (bx - 14 - w >= 4) text(g, plateEq[0], bx - 14, by + 4, { size: 11, color: C.ink3, align: 'right', halo: true });
-    else if (bx1 - w >= 4) text(g, plateEq[0], bx1, by - 24, { size: 11, color: C.ink3, align: 'right', halo: true });
+    if (bx - 14 - eqW >= 4) { text(g, plateEq[0], bx - 14, by + 4, { size: 11, color: C.ink3, align: 'right', halo: true }); labelBoxes.push([bx - 14 - eqW, by - 6, bx - 14, by + 7]); }
+    else if (bx1 - eqW >= 4) { text(g, plateEq[0], bx1, by - 24, { size: 11, color: C.ink3, align: 'right', halo: true }); labelBoxes.push([bx1 - eqW, by - 34, bx1, by - 21]); }
+  }
+  let selLab = null;
+  if (state.sel) {
+    const k = state.sel.idx, x = posX[k], y = posY[k];
+    const dx = (x - cx) / sc - E[0], dy = -(y - cy) / sc - E[1];
+    const sub = `${Math.hypot(dx, dy).toFixed(2)} AU from Earth, in-plane`;
+    g.font = font(19 * 0.7, 600);
+    const nw = g.measureText(state.sel.name).width;
+    g.font = font(11.5);
+    const lw = Math.max(nw, g.measureText(sub).width), avoid = [...safeRects(s), ...plateBoxes, ...labelBoxes, ...discs.slice(1).map(([px, py, pr]) => [px - pr, py - pr, px + pr, py + pr])];
+    const r0 = x <= s.w * 0.7, a0 = y >= 60, opts = [[r0, a0], [!r0, a0], [r0, !a0], [!r0, !a0]];
+    const boxOf = ([r, a]) => { const lx0 = x + (r ? 48 : -48 - lw), ly0 = a ? y - 30 : y + 40; return [lx0, ly0 - 14, lx0 + lw, ly0 + 19]; };
+    const ok = (b) => b[0] >= 2 && b[2] <= s.w - 2 && b[1] >= 2 && b[3] <= s.h - 2 && !hits(b, avoid);
+    const [right, above] = opts.find((o) => ok(boxOf(o))) || opts[0];
+    labelBoxes.push(boxOf([right, above]));
+    selLab = { x, y, sub, right, lx: x + (right ? 44 : -44), ly: above ? y - 30 : y + 40 };
   }
   planetLabels(g, s, discs);
 
-  if (state.sel) {
-    const k = state.sel.idx, x = posX[k], y = posY[k];
+  if (selLab) {
+    const { x, y, sub, right, lx, ly } = selLab;
     g.strokeStyle = C.hi; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 8, 0, 7); g.stroke();
     g.setLineDash([3, 4]); g.lineWidth = 1; g.globalAlpha = 0.55; g.beginPath(); g.moveTo(ex, ey); g.lineTo(x, y); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
-    const dx = (x - cx) / sc - E[0], dy = -(y - cy) / sc - E[1];
-    const dist = Math.hypot(dx, dy), right = x <= s.w * 0.7, lx = x + (right ? 44 : -44), ly = y < 60 ? y + 40 : y - 30;
     g.lineWidth = 1.5; g.beginPath(); g.moveTo(x + (right ? 7 : -7), y + (ly > y ? 5 : -5)); g.lineTo(lx, ly + (ly > y ? -10 : 4)); g.stroke();
     annotate(g, state.sel.name, lx + (right ? 4 : -4), ly, { size: 19, color: C.ink, align: right ? 'left' : 'right' });
-    text(g, `${dist.toFixed(2)} AU from Earth, in-plane`, lx + (right ? 4 : -4), ly + 15, { size: 11.5, color: C.ink2, align: right ? 'left' : 'right', halo: true });
+    text(g, sub, lx + (right ? 4 : -4), ly + 15, { size: 11.5, color: C.ink2, align: right ? 'left' : 'right', halo: true });
   }
   if (state.hover && state.hover !== state.sel) {
     const k = state.hover.idx;
@@ -814,7 +987,17 @@ function syncTime() {
   dock.update(true);
   cadS.draw(cadS);
 }
-function setTime(t) { endWrap(); state.t = clamp(t, T0, T1); syncTime(); mapS.draw(mapS); }
+function setTime(t) { stopGlide(); endWrap(); state.t = clamp(t, T0, T1); syncTime(); mapS.draw(mapS); }
+const glide = { job: null, to: 0 };
+function stopGlide() { if (glide.job) { glide.job.cancel(); glide.job = null; } }
+function glideTo(t) {
+  const to = clamp(Math.floor(t) + 0.5, T0, T1);
+  if (state.playing || reduceMotion) { setTime(to); return; }
+  stopGlide(); endWrap();
+  glide.to = to;
+  const job = tween({ from: state.t, to, dur: DUR.base, curve: 'out', step: (v) => { state.t = v; mapS.draw(mapS); dock.update(); }, done: () => { glide.job = null; syncTime(); } });
+  glide.job = job.running ? job : null;
+}
 function cadenceGaps() {
   const ts = R.nights.map((n) => nightMjd(n[0])).sort((a, b) => a - b), out = [];
   for (let k = 1; k < ts.length; k++) if (ts[k] - ts[k - 1] > 20) out.push([ts[k - 1] + 1, ts[k]]);
@@ -825,6 +1008,7 @@ const dock = makeDock('asteroids', {
   playing: () => state.playing, play: (p) => setPlaying(p),
   speeds: [1, 5, 15, 60, 200], speed: () => state.speed, setSpeed: (v) => { state.speed = v; }, speedText: fmtSpeed('day', 'days'),
   unit: 1, big: 7, snap: (t) => Math.floor(t) + 0.5, fmt: fmtDate,
+  step: (dir, big) => glideTo((glide.job ? glide.to : state.t) + dir * (big ? 7 : 1)),
   valueText: (t) => `${fmtDate(t)}${t < META.tmin - 1 || t > META.tmax + 1 ? ', outside the data window: positions are extrapolated' : ''}`,
   tip: (t) => {
     if (t < T0 || t > T1) return '';
@@ -860,6 +1044,7 @@ function frame(ts) {
     if (p >= 1) state.tween = null;
   } else {
     const L = playLoop(), next = state.t + dt * state.speed, gp = L.gap(next);
+    if (!gp && !(state.t < L.end && next >= L.end) && next <= T1) addPings(state.t, next, performance.now());
     if (gp) state.tween = { from: state.t, to: gp[1] + 0.01, t0: ts, ms: 600 };
     else if (state.t < L.end && next >= L.end) { state.t = L.end - 1e-3; wrapAt = ts; wrapDone = false; }
     else state.t = next;
@@ -873,9 +1058,12 @@ function frame(ts) {
 let frameCount = 0;
 function setPlaying(p) {
   state.playing = p;
+  if (p) stopGlide();
+  clearPings();
   if (!p) endWrap();
   lastTs = 0;
   if (p && !raf) raf = requestAnimationFrame(frame);
+  if (!p && mapS.w) mapS.draw(mapS);
   dock.sync();
 }
 let wasPlaying = false;
@@ -883,13 +1071,37 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) { wasPlaying = state.playing; setPlaying(false); } else if (wasPlaying) setPlaying(true);
 });
 
-document.querySelectorAll('[data-zoom]').forEach((b) => b.addEventListener('click', () => setZoom(+b.dataset.zoom)));
+document.querySelectorAll('[data-zoom]').forEach((b) => b.addEventListener('click', () => flyZoom(+b.dataset.zoom)));
+function markZoom(r) {
+  document.querySelectorAll('[data-zoom]').forEach((b) => b.classList.toggle('on', Math.abs(+b.dataset.zoom - r) < 0.01));
+}
+function stopFlight() { if (zoomFx.job) { zoomFx.job.cancel(); zoomFx.job = null; } }
 function setZoom(r) {
+  stopFlight();
   state.viewR = clamp(r, 0.6, 11);
-  document.querySelectorAll('[data-zoom]').forEach((b) => b.classList.toggle('on', Math.abs(+b.dataset.zoom - state.viewR) < 0.01));
+  markZoom(state.viewR);
   mapS.draw(mapS);
 }
-$('#map').addEventListener('wheel', (e) => { e.preventDefault(); setZoom(state.viewR * Math.exp(e.deltaY * 0.0015)); }, { passive: false });
+function gestureZoom(r) {
+  zoomFx.wheelAt = performance.now();
+  clearTimeout(zoomFx.timer);
+  zoomFx.timer = setTimeout(() => { if (!state.playing) mapS.draw(mapS); }, DUR.base + 20);
+  setZoom(r);
+}
+function flyZoom(r) {
+  const to = clamp(r, 0.6, 11), from = state.viewR;
+  if (reduceMotion || !mapS.w || Math.abs(Math.log(to / from)) < 0.01) { setZoom(to); return; }
+  stopFlight();
+  markZoom(to);
+  Object.assign(zoomFx, { from, to, e: 0 });
+  const job = tween({
+    from: 0, to: 1, dur: flightMs(Math.abs(Math.log2(to / from))), curve: 'io',
+    step: (v) => { zoomFx.e = v; state.viewR = Math.exp(Math.log(from) + (Math.log(to) - Math.log(from)) * v); if (!state.playing) mapS.draw(mapS); },
+    done: () => { zoomFx.job = null; state.viewR = to; if (!state.playing) mapS.draw(mapS); },
+  });
+  zoomFx.job = job.running ? job : null;
+}
+$('#map').addEventListener('wheel', (e) => { e.preventDefault(); gestureZoom(state.viewR * Math.exp(e.deltaY * 0.0015)); }, { passive: false });
 const pointers = new Map();
 let pinch0 = 0, pinchR = 0;
 $('#map').addEventListener('pointerdown', (e) => {
@@ -900,7 +1112,7 @@ $('#map').addEventListener('pointermove', (e) => {
   if (pointers.has(e.pointerId)) pointers.set(e.pointerId, [e.clientX, e.clientY]);
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
-    if (pinch0 > 0) setZoom(pinchR * pinch0 / d);
+    if (pinch0 > 0) gestureZoom(pinchR * pinch0 / d);
     return;
   }
   if (e.pointerType !== 'mouse') return;
@@ -1507,7 +1719,7 @@ function select(o, opts = {}) {
   staticKey = '';
   if (o) {
     $('#search').value = o.name;
-    if (opts.zoom) setZoom(clamp(o.Q * 1.08, 1.6, 6.5));
+    if (opts.zoom) flyZoom(clamp(o.Q * 1.08, 1.6, 6.5));
   } else {
     $('#search').value = '';
   }
@@ -1523,20 +1735,20 @@ function redrawAll() {
 }
 
 const PRESETS = [
-  { id: 'all', label: 'Whole sample', run: () => { state.pfilter = null; select(null); setZoom(3.9); } },
+  { id: 'all', label: 'Whole sample', run: () => { state.pfilter = null; select(null); flyZoom(3.9); } },
   { id: 'cz10', label: 'Follow 2026 CZ10', run: () => {
     state.pfilter = null; const o = byName.get(norm('2026 CZ10'));
     select(o, { zoom: true }); state.t = Math.floor(Math.min(...o.det.map((d) => d[0] + MJD_OFF))) - 10; state.speed = 5; syncTime(); if (!reduceMotion) setPlaying(true);
   } },
   { id: 'hj4', label: '2020 HJ4 close pass', run: () => {
     state.pfilter = null; const o = byName.get(norm('2020 HJ4'));
-    select(o); setZoom(1.8); state.t = dateMjd(2026, 9, 25); state.speed = 1; syncTime(); if (!reduceMotion) setPlaying(true);
+    select(o); flyZoom(1.8); state.t = dateMjd(2026, 9, 25); state.speed = 1; syncTime(); if (!reduceMotion) setPlaying(true);
   } },
-  { id: 'neo', label: 'Near-Earth & Mars-crossers', run: () => { state.pfilter = (o) => o.cls === 'NEO' || o.cls === 'MC'; select(null); setZoom(3.2); } },
-  { id: 'hun', label: 'Hungarias', run: () => { state.pfilter = (o) => o.cls === 'HUN'; select(null); setZoom(2.4); } },
-  { id: 'hil', label: 'Hildas', run: () => { state.pfilter = (o) => o.cls === 'HIL'; select(null); setZoom(6.2); } },
-  { id: 'tro', label: 'Jupiter Trojans', run: () => { state.pfilter = (o) => o.cls === 'TRO'; select(null); setZoom(6.2); } },
-  { id: 'kirk', label: 'Edges of the 3:1 gap', run: () => { state.pfilter = (o) => o.a > 2.4 && o.a < 2.6; select(null); setZoom(3.2); } },
+  { id: 'neo', label: 'Near-Earth & Mars-crossers', run: () => { state.pfilter = (o) => o.cls === 'NEO' || o.cls === 'MC'; select(null); flyZoom(3.2); } },
+  { id: 'hun', label: 'Hungarias', run: () => { state.pfilter = (o) => o.cls === 'HUN'; select(null); flyZoom(2.4); } },
+  { id: 'hil', label: 'Hildas', run: () => { state.pfilter = (o) => o.cls === 'HIL'; select(null); flyZoom(6.2); } },
+  { id: 'tro', label: 'Jupiter Trojans', run: () => { state.pfilter = (o) => o.cls === 'TRO'; select(null); flyZoom(6.2); } },
+  { id: 'kirk', label: 'Edges of the 3:1 gap', run: () => { state.pfilter = (o) => o.a > 2.4 && o.a < 2.6; select(null); flyZoom(3.2); } },
 ];
 const pnav = $('#presets');
 function runPreset(id) {
@@ -1691,7 +1903,7 @@ export function show(params) {
   if (params && !reduceMotion && params.has('play')) setPlaying(true);
 }
 export function hide() { setPlaying(false); }
-ns.asteroids = { rebuild, get meta() { return META; }, get state() { return state; }, byName: (n) => byName.get(norm(n)), runPreset, select };
+ns.asteroids = { rebuild, get meta() { return META; }, get state() { return state; }, byName: (n) => byName.get(norm(n)), runPreset, select, get labels() { return { safe: safeRects(mapS), boxes: [...plateBoxes, ...labelBoxes] }; } };
 
 export const count = () => fmtN(META.nobj);
 const geoKm = (k) => Math.hypot(posX[k] - ladderGeo.ex, posY[k] - ladderGeo.ey) / ladderGeo.sc * cosmo.KM_PER_AU;
