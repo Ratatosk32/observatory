@@ -275,4 +275,6 @@ Earth mode: measured with the machine's GPU (ANGLE on Direct3D 11); the frame in
 
 UX 2 phase 5 re-measure (25 Nov 2026, `scripts/ux_metrics.mjs --perf-only`, quiet machine, play): desktop 1920 × 1080 without throttling draws Stars 2.4 ms, Asteroids 2.8 ms, Dark matter 1.9 ms and Earth 0.7 ms p95; the 412 × 915 phone at 4× CPU draws 6.0–6.7, 8.9–9.0, 6.3–6.5 and 2.5–2.7 ms over three runs. The frame interval stays at 17 ms. Coming back to a floor gives no long task except Stars on the phone (one of about 65 ms, from redrawing its taller canvas). `--perf-size` and `--cpu` choose the viewport and the throttle.
 
+`scripts/style_lint.mjs` measures visual consistency: distinct font sizes, weights and radii, border colours, raw durations, easings and colours outside the tokens, button classes, easing helpers outside `motion.js`, and the ink contrast on paper in both themes. CI runs it on every push. With `--probe` it also opens each floor in headless Chrome (1440 × 900 and 390 × 844) and counts, in the first viewport, the font sizes, radii, border colours, gold borders and gold texts and the control heights, and checks that no value in the object card wraps or overflows at card widths 352 and 320 px.
+
 Animation pauses in hidden tabs and respects `prefers-reduced-motion`.
