@@ -65,6 +65,10 @@ def last_of(xs):
     return None
 
 
+def big(v, unit, **extra):
+    return {"v": v, "unit": unit, **extra}
+
+
 def iso(ts):
     return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
 
@@ -107,6 +111,7 @@ def dm_item(data, health):
         "headline": "Explosions follow the dark matter: " + ("yes, above 3σ" if best >= 3 else "not yet"),
         "detail": detail, "source": "Planck PR4, ACT DR6, Fink", "state": "nightly", "asOf": health["site"].get("dm"),
         "go": {"inst": "Meters"}, "links": [link("act")],
+        "big": big(sig(best), ("clusters" if ct["sigma"] >= lt["sigma"] else "lensing") + ", against 3σ", axis=[round(lt["sigma"], 1), round(ct["sigma"], 1)]),
     }
 
 
@@ -127,6 +132,7 @@ def stars_item(data, health, show, tonight):
     kept = len(tonight.get("recent", []) or [])
     if kept:
         detail += f" {plural(kept, 'bright transient', 'bright transients')} for a small telescope in the last 30 days."
+    amount = big(f"{f['amp']:.1f}", "magnitudes of swing") if f.get("amp") else big(f"{kept:,}", "bright transients in 30 days") if kept else None
     tns = TNS_NAME.match(name or "")
     links = [{"label": "TNS", "url": "https://www.wis-tns.org/object/" + tns.group(1)}] if tns else [link("fink")]
     return {
@@ -134,6 +140,7 @@ def stars_item(data, health, show, tonight):
         "headline": f"{name or 'Rubin object ' + oid[-6:]} leads the night",
         "detail": detail.strip(), "source": "Rubin via Fink", "state": "nightly", "asOf": health["site"].get("stars"),
         "go": {"find": oid}, "alt": {"label": "Tonight’s list", "go": {"preset": "tonight"}} if kept else None, "links": links,
+        "big": amount,
     }
 
 
@@ -147,8 +154,10 @@ def asteroid_item(data, health, show):
     cls = CLASS_WORD.get(o.get("c"), "asteroid")
     detail = f"A {cls}, e {o['el'][1]:.2f}"
     moid = f.get("moid")
+    amount = big(f"{o['el'][1]:.2f}", "orbital eccentricity")
     if moid is not None and moid < 0.05 and o.get("c") == "NEO":
         detail += f"; its orbit passes {moid:.3f} AU from Earth’s, so it counts as potentially hazardous"
+        amount = big(f"{moid:.3f}", "AU from Earth’s orbit")
     nneo = (a["meta"].get("classes") or {}).get("NEO", 0)
     detail += f". {nneo:,} near-Earth asteroids among {a['meta']['nobj']:,} tracked."
     return {
@@ -156,6 +165,7 @@ def asteroid_item(data, health, show):
         "headline": f"{name}, {cls}", "detail": detail,
         "source": "Rubin via Fink, two-body orbits", "state": "nightly", "asOf": health["site"].get("asteroids"),
         "go": {"find": name}, "links": [{"label": "JPL SBDB", "url": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=" + quote(name)}],
+        "big": amount,
     }
 
 
@@ -183,12 +193,14 @@ def earth_items(data):
         "detail": (", ".join(parts) + ".") if parts else "No solar-wind values in the last nightly copy.",
         "source": "NOAA SWPC", "state": "nightly", "asOf": iso(at) if at else meta.get("built"),
         "live": "sw", "go": {"inst": "Space weather"}, "links": [link("swpc")],
+        "big": big(f"{kp_v:.1f}", "Kp, planetary index") if kp_v is not None else big(f"{sp[1]:.0f}", "km/s solar wind") if sp else None,
     }, {
         "floor": "Aurora", "mode": "earth",
         "headline": f"Aurora power {hp[1]:.0f} GW in the north" if hp else "Aurora oval from the model",
         "detail": "OVATION Prime: the chance of aurora overhead in the next 30 to 90 minutes, a model, not a sighting.",
         "source": "NOAA SWPC OVATION", "state": "model", "asOf": (meta.get("swpc") or {}).get("ovationRun") or meta.get("built"),
         "live": "hp", "go": {"preset": "north"}, "links": [link("aurora")],
+        "big": big(f"{hp[1]:.0f}", "GW of aurora, north") if hp else None,
     }]
     cells = sorted(e.get("cells") or [], key=lambda c: -c.get("peak", 0))
     li = (meta.get("li") or {}).get("state")
@@ -204,6 +216,7 @@ def earth_items(data):
         "headline": f"{top_name}, {top['peak']:,} flashes an hour at its peak" if top_name else "A quiet night for lightning",
         "detail": detail, "source": "GOES GLM" + (", MTG LI" if li == "nightly" else ""), "state": "nightly", "asOf": end,
         "go": {"preset": "night"} if top else {}, "links": links,
+        "big": big(f"{top['peak']:,}", "flashes an hour at peak") if top_name else big(f"{meta['flashes'] / 1e6:.2f}", "million flashes in 24 hours"),
     })
     return items
 
