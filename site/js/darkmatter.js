@@ -761,7 +761,7 @@ async function build() {
   ov = $('#dmOv').getContext('2d');
   imgs = await loadImages();
   gl = initGl($('#dmGl'));
-  if (gl) uploadTextures();
+  if (gl) { uploadTextures(); $('#dmGl').addEventListener('snapshot', drawGl); }
   meterS = K.setupCanvas($('#dMeter'), (s) => drawMeter(s, { range: [-4, 8], every: 2, nulls: LT.nulls, value: LT.sigma, ref: LT.controlSigma, refLabel: `ACT clusters +${LT.controlSigma.toFixed(1)}σ`, big: `${LT.sigma > 0 ? '+' : '−'}${Math.abs(LT.sigma).toFixed(1)}σ`, small: 'κ at SN-like alerts vs 300 rotated skies' }));
   ctestS = K.setupCanvas($('#dCtest'), (s) => drawMeter(s, { range: [-2, 5], every: 1, value: CT.sigma, ghost: CT.dr5Ghost ? CT.dr5Ghost.sigma : null, ghostLabel: 'DR5', big: sig(CT.sigma), small: `${CT.observed} seen vs ${CT.expected} expected in ${fmtN(CT.clusters)} clusters` }));
   pill = SC.makePill($('#dmRoot .pill-host'), { onToggle: toggleShowAll, onBack: toggleShowAll });

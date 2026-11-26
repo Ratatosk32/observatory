@@ -1731,7 +1731,7 @@ async function build() {
   readColors();
   imgs = await loadImages();
   G = EG.initGl($('#earthGl'));
-  if (G) { EG.uploadImage(G, 0, imgs.lights); EG.uploadImage(G, 1, imgs.land); }
+  if (G) { EG.uploadImage(G, 0, imgs.lights); EG.uploadImage(G, 1, imgs.land); $('#earthGl').addEventListener('snapshot', drawGl); }
   else glFail = 'WebGL is not available here, so the globe is drawn once per view without the aurora shells.';
   pill = SC.makePill($('#eTools'), { onToggle: toggleWhy, onBack: toggleWhy });
   whyEl = document.createElement('div');

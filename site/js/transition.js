@@ -36,12 +36,6 @@ function rungOf(m) {
   return r && r.width ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
 }
 
-function railEdge() {
-  const r = document.querySelector('.ladder')?.getBoundingClientRect();
-  if (!r || !r.width) return { left: 0, top: 0 };
-  return r.height > r.width * 2 ? { left: r.right, top: 0 } : { left: 0, top: r.bottom };
-}
-
 function snapshot(stage) {
   const { el, r } = stage, k = Math.min(1.5, devicePixelRatio || 1);
   const cv = document.createElement('canvas');
@@ -51,7 +45,8 @@ function snapshot(stage) {
   let drew = false;
   for (const c of el.querySelectorAll('canvas')) {
     const cr = c.getBoundingClientRect();
-    if (!c.width || !cr.width || cr.width < 2 || !c.getContext('2d')) continue;
+    if (!c.width || !c.height || cr.width < 2) continue;
+    c.dispatchEvent(new Event('snapshot'));
     try { g.drawImage(c, cr.left - r.left, cr.top - r.top, cr.width, cr.height); drew = true; } catch {}
   }
   return drew ? cv : null;
@@ -69,17 +64,17 @@ function stop(run) {
   if (current === run) current = null;
 }
 
-function overlay() {
+function overlay(r) {
   const cv = document.createElement('canvas');
   cv.setAttribute('aria-hidden', 'true');
   cv.className = 'floor-climb';
-  cv.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:60;pointer-events:none';
+  cv.style.cssText = `position:absolute;left:${r.left + scrollX}px;top:${r.top + scrollY}px;width:${r.width}px;height:${r.height}px;z-index:60;pointer-events:none`;
   document.body.appendChild(cv);
   const dpr = Math.min(2, devicePixelRatio || 1);
-  cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr);
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
   const g = cv.getContext('2d');
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return { cv, g, W: innerWidth, H: innerHeight };
+  g.setTransform(dpr, 0, 0, dpr, -r.left * dpr, -r.top * dpr);
+  return { cv, g, W: r.right, H: r.bottom };
 }
 
 function drawFade(run, p) {
@@ -189,14 +184,14 @@ export function floorTransition(from, to) {
   if (current) stop(current);
   if (!from || !to || from === to || !MODES[from] || !MODES[to] || document.hidden) return;
   const fromStage = stageOf(from), snap = fromStage ? snapshot(fromStage) : null;
-  if (reduceMotion && !snap) return;
-  const run = { ...overlay(), from: fromStage, to, snap, raf: 0, grow: null };
+  if (!fromStage || (reduceMotion && !snap)) return;
+  const r = fromStage.r;
+  const run = { ...overlay(r), from: fromStage, to, snap, raf: 0, grow: null };
   current = run;
   if (reduceMotion) {
     run.dur = FADE_MS;
   } else {
-    const e = railEdge();
-    Object.assign(run, { dur: climbMs(from, to), c: tokens(), L: e.left, T: e.top, cw: run.W - e.left, ch: run.H - e.top, phone: run.W - e.left < 600, up: MODES[to].icon > MODES[from].icon, uFrom: MODES[from].icon, uTo: MODES[to].icon });
+    Object.assign(run, { dur: climbMs(from, to), c: tokens(), L: r.left, T: r.top, cw: r.width, ch: r.height, phone: r.width < 600, up: MODES[to].icon > MODES[from].icon, uFrom: MODES[from].icon, uTo: MODES[to].icon });
   }
   const t0 = performance.now();
   const step = (now) => {
