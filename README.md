@@ -221,6 +221,8 @@ Refetching changes the numbers. Data versions are pinned with a `?v=` query in `
 - **`site/index.html`** holds one shared shell: header, search, the ladder, theme and the panel components. `style.css` uses design tokens for night and day paper.
 - **`site/js/`** contains the ES modules:
   - `kit.js`: tokens, the pencil drawing primitives, canvases, tooltips, panels, theme and URL helpers;
+  - `motion.js`: the motion tokens (80, 140, 220, 360 and 600 ms; ease-out, ease-in, ease-in-out), `tween`, `ticker` (numbers tick only when they change while you watch), `stagger`, `popFrom`, the sliding segment thumb and tab underline, and the live reduced-motion flag that `kit.js` re-exports;
+  - `icons.js`: the one icon set (24 grid, 1.5 stroke, round caps);
   - `main.js`: search, mode switching and start-up;
   - `ladder.js`: the altitude ladder (rail, strip, peek and sheet), which is also the mode radiogroup;
   - `scene.js`: the shared floor scene (HUD, View, Instruments drawer, info popover, card column); on phones the card is a bottom sheet with three positions (peek, half, full) that you drag, tap or move with the arrow keys, and its peek never covers the time dock;
@@ -253,6 +255,17 @@ Refetching changes the numbers. Data versions are pinned with a `?v=` query in `
 
   Refreshed data is never committed, so the history does not grow. A second job pushes an empty commit if the repository has been quiet for 50 days, because GitHub pauses schedules after 60. Python dependencies are pinned in `scripts/requirements.txt` (CI) and `scripts/requirements-build.txt` (the one-off builders).
 - **Globals:** only `window.Observatory` exists (performance counters and test hooks).
+
+## Design system
+
+All styling goes through the tokens at the top of `site/style.css`; `scripts/style_lint.mjs` fails CI on a raw radius, duration, easing or colour outside them.
+
+- **Type:** `--t-hero` 56, `--t-display` 28, `--t-title` 20, `--t-lead` 16, `--t-body` 14, `--t-small` 12.5, `--t-micro` 11 px; weights 200 to 600. Canvases use the same steps through `K.font('small', 500)` (numbers snap to the nearest step). Numbers are tabular; units are `--t-small` in `--ink3`; signs use the true minus.
+- **Radii:** `--r-1` 4 (small marks), `--r-2` 10 (items in menus, inputs), `--r-3` 16 (surfaces), `--r-full` (controls and chips), and 50% for icon circles and floor tiles.
+- **Lines and surfaces:** `--line-1` (separators, surfaces), `--line-2` (controls at rest), `--line-gold` (active and selected only); `--glass` for the stage HUD, `--surface` for the card, `--field` for popovers, with `--shadow-2` and `--shadow-3`.
+- **Gold:** `--gold` draws data; `--gold-ink` is the text and active-state gold (brass on day paper) and `--gold-tint` its fill. Gold marks only the selection and the active floor, the floor's one answer, live data, links and Play.
+- **Controls:** `.btn` (34 px; `.sm` 28, `.lg` 44; `.quiet`, `.glass`, `.icon`, `.on`, `.play`, `.tile`), `.chip` (`.lead` for the first hook), `.seg` (a pill track with a sliding thumb; items are plain buttons or `.btn`, checked by `aria-checked`, `aria-pressed` or `.on`), tabs with a sliding `.tab-line`, the pill and the tooltip.
+- **Motion:** `--d-instant` 80, `--d-quick` 140, `--d-base` 220, `--d-gentle` 360, `--d-travel` 600 ms and `--ease-out`, `--ease-in`, `--ease-io`; in scripts the same values come from `motion.js`. Under reduced motion every token becomes a 120 ms fade.
 
 ## Performance
 
