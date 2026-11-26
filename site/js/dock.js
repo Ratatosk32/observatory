@@ -1,3 +1,4 @@
+import { wireChip } from './quiet.js';
 import { C, MON, clamp, esc, onKey, onTheme, shell, hatch, text, font, setupCanvas, showTip, hideTip, pencilLine } from './kit.js';
 
 const PLAY_D = 'M8 5.5v13l10.5-6.5z', PAUSE_D = 'M8 5.5v13M16 5.5v13';
@@ -238,6 +239,7 @@ export function makeDock(m, o) {
   if (o.paint) d.s = setupCanvas(d.cv, (s) => paint(d, s));
   docks[m] = d;
   wire(d);
+  wireChip(m, root, d.spd);
   const api = {
     update: (force) => update(d, force),
     sync: () => sync(d, true),
