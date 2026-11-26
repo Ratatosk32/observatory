@@ -237,11 +237,11 @@ function buildData() {
 buildData();
 
 function solveE(M, e) {
-  let E = e < 0.8 ? M : Math.PI;
+  let E = e < 0.8 ? M + e * Math.sin(M) : Math.PI;
   for (let k = 0; k < 12; k++) {
     const d = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
     E -= d;
-    if (Math.abs(d) < 1e-9) break;
+    if (Math.abs(d) < 1e-8) break;
   }
   return E;
 }
@@ -451,8 +451,8 @@ function tipFor(o) {
 
 $('#map').dataset.lowdpr = '';
 const mapS = setupCanvas($('#map'), drawMap);
-const chromeRo = new ResizeObserver(() => { hudBox.key = ''; zoomBox.key = ''; requestAnimationFrame(() => mapS.draw(mapS)); });
-document.querySelectorAll('#astRoot .hud .pill-host, #astRoot .hud .hud-r, #astRoot .zoom.stops').forEach((e) => chromeRo.observe(e));
+const chromeRo = new ResizeObserver(() => { hudBox.key = ''; zoomBox.key = ''; noteBox.key = ''; requestAnimationFrame(() => mapS.draw(mapS)); });
+document.querySelectorAll('#astRoot .hud .hud-l, #astRoot .hud .pill-host, #astRoot .hud .hud-r, #astRoot .zoom.stops, #astRoot .stage-note').forEach((e) => chromeRo.observe(e));
 let staticLayer = null, staticKey = '';
 const planetNow = {};
 
@@ -545,9 +545,9 @@ function buildStatic(s) {
 }
 let zoomBox = { key: '', r: null };
 function zoomRect(s) {
-  const z = document.querySelector('#astRoot .zoom.stops'), cv = $('#map');
-  const key = `${s.w}x${s.h}|${z ? `${z.offsetLeft},${z.offsetTop},${z.offsetWidth},${z.offsetHeight}` : ''}`;
+  const key = `${s.w}x${s.h}`;
   if (zoomBox.key === key) return zoomBox.r;
+  const z = document.querySelector('#astRoot .zoom.stops'), cv = $('#map');
   const zr = z && z.getBoundingClientRect(), cr = cv.getBoundingClientRect();
   const r = zr && zr.width ? { left: zr.left - cr.left, top: zr.top - cr.top, right: zr.right - cr.left, bottom: zr.bottom - cr.top } : null;
   zoomBox = { key: r ? key : '', r };
@@ -694,12 +694,12 @@ function drawFan(g, ex, ey, i0, i1, sc, cx, cy) {
 const ALWAYS_LABEL = new Set(['Earth', 'Mars', 'Jupiter', 'Saturn']);
 let hudBox = { key: '', r: [] };
 function hudRects(s) {
+  const key = `${s.w}x${s.h}`;
+  if (hudBox.key === key) return hudBox.r;
   const hud = document.querySelector('#astRoot .hud');
   if (!hud) return [];
-  const key = `${s.w}x${s.h}|${hud.textContent.length}`;
-  if (hudBox.key === key) return hudBox.r;
   const cr = $('#map').getBoundingClientRect();
-  const r = [...hud.querySelectorAll('.btn, .pill-host > *')].filter((e) => e.getClientRects().length).map((e) => {
+  const r = [...hud.querySelectorAll('.btn, .pill-host > *')].filter((e) => !e.closest('.pop') && e.getClientRects().length).map((e) => {
     const b = e.getBoundingClientRect();
     return [b.left - cr.left - 4, b.top - cr.top - 4, b.right - cr.left + 4, b.bottom - cr.top + 4];
   });
@@ -708,10 +708,10 @@ function hudRects(s) {
 }
 let noteBox = { key: '', r: null };
 function noteRect(s) {
+  const key = `${s.w}x${s.h}`;
+  if (noteBox.key === key) return noteBox.r;
   const n = document.querySelector('#astRoot .stage-note');
   const on = !!n && !n.hidden && n.getClientRects().length > 0;
-  const key = on ? `${s.w}x${s.h}|${n.textContent.length}` : 'off';
-  if (noteBox.key === key) return noteBox.r;
   let r = null;
   if (on) { const b = n.getBoundingClientRect(), cr = $('#map').getBoundingClientRect(); r = [b.left - cr.left - 4, b.top - cr.top - 4, b.right - cr.left + 4, b.bottom - cr.top + 4]; }
   noteBox = { key, r };
