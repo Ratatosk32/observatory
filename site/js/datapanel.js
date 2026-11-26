@@ -84,7 +84,8 @@ async function storeLabel() {
 
 function openData(v) {
   panel.hidden = !v; btn.setAttribute('aria-expanded', String(v));
-  if (v && active) { refresh(); storeLabel(); (active.live ? $('#dataClose') : $('#doUpdate')).focus(); }
+  if (v) panel.scrollTop = 0;
+  if (v && active) { refresh(); storeLabel(); (active.live ? $('#dataClose') : $('#doUpdate')).focus({ preventScroll: true }); }
 }
 
 btn.addEventListener('click', () => openData(panel.hidden));
