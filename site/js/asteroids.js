@@ -705,9 +705,21 @@ function hudRects(s) {
   hudBox = { key: cr.width ? key : '', r };
   return r;
 }
+let noteBox = { key: '', r: null };
+function noteRect(s) {
+  const n = document.querySelector('#astRoot .stage-note');
+  const on = !!n && !n.hidden && n.getClientRects().length > 0;
+  const key = on ? `${s.w}x${s.h}|${n.textContent.length}` : 'off';
+  if (noteBox.key === key) return noteBox.r;
+  let r = null;
+  if (on) { const b = n.getBoundingClientRect(), cr = $('#map').getBoundingClientRect(); r = [b.left - cr.left - 4, b.top - cr.top - 4, b.right - cr.left + 4, b.bottom - cr.top + 4]; }
+  noteBox = { key, r };
+  return r;
+}
 function safeRects(s) {
-  const z = zoomRect(s), out = hudRects(s).slice();
+  const z = zoomRect(s), out = hudRects(s).slice(), n = noteRect(s);
   if (z) out.push([z.left - 4, z.top - 4, z.right + 4, z.bottom + 4]);
+  if (n) out.push(n);
   return out;
 }
 function planetLabels(g, s, discs) {
