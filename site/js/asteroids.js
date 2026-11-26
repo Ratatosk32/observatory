@@ -451,8 +451,8 @@ function tipFor(o) {
 
 $('#map').dataset.lowdpr = '';
 const mapS = setupCanvas($('#map'), drawMap);
-const chromeRo = new ResizeObserver(() => { hudBox.key = ''; zoomBox.key = ''; noteBox.key = ''; requestAnimationFrame(() => mapS.draw(mapS)); });
-document.querySelectorAll('#astRoot .hud .hud-l, #astRoot .hud .pill-host, #astRoot .hud .hud-r, #astRoot .zoom.stops, #astRoot .stage-note').forEach((e) => chromeRo.observe(e));
+const chromeRo = new ResizeObserver(() => { hudBox.key = ''; zoomBox.key = ''; requestAnimationFrame(() => mapS.draw(mapS)); });
+document.querySelectorAll('#astRoot .hud .hud-l, #astRoot .hud .pill-host, #astRoot .hud .hud-r, #astRoot .zoom.stops').forEach((e) => chromeRo.observe(e));
 let staticLayer = null, staticKey = '';
 const planetNow = {};
 
@@ -706,21 +706,9 @@ function hudRects(s) {
   hudBox = { key: cr.width ? key : '', r };
   return r;
 }
-let noteBox = { key: '', r: null };
-function noteRect(s) {
-  const key = `${s.w}x${s.h}`;
-  if (noteBox.key === key) return noteBox.r;
-  const n = document.querySelector('#astRoot .stage-note');
-  const on = !!n && !n.hidden && n.getClientRects().length > 0;
-  let r = null;
-  if (on) { const b = n.getBoundingClientRect(), cr = $('#map').getBoundingClientRect(); r = [b.left - cr.left - 4, b.top - cr.top - 4, b.right - cr.left + 4, b.bottom - cr.top + 4]; }
-  noteBox = { key, r };
-  return r;
-}
 function safeRects(s) {
-  const z = zoomRect(s), out = hudRects(s).slice(), n = noteRect(s);
+  const z = zoomRect(s), out = hudRects(s).slice();
   if (z) out.push([z.left - 4, z.top - 4, z.right + 4, z.bottom + 4]);
-  if (n) out.push(n);
   return out;
 }
 function planetLabels(g, s, discs) {

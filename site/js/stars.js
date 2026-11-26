@@ -338,7 +338,7 @@ let lanGrid = null, lanCv = null, staticView = null, skyFade = null, fadeRaf = 0
 function hudSafe(s) {
   const cr = s.cv.getBoundingClientRect();
   if (!cr.width) return [];
-  return [...s.cv.parentElement.querySelectorAll('.hud .btn, .hud .pill-host > *, .proj-switch, .zoom, .stage-note')].filter((e) => e.getClientRects().length).map((e) => {
+  return [...s.cv.parentElement.querySelectorAll('.hud .btn, .hud .pill-host > *, .proj-switch, .zoom')].filter((e) => e.getClientRects().length).map((e) => {
     const b = e.getBoundingClientRect();
     return [b.left - cr.left - 4, b.top - cr.top - 4, b.right - cr.left + 4, b.bottom - cr.top + 4];
   });

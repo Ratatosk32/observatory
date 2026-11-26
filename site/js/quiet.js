@@ -2,10 +2,7 @@ import { esc, fmtShort, nightMjd } from './kit.js';
 
 export const RUBIN_FLOORS = ['stars', 'asteroids', 'dm'];
 const NAME = { stars: 'Stars', asteroids: 'Asteroids', dm: 'Dark matter' };
-const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
 const MAX_TICKS = 14;
-const cap = (s) => s[0].toUpperCase() + s.slice(1);
-const word = (n) => (n < WORDS.length ? WORDS[n] : String(n));
 const day = (label) => fmtShort(nightMjd(+label));
 
 let got = null;
@@ -36,7 +33,6 @@ export function quietOf(h, floor) {
       const since = day(v.since);
       return {
         code: v.code, nights: n,
-        kicker: `${cap(word(n))} quiet ${n === 1 ? 'night' : 'nights'} at Cerro Pachón`,
         text: n <= 3
           ? `Rubin has sent nothing new since ${since}. Short gaps are usually weather.`
           : `Rubin has sent nothing new since ${since}, most likely weather or a technical stop. The sky holds the last light it sent.`,
@@ -46,14 +42,13 @@ export function quietOf(h, floor) {
     case 'broker-lag':
       if (!v.since) return null;
       return {
-        code: v.code, nights: 0, kicker: 'Waiting for the broker',
-        text: `Rubin is still observing${v.ahead ? ` (ANTARES has alerts up to ${day(v.ahead)})` : ''}, but Fink stops at ${day(v.since)}. This floor reads Fink, so it waits for Fink to catch up.`,
+        code: v.code, nights: 0, text: `Rubin is still observing${v.ahead ? ` (ANTARES has alerts up to ${day(v.ahead)})` : ''}, but Fink stops at ${day(v.since)}. This floor reads Fink, so it waits for Fink to catch up.`,
         chip: 'Broker behind',
       };
     case 'pipeline':
       if (!(v.failed || []).includes(floor)) return null;
       return {
-        code: v.code, nights: 0, kicker: 'Previous run', why: 'Data health',
+        code: v.code, nights: 0,
         text: `The nightly refresh failed for ${NAME[floor]}; this is the previous run.`,
         chip: 'Previous run',
       };
@@ -61,14 +56,14 @@ export function quietOf(h, floor) {
       if (!(v.behind || []).includes(floor) || !v.since) return null;
       const at = h.site && h.site[floor];
       return {
-        code: v.code, nights: 0, kicker: 'Catching up', why: 'Data health',
+        code: v.code, nights: 0,
         text: `Fink has data up to ${day(v.since)}, but this floor stops at ${at ? day(at) : 'an earlier night'}. The nightly refresh ran out of time and catches up on the next run.`,
         chip: 'Catching up',
       };
     }
     case 'unknown':
       return {
-        code: v.code, nights: 0, kicker: 'Brokers out of reach', why: 'Data health',
+        code: v.code, nights: 0,
         text: 'Fink and ANTARES could not be reached at the last check, so whether Rubin observed since is unknown.',
         chip: 'Status unknown',
       };
@@ -77,18 +72,10 @@ export function quietOf(h, floor) {
   }
 }
 
-export const noteSlot = (floor) => (RUBIN_FLOORS.includes(floor) ? '<p class="stage-note" role="note" hidden></p>' : '');
-
-export function wireNote(floor, stage) {
-  const el = stage && stage.querySelector('.stage-note');
-  if (!el) return;
-  health().then((h) => {
-    const q = quietOf(h, floor);
-    if (!q) return;
-    el.innerHTML = `<span class="sn-k">${esc(q.kicker)}</span>${ticksHtml(q.nights)} <span class="sn-t">${esc(q.text)}</span> <button type="button" class="link sn-why">${esc(q.why || 'Why we think so')}</button>`;
-    el.querySelector('.sn-why').addEventListener('click', () => { const b = document.getElementById('dataBtn'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); });
-    el.hidden = false;
-  });
+export function openHealth(e) {
+  if (e) e.stopPropagation();
+  const b = document.getElementById('dataBtn');
+  if (b && b.getAttribute('aria-expanded') !== 'true') b.click();
 }
 
 export function wireChip(floor, dock, before) {
@@ -96,9 +83,10 @@ export function wireChip(floor, dock, before) {
   health().then((h) => {
     const q = quietOf(h, floor);
     if (!q || dock.querySelector('.q-chip')) return;
-    const s = document.createElement('span');
-    s.className = 'q-chip';
-    s.setAttribute('role', 'note');
+    const s = document.createElement('button');
+    s.type = 'button';
+    s.className = 'chip q-chip';
+    s.addEventListener('click', openHealth);
     s.setAttribute('aria-label', `${q.chip}. ${q.text}`);
     s.title = q.text;
     s.innerHTML = `<i aria-hidden="true"></i><span aria-hidden="true">${esc(q.chip)}</span>`;

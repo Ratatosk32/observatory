@@ -1,7 +1,6 @@
 import { esc, ns, onKey, shell, setCollapsed, reduceMotion, onModeReady, perf, pushPerf } from './kit.js';
 import { icon } from './icons.js';
 import { popFrom, play, stagger, watchSegments, slideTab, reduced, ease, DUR, EXIT, STAGGER } from './motion.js';
-import { noteSlot, wireNote } from './quiet.js';
 import { stageSnapshot, climbEntrance } from './transition.js';
 
 export const ICON = Object.fromEntries(['chev', 'views', 'book', 'inst', 'info', 'close'].map((k) => [k, icon(k)]));
@@ -56,7 +55,6 @@ export function sceneHtml(m, o) {
       </div>
       ${o.zoom || ''}
       ${o.overlay || ''}
-      ${noteSlot(m)}
     </div>
     ${o.below || ''}
     <div class="time dock${o.dockCls ? ' ' + o.dockCls : ''}">${o.dock}</div>
@@ -353,7 +351,6 @@ export function wireScene(m, root) {
   s.panes = s.tabs.map((t) => document.getElementById(t.getAttribute('aria-controls')));
   s.inst = stage.querySelector('.hb-inst');
   scenes[m] = s;
-  wireNote(m, stage);
   stage.querySelectorAll('.hud [aria-haspopup="dialog"]').forEach((b) => b.addEventListener('click', () => showPop(document.getElementById(b.getAttribute('aria-controls')), b)));
   stage.querySelectorAll('.pop-x').forEach((b) => b.addEventListener('click', () => closePop()));
   const viewBtn = stage.querySelector('.hb-view'), nav = stage.querySelector('.pop-view .presets');

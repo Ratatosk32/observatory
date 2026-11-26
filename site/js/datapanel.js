@@ -82,7 +82,9 @@ async function storeLabel() {
   if (P === active) $('#storeTxt').textContent = txt;
 }
 
+let openedAt = 0;
 function openData(v) {
+  if (v) openedAt = performance.now();
   panel.hidden = !v; btn.setAttribute('aria-expanded', String(v));
   if (v) panel.scrollTop = 0;
   if (v && active) { refresh(); storeLabel(); (active.live ? $('#dataClose') : $('#doUpdate')).focus({ preventScroll: true }); }
@@ -91,7 +93,7 @@ function openData(v) {
 btn.addEventListener('click', () => openData(panel.hidden));
 $('#dataClose').addEventListener('click', () => { openData(false); btn.focus(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden && !ctl) { openData(false); btn.focus(); } });
-document.addEventListener('click', (e) => { if (!panel.hidden && !ctl && !e.target.closest('#dataPanel, #dataBtn')) openData(false); });
+document.addEventListener('click', (e) => { if (!panel.hidden && !ctl && e.timeStamp > openedAt && !e.target.closest('#dataPanel, #dataBtn')) openData(false); });
 
 $('#doUpdate').addEventListener('click', async () => {
   if (!active || ctl) return;

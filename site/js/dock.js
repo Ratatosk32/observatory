@@ -54,6 +54,33 @@ function geometry(d) {
   return s && s.__inv ? { T: s.__inv, X: s.__X } : null;
 }
 
+function dateEm(d, list) {
+  const m = d.root.appendChild(document.createElement('output'));
+  m.className = 'date';
+  m.style.cssText = 'position:absolute;visibility:hidden;min-width:0;width:auto;flex:none';
+  let w = 0;
+  for (const s of list) { m.textContent = s; w = Math.max(w, m.getBoundingClientRect().width); }
+  const fs = parseFloat(getComputedStyle(m).fontSize) || 16;
+  m.remove();
+  return w / fs;
+}
+function fitDate(d, a, b, txt) {
+  const key = `${a}|${b}`;
+  if (d.dateKey !== key) {
+    d.dateKey = key;
+    const list = [txt];
+    if (Number.isFinite(a) && Number.isFinite(b) && b > a) for (let i = 0; i <= 96; i++) list.push(d.o.fmt(a + (b - a) * i / 96));
+    d.dateMax = Math.max(...list.map((s) => s.length));
+    d.dateW = dateEm(d, list);
+  } else if (txt.length > d.dateMax) {
+    d.dateMax = txt.length;
+    d.dateW = Math.max(d.dateW, dateEm(d, [txt]));
+  } else return;
+  d.date.style.minWidth = `${(d.dateW + 0.1).toFixed(2)}em`;
+}
+
+if (document.fonts) document.fonts.ready.then(() => { for (const d of Object.values(docks)) if (d.dateKey) { d.dateKey = ''; fitDate(d, d.o.t0(), d.o.t1(), d.date.textContent); } });
+
 function sync(d, force = false) {
   const now = performance.now();
   if (!force && now - d.at < 200) {
@@ -71,8 +98,8 @@ function sync(d, force = false) {
     d.play.classList.toggle('on', p);
   }
   const t = o.get(), txt = o.fmt(t);
-  if (d.date.textContent !== txt) d.date.textContent = txt;
   const a = o.t0(), b = o.t1();
+  if (d.date.textContent !== txt) { d.date.textContent = txt; fitDate(d, a, b, txt); }
   d.cv.setAttribute('aria-valuenow', String(Math.round(clamp((t - a) / (b - a), 0, 1) * 1000)));
   d.cv.setAttribute('aria-valuetext', o.valueText ? o.valueText(t) : txt);
   const v = o.speed(), sl = o.speedText(v);

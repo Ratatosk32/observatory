@@ -215,7 +215,8 @@ function sizeSky() {
 function defaultLantern() { const f = frameOf(skyBox), [u, v] = hammer(240, -35); return [f.cx + u * f.sc, f.cy - v * f.sc]; }
 const LENS_ZOOM = 3, BREATH_S = 7, LENS_RINGS = 150;
 const breathing = () => !K.reduceMotion && !demo && st.amp > 1 && st.shadowTarget === 0;
-function ampNow() { return breathing() ? 1 + (st.amp - 1) * (0.5 - 0.5 * Math.cos(performance.now() / 1000 * 2 * Math.PI / BREATH_S)) : st.amp; }
+let breathT0 = 0, dialing = false;
+function ampNow() { return breathing() && !dialing ? 1 + (st.amp - 1) * (0.5 + 0.5 * Math.cos((performance.now() - breathT0) / 1000 * 2 * Math.PI / BREATH_S)) : st.amp; }
 function lanRadius() { return Math.max(56, Math.min(skyBox.w, skyBox.h) * st.lanR); }
 
 let fallbackCv = null;
@@ -348,6 +349,7 @@ function lensWindow(g, R) {
     g.moveTo(x + r, y); g.arc(x, y, r, 0, 6.283);
   }
   g.stroke();
+  lensSparks(g, lx, ly, reach);
   if (st.sel >= 0) {
     const dx = cx[st.sel] - lx, dy = cy[st.sel] - ly;
     if (Math.hypot(dx, dy) * LENS_ZOOM <= inner + 40) { g.globalAlpha = 1; g.lineWidth = 2; g.beginPath(); g.arc(lx + dx * LENS_ZOOM, ly + dy * LENS_ZOOM, ringR(st.sel) * LENS_ZOOM, 0, 6.283); g.stroke(); }
@@ -355,6 +357,41 @@ function lensWindow(g, R) {
   g.restore();
   g.globalAlpha = 1;
 }
+let lensIdx = { key: '', ax: null, idx: new Int32Array(0) };
+function alertsNear(lx, ly, reach) {
+  const key = `${Math.round(lx)},${Math.round(ly)},${Math.round(reach)},${NA}`;
+  if (lensIdx.key === key && lensIdx.ax === ax) return lensIdx.idx;
+  const out = [], r2 = reach * reach;
+  for (let k = 0; k < NA; k++) { const dx = ax[k] - lx, dy = ay[k] - ly; if (dx * dx + dy * dy <= r2) out.push(k); }
+  lensIdx = { key, ax, idx: Int32Array.from(out) };
+  return lensIdx.idx;
+}
+function lensSparks(g, lx, ly, reach) {
+  const idx = alertsNear(lx, ly, reach), nNow = lb(aT, st.t + 1e-9, NA), Z = LENS_ZOOM, gold = C().gold;
+  const at = (k) => [lx + (ax[k] - lx) * Z, ly + (ay[k] - ly) * Z];
+  g.fillStyle = gold;
+  g.globalAlpha = (C().dark ? 0.32 : 0.42) * wrapAlpha;
+  g.beginPath();
+  for (const k of idx) { if (k >= nNow) break; const [x, y] = at(k); g.rect(x - 0.8, y - 0.8, 1.6, 1.6); }
+  g.fill();
+  for (const k of idx) {
+    if (k >= nNow) break;
+    const age = st.t - aT[k];
+    if (age > 3) continue;
+    const a = K.reduceMotion ? 0.8 : Math.exp(-age / 1.2), r = (1 + 2.2 * a) * 1.4, [x, y] = at(k);
+    g.globalAlpha = (0.15 + 0.6 * a) * wrapAlpha;
+    g.beginPath(); g.arc(x, y, r, 0, 6.283); g.fill();
+  }
+  for (let k = 0; k < SNE.length; k++) {
+    const dx = sx[k] - lx, dy = sy[k] - ly;
+    if (SNE[k][2] > st.t || dx * dx + dy * dy > reach * reach) continue;
+    const x = lx + dx * Z, y = ly + dy * Z;
+    g.globalAlpha = 0.95 * wrapAlpha; g.beginPath(); g.arc(x, y, 2.6, 0, 6.283); g.fill();
+    g.strokeStyle = gold; g.lineWidth = 1.2; g.globalAlpha = 0.45 * wrapAlpha; g.beginPath(); g.arc(x, y, 8, 0, 6.283); g.stroke();
+  }
+  g.strokeStyle = gold; g.lineWidth = 1; g.globalAlpha = 0.6;
+}
+
 function stampEmbers(eg, from, to) {
   const W = emberCv.width, H = emberCv.height, d = skyBox.dpr, side = Math.max(1, Math.round(d));
   const img = from ? eg.getImageData(0, 0, W, H) : new ImageData(W, H), px = new Uint32Array(img.data.buffer);
@@ -759,7 +796,7 @@ function wire() {
   cv.addEventListener('pointerdown', (e) => {
     const p = toLocal(e), ring = ringHit(p, e.pointerType !== 'mouse');
     if (ring === 'kappa') { $('#dShadow').click(); return; }
-    if (ring === 'rim') { dial = { a: angleOf(p), x: ampX }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; K.hideTip(); return; }
+    if (ring === 'rim') { dial = { a: angleOf(p), x: ampX }; dialing = true; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; K.hideTip(); return; }
     const onLens = ring === 'inside';
     const hit = nearestCluster(p[0], p[1], e.pointerType === 'mouse' ? 8 : 14);
     if (hit >= 0 && !onLens) { select(hit); return; }
@@ -783,11 +820,11 @@ function wire() {
     cv.classList.toggle('hot', i >= 0);
     if (i >= 0) K.showTip(tipFor(i), e.clientX, e.clientY); else K.hideTip();
   });
-  const end = () => { drag = false; if (dial) { dial = null; cv.style.cursor = ''; } };
+  const end = () => { drag = false; if (dial) { dial = null; dialing = false; breathT0 = performance.now(); cv.style.cursor = ''; } };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
   cv.addEventListener('pointerleave', () => { st.hover = -1; K.hideTip(); });
   makeTimeDock();
-  const setAmp = () => { const x = +amp.value; ampX = x / 1000; st.amp = Math.round(Math.pow(300, x / 1000)); ampV.textContent = `×${st.amp}`; if (!demo) $('#dAmpNote').textContent = st.amp === 1 ? `At ×1 the bending is real but about ${M.deflectionRmsArcmin.toFixed(1)}′, too small to see.` : `Bending breathes up to ×${st.amp}: ${(M.deflectionRmsArcmin * st.amp / 60).toFixed(1)}° typical shift. The gold grid bends with it.`; st.glDirty = true; };
+  const setAmp = () => { const x = +amp.value; ampX = x / 1000; st.amp = Math.round(Math.pow(300, x / 1000)); ampV.textContent = `×${st.amp}`; breathT0 = performance.now(); if (!demo) $('#dAmpNote').textContent = st.amp === 1 ? `At ×1 the bending is real but about ${M.deflectionRmsArcmin.toFixed(1)}′, too small to see.` : `Bending breathes up to ×${st.amp}: ${(M.deflectionRmsArcmin * st.amp / 60).toFixed(1)}° typical shift. The gold grid bends with it.`; st.glDirty = true; };
   amp.addEventListener('input', setAmp); setAmp();
   $('#dShadow').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); e.currentTarget.classList.toggle('on', on); st.shadowTarget = on ? 1 : 0; if (K.reduceMotion) { st.shadow = st.shadowTarget; st.glDirty = true; } });
   new ResizeObserver(() => { if (entered) sizeSky(); }).observe(cv);
