@@ -86,9 +86,39 @@ const loaders = {
   dm: () => import('./darkmatter.js'),
   earth: () => import('./earth.js'),
 };
-const LOADING = { stars: ['#starsLoading', 'the stars data'], dm: ['#dmLoading', 'the dark-matter data'], earth: ['#earthLoading', 'the Earth data'], asteroids: [null, 'the asteroid data'] };
+const LOADING = { stars: ['#starsLoading', '#starsRoot', 'the stars data'], dm: ['#dmLoading', '#dmRoot', 'the dark-matter data'], earth: ['#earthLoading', '#earthRoot', 'the Earth data'], asteroids: ['#astLoading', '#astRoot', 'the asteroid data'] };
 const modules = {}, started = new Set();
 const loadMode = (m) => (modules[m] ||= loaders[m]());
+
+function skeleton(m) {
+  const root = $(LOADING[m][1]);
+  if (!root.querySelector('.scene')) root.innerHTML = `<main class="scene skel" data-floor="${m}" aria-hidden="true"><section class="sc-stage"><h2 class="question">&nbsp;</h2><div class="map-wrap"></div><div class="time dock"></div></section><aside class="panel card"></aside></main>`;
+  return root.querySelector('.scene');
+}
+function failCard(m, err, retry) {
+  const [sel, , what] = LOADING[m];
+  $(sel).hidden = true;
+  const scene = skeleton(m), wrap = scene.querySelector('.map-wrap');
+  scene.classList.add('skel');
+  scene.removeAttribute('aria-hidden');
+  wrap.querySelector('.floor-error')?.remove();
+  const why = navigator.onLine === false ? 'This device seems to be offline.' : 'The data did not arrive' + (err && err.message ? ` (${err.message}).` : '.');
+  wrap.insertAdjacentHTML('beforeend', `<div class="floor-error" role="alert"><p class="fe-t">Could not load ${esc(what)}</p><p class="fe-d">${esc(why)} The other floors still work.</p><button type="button" class="btn fe-retry">Retry</button></div>`);
+  wrap.querySelector('.fe-retry').addEventListener('click', retry);
+}
+function reloadFloor(m) {
+  const u = new URL(location.href);
+  u.searchParams.set('mode', m);
+  for (const k of ['obj', 'sel', 'play']) u.searchParams.delete(k);
+  location.assign(u);
+}
+function enterFloor(m, mod, obj) {
+  const scene = $(LOADING[m][1]).querySelector('.scene');
+  if (scene) { scene.classList.remove('skel'); scene.querySelector('.floor-error')?.remove(); }
+  let entering;
+  try { entering = mod.api.enter(obj); } catch (e) { entering = Promise.reject(e); }
+  Promise.resolve(entering).catch((e) => { if (mode === m) failCard(m, e, () => enterFloor(m, mod, obj)); });
+}
 
 const SUBS = {
   earth: 'Lightning, aurora and the solar wind above you',
@@ -104,8 +134,10 @@ function syncModeUi() {
 }
 async function leaveMode(m) {
   if (!m || !modules[m]) return;
-  const mod = await modules[m];
-  if (m === 'asteroids') mod.hide(); else mod.api.leave();
+  try {
+    const mod = await modules[m];
+    if (m === 'asteroids') mod.hide(); else mod.api.leave();
+  } catch { return; }
 }
 async function setMode(m, opts = {}) {
   if (m === mode && !opts.force) return;
@@ -119,11 +151,12 @@ async function setMode(m, opts = {}) {
   if (fullscreenPanel()) exitFs();
   if (prev !== m) await leaveMode(prev);
   activateData(m);
-  const [sel, what] = LOADING[m];
-  if (sel) $(sel).hidden = false;
+  const [sel] = LOADING[m];
+  skeleton(m);
+  $(sel).hidden = false;
   try {
     const mod = await loadMode(m);
-    if (sel) $(sel).hidden = true;
+    $(sel).hidden = true;
     if (mode !== m) return;
     activateData(m);
     if (m === 'asteroids') {
@@ -132,11 +165,11 @@ async function setMode(m, opts = {}) {
       mod.show(opts.params);
     } else {
       setUrl({ mode: m, sel: null });
-      mod.api.enter(opts.obj);
+      enterFloor(m, mod, opts.obj);
     }
     modeReady(m);
   } catch (e) {
-    if (sel) $(sel).textContent = `Could not load ${what}: ${e.message}`;
+    failCard(m, e, () => reloadFloor(m));
   }
 }
 shell.setMode = setMode;

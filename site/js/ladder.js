@@ -347,7 +347,7 @@ export function initLadder({ onPick }) {
       if (token !== S.token) return;
       S.mod = mod;
       setTimeout(() => { if (token === S.token) pull('mode'); }, 0);
-    }, () => {});
+    }, () => { if (token === S.token) { S.anim = null; setShown(m); paintMarker(); } });
   }
 
   function render(t, force) {
