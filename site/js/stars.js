@@ -1642,6 +1642,20 @@ export function ladder() {
   }
   return { band: [30 * K.cosmo.KM_PER_LY, K.cosmo.lookbackGyr(3) * 1e9 * K.cosmo.KM_PER_LY], view: ladderView.view, sel };
 }
+export function screenOf(sel = st.sel) {
+  if (!built || !skyS || !skyS.w || !(sel >= 0 && sel < N)) return null;
+  let x = NaN, y = NaN;
+  if (proj.cur === 'sky') { x = qx[sel]; y = qy[sel]; }
+  else {
+    const ins = stageInsets(skyS);
+    if (proj.cur === 'dist' && hasDist(sel)) { x = stageLad.x[sel] + ins.left; y = stageLad.y[sel] + ins.top; }
+    const p = proj.cur === 'hr' ? stageHr.pts.find((q) => q[2] === sel) : null;
+    if (p) { x = p[0] + ins.left; y = p[1] + ins.top; }
+  }
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > skyS.w || y > skyS.h) return null;
+  const r = skyS.cv.getBoundingClientRect();
+  return { x: r.left + x, y: r.top + y, color: gcol[grp[sel]], sel };
+}
 function buildHaze(s) {
   const hw = Math.max(2, Math.ceil(s.w / 2)), hh = Math.max(2, Math.ceil(s.h / 2)), dark = C().dark;
   if (!hazeSmall || hazeSmall.width !== hw || hazeSmall.height !== hh) { hazeSmall = document.createElement('canvas'); hazeSmall.width = hw; hazeSmall.height = hh; }

@@ -1,7 +1,8 @@
-import { esc, ns, onKey, shell, setCollapsed, reduceMotion } from './kit.js';
+import { esc, ns, onKey, shell, setCollapsed, reduceMotion, onModeReady, perf, pushPerf } from './kit.js';
 import { icon } from './icons.js';
-import { popFrom, play, stagger, watchSegments, slideTab, reduced } from './motion.js';
+import { popFrom, play, stagger, watchSegments, slideTab, reduced, ease, DUR, EXIT, STAGGER } from './motion.js';
 import { noteSlot, wireNote } from './quiet.js';
+import { stageSnapshot, climbEntrance } from './transition.js';
 
 export const ICON = Object.fromEntries(['chev', 'views', 'book', 'inst', 'info', 'close'].map((k) => [k, icon(k)]));
 
@@ -372,7 +373,7 @@ export function wireScene(m, root) {
   });
   setCollapsed(card, stored);
   s.sheet = makeSheet(s, card);
-  watchKicker(card);
+  watchKicker(m, card);
   const v = stage.querySelector('.verdict');
   if (v) v.addEventListener('click', () => openInstrument(m, 0));
   sync();
@@ -383,9 +384,204 @@ export const sceneOf = (m) => scenes[m];
 watchSegments(document.body);
 
 function kickerOf(body, fallback) {
-  const h = body.querySelector('h3[data-kind]');
+  const h = [...body.querySelectorAll('h3[data-kind]')].find((x) => !x.closest('.card-ghost'));
   if (h) return h.dataset.kind;
   return fallback;
+}
+
+const FLOOR_SRC = { stars: () => import('./stars.js'), asteroids: () => import('./asteroids.js'), dm: () => import('./darkmatter.js'), earth: () => import('./earth.js') };
+const floorMods = {};
+onModeReady((m) => { if (FLOOR_SRC[m] && !floorMods[m]) FLOOR_SRC[m]().then((x) => { floorMods[m] = x; }, () => {}); });
+function markOf(m, sel) {
+  const f = floorMods[m];
+  if (!f || typeof f.screenOf !== 'function') return null;
+  try {
+    const p = f.screenOf(sel);
+    return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null;
+  } catch { return null; }
+}
+
+const FRESH = DUR.gentle + DUR.instant;
+const FLIGHT = DUR.gentle - STAGGER.each;
+const REVEAL_R = 240;
+const tap = { t: -1e9, wrap: null, snap: null, down: null };
+let picked = null, seq = null;
+document.addEventListener('pointerdown', (e) => {
+  const w = e.isPrimary && e.target instanceof HTMLCanvasElement ? e.target.closest('.scene .map-wrap') : null;
+  tap.down = w ? { x: e.clientX, y: e.clientY, t: performance.now(), w } : null;
+}, { capture: true, passive: true });
+document.addEventListener('pointerup', (e) => {
+  const d = tap.down;
+  tap.down = null;
+  if (!d || reduced || performance.now() - d.t > DUR.travel || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
+  tap.t = performance.now(); tap.wrap = d.w; tap.snap = stageSnapshot(d.w);
+  pushPerf(perf.tapSnap || (perf.tapSnap = []), performance.now() - tap.t);
+}, { capture: true, passive: true });
+document.addEventListener('click', (e) => {
+  const b = e.target instanceof Element ? e.target.closest('.scene > .card [data-pick]') : null;
+  if (b) picked = { t: performance.now(), r: (b.querySelector('.sw') || b).getBoundingClientRect() };
+}, { capture: true });
+for (const t of ['pointerdown', 'keydown', 'wheel']) document.addEventListener(t, () => { if (seq) endSeq(); }, { capture: true, passive: true });
+
+function endSeq() {
+  const s = seq;
+  if (!s) return;
+  seq = null;
+  for (const a of s.anims) if (a) { try { a.finish(); } catch { a.cancel(); } }
+  for (const n of s.nodes) n.remove();
+  for (const n of s.hidden) n.style.visibility = '';
+}
+
+function bands(root) {
+  const out = [];
+  for (const el of root.children) {
+    if (isGhost(el)) continue;
+    if (el.tagName === 'UL') out.push(...el.children); else out.push(el);
+  }
+  return out;
+}
+
+const inView = (els) => els.filter((e) => { const r = e.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < innerHeight; });
+function firstBands(g) {
+  const all = bands(g);
+  all.slice(STAGGER.max).forEach((e) => { e.style.visibility = 'hidden'; });
+  return all.slice(0, STAGGER.max);
+}
+function wipe(s, cv, at) {
+  const el = document.createElement('i');
+  el.className = 'hero-wipe';
+  el.setAttribute('aria-hidden', 'true');
+  Object.assign(el.style, { left: `${at.x}px`, top: `${at.y}px`, width: `${at.w}px`, height: `${at.h}px` });
+  cv.after(el);
+  s.nodes.push(el);
+  const a = play(el, [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], { dur: DUR.gentle, delay: DUR.quick * 2, curve: 'out', fill: 'backwards' });
+  s.anims.push(a);
+  if (a) a.finished.then(() => el.remove(), () => el.remove()); else el.remove();
+}
+
+const onScreen = (r) => !!r && r.width > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
+const centre = (r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+
+function ghostOf(body, old, at) {
+  const g = document.createElement('div');
+  g.className = 'card-ghost';
+  g.setAttribute('aria-hidden', 'true');
+  g.inert = true;
+  g.append(...old);
+  g.style.left = `${at.x}px`;
+  g.style.top = `${at.y}px`;
+  g.style.width = `${at.w}px`;
+  body.appendChild(g);
+  return g;
+}
+
+function ring(s, at) {
+  const el = document.createElement('i');
+  el.className = 'sel-ring';
+  el.setAttribute('aria-hidden', 'true');
+  el.style.left = `${at.x}px`; el.style.top = `${at.y}px`;
+  document.body.appendChild(el);
+  s.nodes.push(el);
+  const a = play(el, [{ transform: 'scale(0.24)', opacity: 1 }, { transform: 'scale(1)', opacity: 0 }], { dur: DUR.base, fill: 'forwards' });
+  s.anims.push(a);
+  if (a) a.finished.then(() => el.remove(), () => el.remove()); else el.remove();
+}
+
+function leaderReveal(s, at) {
+  const snap = tap.snap, wrap = tap.wrap;
+  tap.snap = null; tap.wrap = null;
+  if (!snap || !wrap || !wrap.isConnected) return;
+  const last = [...wrap.querySelectorAll('canvas')].pop();
+  if (!last) return;
+  const r = wrap.getBoundingClientRect(), z = getComputedStyle(last).zIndex;
+  const op = last.offsetParent || document.body, pr = op.getBoundingClientRect();
+  snap.className = 'sel-veil';
+  snap.setAttribute('aria-hidden', 'true');
+  Object.assign(snap.style, { position: 'absolute', margin: '0', left: `${r.left - pr.left - op.clientLeft}px`, top: `${r.top - pr.top - op.clientTop}px`, width: `${r.width}px`, height: `${r.height}px` });
+  if (z !== 'auto') snap.style.zIndex = z;
+  last.after(snap);
+  snap.style.setProperty('--sel-x', `${at.x - r.left}px`);
+  snap.style.setProperty('--sel-y', `${at.y - r.top}px`);
+  s.nodes.push(snap);
+  s.anims.push(play(snap, [{ '--sel-r': '0px' }, { '--sel-r': `${REVEAL_R}px` }], { dur: DUR.base, delay: STAGGER.each, curve: 'out', fill: 'both' }));
+  const fade = play(snap, [{ opacity: 1 }, { opacity: 0 }], { dur: DUR.base, delay: DUR.quick, curve: 'in', fill: 'forwards' });
+  s.anims.push(fade);
+  if (fade) fade.finished.then(() => snap.remove(), () => snap.remove());
+}
+
+const ARC_STEPS = 12;
+function fly(s, color, a, b, { dur, delay, land }) {
+  const el = document.createElement('i');
+  el.className = 'sel-fly';
+  el.setAttribute('aria-hidden', 'true');
+  el.style.setProperty('--c', color);
+  document.body.appendChild(el);
+  s.nodes.push(el);
+  const lift = Math.min(160, Math.hypot(b.x - a.x, b.y - a.y) * 0.35), frames = [];
+  for (let i = 0; i <= ARC_STEPS; i++) {
+    const e = ease.io(i / ARC_STEPS), bump = Math.sin(Math.PI * e);
+    frames.push({ transform: `translate(${(a.x + (b.x - a.x) * e).toFixed(1)}px, ${(a.y + (b.y - a.y) * e - lift * bump).toFixed(1)}px) scale(${(1 + 0.5 * bump).toFixed(3)})`, opacity: 1 });
+  }
+  const anim = play(el, frames, { dur, delay, curve: 'linear', fill: 'both' });
+  s.anims.push(anim);
+  const done = () => { el.remove(); if (land) land(); };
+  if (anim) anim.finished.then(done, done); else done();
+}
+
+function choreograph(m, card, body, old, isObj) {
+  endSeq();
+  const now = performance.now();
+  const fromMap = !!tap.wrap && now - tap.t < FRESH && card.parentElement.contains(tap.wrap);
+  const pick = picked && now - picked.t < FRESH ? picked : null;
+  picked = null;
+  if (!fromMap) { tap.snap = null; tap.wrap = null; }
+  if (reduced || !card.getClientRects().length) return;
+  const s = { anims: [], nodes: [], hidden: [] };
+  seq = s;
+  const k = isObj ? 1 : EXIT;
+  const sw = isObj ? body.querySelector(':scope > .cls .sw') : null;
+  const target = sw ? sw.getBoundingClientRect() : null;
+  const hero = isObj ? [...body.querySelectorAll(':scope > canvas, :scope > * > canvas')].find((c) => c.getClientRects().length) : null;
+  const heroAt = hero ? { x: hero.offsetLeft, y: hero.offsetTop - (hero.offsetParent === card ? body.scrollTop : 0), w: hero.offsetWidth, h: hero.offsetHeight } : null;
+  const fresh = inView(bands(body));
+  const mk = isObj ? markOf(m) : null;
+  const slot = { x: body.offsetLeft, y: body.offsetTop - body.scrollTop, w: body.clientWidth };
+  const gsw = !isObj && card.selMark && card.selMark.m === m ? old.find((n) => n.nodeType === 1 && n.matches('.cls')) : null;
+  if (mk && fromMap) leaderReveal(s, mk);
+  if (old.length) {
+    const g = ghostOf(body, old, slot);
+    s.nodes.push(g);
+    const out = stagger(firstBands(g), { dur: DUR.base * k, each: STAGGER.each * k, x: isObj ? -12 : 0, y: isObj ? 0 : 8, exit: true });
+    s.anims.push(...out);
+    const gone = () => g.remove();
+    if (out.length) Promise.all(out.map((a) => a && a.finished)).then(gone, gone); else gone();
+  }
+  s.anims.push(...stagger(fresh, { dur: DUR.base, each: STAGGER.each * k, y: isObj ? 8 : 6, delay: (isObj ? DUR.base : DUR.quick) * k }));
+  if (isObj) {
+    if (hero) wipe(s, hero, heroAt);
+    card.selMark = mk ? { m, sel: mk.sel } : null;
+    if (!mk) return;
+    const swOk = onScreen(target);
+    if (fromMap) {
+      ring(s, mk);
+      if (swOk) {
+        sw.style.visibility = 'hidden';
+        s.hidden.push(sw);
+        fly(s, mk.color, mk, centre(target), { dur: FLIGHT, delay: STAGGER.each * 2, land: () => { sw.style.visibility = ''; } });
+      }
+      return;
+    }
+    const start = pick && onScreen(pick.r) ? centre(pick.r) : swOk ? centre(target) : null;
+    if (start) fly(s, mk.color, start, mk, { dur: FLIGHT, delay: STAGGER.each * 2, land: () => { if (seq === s) ring(s, markOf(m, mk.sel) || mk); } });
+    else ring(s, mk);
+    return;
+  }
+  const back = card.selMark;
+  card.selMark = null;
+  const src = gsw && gsw.querySelector('.sw'), sr = src && src.getBoundingClientRect();
+  const home = gsw ? markOf(m, back.sel) : null;
+  if (!home || !onScreen(sr)) return;
+  fly(s, home.color, centre(sr), home, { dur: FLIGHT * EXIT, delay: 0 });
 }
 const HYPHEN_NUM = /(^|[\s(,:=])-(?=\d)/g;
 function typeset(root) {
@@ -398,17 +594,31 @@ function typeset(root) {
     }
   }
 }
-function watchKicker(card) {
+const isGhost = (n) => n.nodeType === 1 && (n.classList.contains('card-ghost') || n.classList.contains('hero-wipe'));
+const ghostOnly = (r) => [...r.addedNodes, ...r.removedNodes].every(isGhost);
+function watchKicker(m, card) {
   const h2 = card.querySelector('.pbar h2'), body = card.querySelector('[aria-live]');
-  let shown = '';
-  const sync = () => {
+  let shown = '', wasObj = false;
+  const sync = (recs) => {
+    const real = recs ? recs.filter((r) => !ghostOnly(r)) : [];
+    if (recs && !real.length) return;
     const t = kickerOf(body, h2.dataset.list);
     if (h2.textContent !== t) h2.textContent = t;
     typeset(body);
-    const head = body.querySelector('h3');
+    const head = body.querySelector(':scope > h3');
+    const isObj = !!head && !head.classList.contains('ph');
     const now = `${t}|${head ? head.textContent : ''}`;
-    if (shown && now !== shown && card.getClientRects().length) stagger(body.querySelectorAll(':scope > ul > li, :scope > h3, :scope > .cls, :scope > .why, :scope > .chead'));
-    shown = now;
+    const climb = climbEntrance(m);
+    if (climb != null && real.length) stagger(inView(bands(body)), { y: 8, delay: climb });
+    else if (shown && now !== shown && card.getClientRects().length) {
+      if (isObj || wasObj) {
+        const c0 = performance.now();
+        choreograph(m, card, body, real.length ? [...real[0].removedNodes].filter((n) => !isGhost(n)) : [], isObj);
+        pushPerf(perf.select || (perf.select = []), performance.now() - c0);
+      }
+      else stagger(body.querySelectorAll(':scope > ul > li, :scope > h3, :scope > .cls, :scope > .why, :scope > .chead'));
+    }
+    shown = now; wasObj = isObj;
   };
   new MutationObserver(sync).observe(body, { childList: true });
   sync();

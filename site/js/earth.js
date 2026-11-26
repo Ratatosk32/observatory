@@ -882,6 +882,24 @@ export function ladder() {
   else if (st.sel && st.sel.type === 'aurora') sel = { km: 110, comovingKm: null, z: null, label: st.sel.hemi > 0 ? 'Northern lights' : 'Southern lights', how: 'model', words: 'the green aurora shell, from the OVATION model', note: 'above the ground' };
   return { band: [5, 1.6e6], view: auroraOnly ? [100, 300] : [8, 300], also: l1 ? [1.4e6, 1.6e6] : null, rest: 110, sel };
 }
+export function screenOf(sel = st.sel) {
+  if (!built || !basis || !box.w || !sel) return null;
+  let xy = null, color = 'var(--gold)';
+  if (sel.type === 'aurora') {
+    color = tokens.aurora;
+    if (capA() > 0.5) xy = sel.hemi > 0 ? box.capN : box.capS;
+    else { const p = projLL(72 * sel.hemi, view.lon); if (p.z > 0) xy = [p.x, p.y]; }
+  } else {
+    const c = sel.type === 'storm' ? CELLS[sel.i] : sel.type === 'place' ? sel : null;
+    if (!c) return null;
+    if (sel.type === 'storm') color = tokens.ember;
+    const p = projLL(c.lat, c.lon);
+    if (p.z > 0) xy = [p.x, p.y];
+  }
+  if (!xy || xy[0] < 0 || xy[1] < 0 || xy[0] > box.w || xy[1] > box.h) return null;
+  const r = $('#earthGl').getBoundingClientRect();
+  return { x: r.left + xy[0], y: r.top + xy[1], color, sel };
+}
 
 let lastHourUi = -1, dock = null;
 function syncTime() {

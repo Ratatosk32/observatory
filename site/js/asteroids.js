@@ -1929,3 +1929,10 @@ export function ladder() {
   const sel = o ? { km: geoKm(o.idx), comovingKm: null, z: null, label: o.name, how: 'measured', words: 'orbit fitted to Rubin detections, distance in the ecliptic plane', note: 'from Earth' } : null;
   return { band: [0.02 * cosmo.KM_PER_AU, 6.2 * cosmo.KM_PER_AU], view, sel };
 }
+export function screenOf(sel = state.sel) {
+  if (!sel || !ladderGeo.ok || !mapS.w || !(sel.idx < N)) return null;
+  const x = posX[sel.idx], y = posY[sel.idx];
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > mapS.w || y > mapS.h) return null;
+  const r = mapS.cv.getBoundingClientRect();
+  return { x: r.left + x, y: r.top + y, color: C.cls[sel.cls], sel };
+}

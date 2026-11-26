@@ -70,6 +70,16 @@ The ladder is one log axis of distance, from 1 km at the bottom to the cosmic mi
 - **Motion.** Switching modes, the chevron climbs or descends in log space over 600 ms + 35 ms per decade (at most 1.4 s), the floors it passes light up and the readout counts with changing units. The page switches at once; the climb never delays it. With reduced motion the marker cross-fades in 150 ms.
 - **Keyboard.** Arrow keys follow the picture: Up goes to a higher floor on the rail, Right on the strip; Home and End go to the ground and the CMB. The position is announced only when the mode or the selection changes.
 - **The contract.** Each mode module exports `ladder()`, which returns plain km: `{ band, view, also, rest, sel: { km, comovingKm, z, label, how, words, note } }`. `view` and `also` are the gold bar's segments (Earth adds L1 when its space-weather strip is in use or Live; Dark matter adds the CMB); `rest` is where the chevron sits with nothing selected. Modes dispatch a `ladder` event, at most four times a second, when either changes.
+- **The climb.** `transition.js` draws the switch on one canvas over the old stage only (extended left over the rail on desktop, never over the header or the card column): the old stage, as a snapshot of its own render, shrinks into its rung with its corners rounding into a circle (0–45%), the distance counter runs on an opaque paper veil with the floors drifting past, and the new stage grows out of its rung as a circular reveal (50–98%) through a matching hole in the veil. The card column swaps with the list stagger: the old card leaves as a ghost (exit from 0 ms), the new one enters from 360 ms; the header subtitle, question line and dock fade. If the floor has not loaded, the reveal shows its skeleton silhouette and the real stage fades in when it arrives. Reduced motion: a 150 ms fade.
+
+### Selection continuity
+
+Each mode also exports `screenOf(sel = current selection)`, which returns the object's viewport position and family colour, `{ x, y, color, sel }`, or `null` when it is off screen or not drawn (Stars: the current projection, sky, distance or HR; Asteroids: the position at the current time; Dark matter: the cluster centre; Earth: `proj` on the globe, or the aurora cap). `scene.js` watches each card and, when it turns from a list into an object card (map, list, palette, search or URL), plays one sequence of at most 700 ms, all on the compositor except one mask and one clip:
+- from the map: a gold ring pulses once around the mark (8 → 34 px, 220 ms), the leader line and label are revealed from the mark outward (a snapshot of the stage taken at the tap, with a growing hole), and a swatch of the object's colour flies on an arc into the card's class-line swatch;
+- from the card list, the palette or the URL: the swatch flies the other way, from the list item (or the card) to the mark, and the ring pulses where it lands;
+- the list leaves left 12 px with a 24 ms stagger, the card rises 8 px band by band from 220 ms, and the hero chart draws left to right from 280 ms;
+- deselecting reverses it at 0.6× speed.
+Any pointer, key or wheel input during the sequence jumps to its end state; with reduced motion the card simply changes.
 
 ### The showcase: who is in front
 

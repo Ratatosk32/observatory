@@ -562,6 +562,13 @@ export function ladder() {
     : { km: cmb, comovingKm: cmKm(1090), z: 1090, label: 'The CMB', how: 'measured', words: 'Planck: the oldest light, from z = 1090', note: 'light travel' };
   return { band: [ltKm(0.05), cmKm(1090)], view: ladderFront.view, also: [cmb, cmb], sel };
 }
+export function screenOf(sel = st.sel) {
+  if (!built || !skyBox.w || !(sel >= 0 && sel < NC)) return null;
+  const x = cx[sel], y = cy[sel];
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > skyBox.w || y > skyBox.h) return null;
+  const r = $('#dmOv').getBoundingClientRect();
+  return { x: r.left + x, y: r.top + y, color: 'var(--gold)', sel };
+}
 
 function renderCard() {
   const body = $('#dCardBody');
