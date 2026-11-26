@@ -1,5 +1,5 @@
 import * as K from './kit.js';
-import { smoothstep as smooth, DUR } from './motion.js';
+import { smoothstep as smooth, DUR, ease, tween, ticker, popFrom } from './motion.js';
 import { sceneHtml, wireScene } from './scene.js';
 import { dockHtml, makeDock } from './dock.js';
 import * as SC from './showcase.js';
@@ -10,6 +10,7 @@ import { register as registerData, refresh as refreshData } from './datapanel.js
 import { createLive } from './swpc.js';
 import * as CL from './clouds.js';
 import { cardHead } from './cardhead.js';
+import { icon } from './icons.js';
 
 const [E, LT, AU] = await Promise.all([K.loadJson('data/earth.json'), K.loadJson('data/earth-lightning.json'), K.loadJson('data/earth-aurora.json').catch(() => null)]);
 const { $, esc, fmtN, MON, clamp, text, annotate } = K;
@@ -118,7 +119,7 @@ const HUD_BAND = 46;
 const box = { w: 0, h: 0, dpr: 1, R: 1, cx: 0, cy: 0, capR: 0, capN: [0, 0], capS: [0, 0], phone: false };
 let built = false, entered = false, G = null, glFail = '', imgs = null, ov = null, stripS = null, pill = null, whyEl = null;
 let wrapAt = 0, wrapAlpha = 1, raf = 0, lastTs = 0, glDirty = true, lastSunPx = null;
-let drawnFlashes = 0, gridState = '', lastGlAt = 0;
+let drawnFlashes = 0;
 const eggs = { count: 0, last: null, at: 0 };
 const stats = { drawn: [], level: 'L0', stride: 128, sub: 1, rate: 0 };
 const live = createLive({ desktop: innerWidth >= 700, onUpdate });
@@ -154,7 +155,7 @@ function cloudUi() {
   const b = $('#eClouds'), n = $('#eCloudNote');
   if (!b || !n) return;
   b.classList.toggle('on', clouds.on); b.setAttribute('aria-pressed', String(clouds.on));
-  if (!G) { b.hidden = true; return; }
+  if (!G) { b.hidden = true; layersUi(); return; }
   n.hidden = !clouds.on;
   if (!clouds.on) return;
   if (!n.dataset.watch) {
@@ -252,25 +253,50 @@ function isCovered(lat, lon) {
   return COV.some((c) => c.state !== 'off' && Math.abs(lat) <= (c.lat || 56) && Math.cos(lat * DEG) * Math.cos((lon - c.lon) * DEG) >= Math.cos((c.angle || 60) * DEG));
 }
 
-let liveGrid = null;
-function auroraParams(t) {
-  if (st.live && liveGrid) return { mode: 'live', shiftA: 0, shiftB: 0, mix: 0 };
-  if (!AUR) return null;
-  const s = (tt) => wrapLon(sunLL(AUR.obs)[1] - sunLL(tt)[1]);
-  if (wrapAt && wrapAlpha < 1) return { mode: 'nightly', shiftA: s(T1), shiftB: s(T0), mix: 1 - wrapAlpha };
-  return { mode: 'nightly', shiftA: s(t), shiftB: s(t), mix: 0 };
+let liveGrid = null, auroraShown = null, ovFade = null;
+const EMPTY_GRID = new Uint8Array(362 * 181), gridUp = [null, null];
+const nightlyShift = (tt) => wrapLon(sunLL(AUR.obs)[1] - sunLL(tt)[1]);
+const liveShift = () => 0;
+function auroraSrc() {
+  if (st.live && liveGrid) return { id: `live ${liveGrid.obs} ${liveGrid.valid}`, grid: liveGrid.grid, shift: liveShift };
+  return AUR ? { id: 'nightly', grid: AUR.grid, shift: nightlyShift } : null;
 }
-function ensureGrid(mode) {
-  if (!G || gridState === mode) return;
-  const grid = mode === 'live' ? liveGrid.grid : AUR ? AUR.grid : new Uint8Array(362 * 181);
-  EG.uploadGrid(G, 2, grid); EG.uploadGrid(G, 3, grid);
-  gridState = mode;
+function auroraTurn() {
+  const next = auroraSrc();
+  if (auroraShown && next && auroraShown.id !== next.id && entered && !K.reduceMotion) {
+    const from = ovFade && ovFade.mix < 0.5 ? ovFade.from : auroraShown;
+    ovFade = { from, t0: performance.now(), mix: 0 };
+  } else if (!next || K.reduceMotion) ovFade = null;
+  auroraShown = next;
+  glDirty = true;
+}
+function stepOvFade(ts) {
+  if (!ovFade) return false;
+  const p = clamp((ts - ovFade.t0) / DUR.count, 0, 1);
+  ovFade.mix = ease.io(p);
+  if (p >= 1) ovFade = null;
+  glDirty = true;
+  return true;
+}
+function auroraParams(t) {
+  const cur = auroraSrc();
+  if (!cur) return null;
+  if (!st.live && wrapAt && wrapAlpha < 1) return { A: cur.grid, B: cur.grid, shiftA: cur.shift(T1), shiftB: cur.shift(T0), mix: 1 - wrapAlpha };
+  if (ovFade && auroraShown && auroraShown.id === cur.id) return { A: ovFade.from.grid, B: cur.grid, shiftA: ovFade.from.shift(t), shiftB: cur.shift(t), mix: ovFade.mix };
+  const s0 = cur.shift(t);
+  return { A: cur.grid, B: cur.grid, shiftA: s0, shiftB: s0, mix: 0 };
+}
+function ensureGrid(a) {
+  if (!G) return;
+  const A = a ? a.A : EMPTY_GRID, B = a ? a.B : EMPTY_GRID;
+  if (gridUp[0] !== A) { EG.uploadGrid(G, 2, A); gridUp[0] = A; }
+  if (gridUp[1] !== B) { EG.uploadGrid(G, 3, B); gridUp[1] = B; }
 }
 function auroraAt(lat, lon, t) {
   const a = auroraParams(t);
   if (!a) return null;
-  const grid = a.mode === 'live' ? liveGrid.grid : AUR.grid;
-  const lo = ((lon + a.shiftA) % 360 + 360) % 360, r = Math.round(lat + 90);
+  const [grid, sh] = a.mix < 0.5 ? [a.A, a.shiftA] : [a.B, a.shiftB];
+  const lo = ((lon + sh) % 360 + 360) % 360, r = Math.round(lat + 90);
   return grid[clamp(r, 0, 180) * 362 + Math.round(lo) % 360];
 }
 function ovalEdge(lon, hemi, t) {
@@ -284,7 +310,7 @@ function drawGl() {
   glDirty = false;
   const t = st.t, [sd, sl] = sunLL(t), a = auroraParams(t);
   if (!G) { drawFallback(t, sd, sl, a); return; }
-  ensureGrid(a ? a.mode : 'none');
+  ensureGrid(a);
   const d = box.dpr, em = st.emph;
   if (!glCol) glCol = glColors();
   EG.drawGl(G, {
@@ -292,9 +318,9 @@ function drawGl() {
     capN: [box.capN[0] * d, box.capN[1] * d, box.capR * d], capS: [box.capS[0] * d, box.capS[1] * d, box.capR * d], capA: capA(),
     sun: [sd * DEG, sl * DEG], ovMix: a ? a.mix : 0, ovShift: a ? [a.shiftA, a.shiftB] : [0, 0],
     aurGain: (a ? 1 : 0) * em.aurora * (st.live || !wrapAt ? 1 : 0.4 + 0.6 * wrapAlpha), hatchA: em.hatch * (C().dark ? 1 : 1.15), dayTint: em.dayTint, dpr: d,
-    cov: [covVec(0), covVec(1), covVec(2)], colors: glCol, dark: C().dark, cloudA: clouds.on && clouds.ready ? clouds.alpha : 0,
+    cov: [covVec(0), covVec(1), covVec(2)], colors: glCol, dark: C().dark, twilight: C().dark ? 1 : 0, cloudA: clouds.on && clouds.ready ? clouds.alpha : 0,
   });
-  lastSunPx = [sd, sl, view.k]; lastGlAt = performance.now();
+  lastSunPx = [sd, sl, view.k];
 }
 let fbData = null;
 function drawFallback(t, sd, sl, a) {
@@ -798,6 +824,8 @@ function frame(ts) {
   let moving = false;
   if (view.tween) { stepTween(ts); moving = true; }
   if (st.liveFade) { const p = clamp((ts - st.liveFade.t0) / 400, 0, 1); st.lightA = st.liveFade.from + (st.liveFade.to - st.liveFade.from) * p; if (p >= 1) st.liveFade = null; moving = true; }
+  if (stepOvFade(ts)) moving = true;
+  if (glide.job) moving = true;
   const tPrev = st.t;
   if (st.live) {
     const n = nowS();
@@ -826,13 +854,13 @@ function frame(ts) {
   if (wake && !active.length && !eggList.length && !glDirty && !moving && !view.tween) { idleSleep(); return; }
   if (!glDirty && lastSunPx) {
     const [sd, sl] = sunLL(st.t), mv = Math.hypot(sd - lastSunPx[0], wrapLon(sl - lastSunPx[1])) * DEG * Rk();
-    if (mv > 0.6 && performance.now() - lastGlAt > 100) glDirty = true;
+    if (mv > SUN_STEP_PX) glDirty = true;
   }
   if (glDirty) drawGl();
   drawOverlay(performance.now());
   const cost = performance.now() - c0;
   K.pushPerf(K.perf.draw, cost);
-  if (dock && (st.playing || st.live)) dock.update();
+  if (dock && (st.playing || st.live || glide.job)) dock.update();
   if (ts - (frame.lastUi || 0) > 120) { frame.lastUi = ts; syncTime(); }
   while (drawnLog.length && drawnLog[0] < performance.now() - 1000) drawnLog.shift();
   stats.drawnPerSec = drawnLog.length;
@@ -864,6 +892,7 @@ function syncTime() {
   if (h !== lastHourUi) { lastHourUi = h; regionCursor(); if (!st.sel) renderCard(); }
 }
 function setPlay(p) {
+  if (p) stopGlide();
   if (p && st.live) setLive(false);
   st.playing = p;
   if (!p) { wrapAt = 0; wrapAlpha = 1; glDirty = true; }
@@ -884,7 +913,7 @@ function makeTimeDock() {
     playing: () => st.playing, play: setPlay,
     speeds: SPEEDS.map((x) => x[0]), speed: () => st.speed, setSpeed: (v) => { st.speed = v; },
     speedText: (v) => { const k = SPEEDS.find((x) => x[0] === v); return k ? k[1] : v >= 3600 ? `${+(v / 3600).toFixed(1)} h/s` : `${Math.round(v / 60)} min/s`; },
-    step: (dir, big) => setT((st.live ? T1 : st.t) + dir * (big ? 3600 : 600)),
+    step: (dir, big) => glideT((st.live ? T1 : glide.job ? glide.to : st.t) + dir * (big ? 3600 : 600)),
     scrub: (t) => { if (t > T1 + 600) setLive(true); else setT(t); },
     live: { on: () => st.live, set: setLive },
     fmt: (t) => (st.live ? `Live · ${fmtUtc(nowS(), true)}` : fmtUtc(t, true)),
@@ -903,7 +932,18 @@ function makeTimeDock() {
     },
   });
 }
+const SUN_STEP_PX = 0.35;
+const glide = { job: null, to: 0 };
+function stopGlide() { if (glide.job) { glide.job.cancel(); glide.job = null; } }
+function glideT(t) {
+  const to = clamp(t, T0, T1);
+  if (st.live || st.playing || K.reduceMotion || !entered) { setT(to); return; }
+  stopGlide();
+  wrapAt = 0; wrapAlpha = 1; st.stopAt = null; glide.to = to;
+  glide.job = tween({ from: st.t, to, dur: DUR.base, curve: 'out', step: (v) => { st.t = v; glDirty = true; loop(); }, done: () => { glide.job = null; active.length = 0; syncTime(); redraw(); } });
+}
 function setT(t) {
+  stopGlide();
   if (st.live) setLive(false);
   wrapAt = 0; wrapAlpha = 1; st.stopAt = null;
   st.t = clamp(t, T0, T1); active.length = 0;
@@ -922,6 +962,7 @@ function setLive(on) {
   }
   if (K.reduceMotion) { st.lightA = on ? 0 : 1; st.liveFade = null; }
   K.setUrl({ live: on ? '1' : null });
+  auroraTurn();
   glDirty = true; syncTime(); loop();
 }
 
@@ -959,6 +1000,30 @@ function zoomAt(px, py, f) {
 function zoomUi() {
   const r = $('#eZoomReset');
   if (r) r.hidden = view.k <= 1.01;
+  layersUi();
+}
+function layersUi() {
+  const b = $('#eLayers'), z = $('#earthRoot .ezoom'), p = $('#eLayersPop .pop-body'), cl = $('#eClouds'), rs = $('#eZoomReset');
+  if (!b || !z || !p) return;
+  if (phoneQ.matches) { if (cl.parentElement !== p) { p.prepend(cl); p.append(rs); } }
+  else if (cl.parentElement !== z) { z.insertBefore(rs, b); z.insertBefore(cl, b); setLayers(false); }
+  b.hidden = cl.hidden && rs.hidden;
+  if (b.hidden) setLayers(false);
+}
+function setLayers(open) {
+  const b = $('#eLayers'), p = $('#eLayersPop');
+  if (!b || !p || p.hidden === !open) return;
+  p.hidden = !open; b.setAttribute('aria-expanded', String(open)); b.classList.toggle('on', open);
+  if (open) { popFrom(p, b); p.querySelector('.pop-x').focus({ preventScroll: true }); }
+}
+function wireLayers() {
+  const b = $('#eLayers'), p = $('#eLayersPop');
+  b.addEventListener('click', () => setLayers(p.hidden));
+  document.addEventListener('pointerdown', (e) => { if (!p.hidden && e.target instanceof Node && !p.contains(e.target) && !b.contains(e.target)) setLayers(false); });
+  p.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); setLayers(false); b.focus(); } });
+  p.querySelector('.pop-x').addEventListener('click', () => { setLayers(false); b.focus(); });
+  phoneQ.addEventListener('change', layersUi);
+  layersUi();
 }
 function resetView() { const dv = M.defaultView || [0, -60]; flyTo(dv[0], dv[1], 1); }
 
@@ -1018,6 +1083,7 @@ function wire() {
   $('#eZoomOut').addEventListener('click', () => zoomAt(box.cx, box.cy, 1 / 1.5));
   $('#eZoomReset').addEventListener('click', resetView);
   $('#eClouds').addEventListener('click', () => setClouds(!clouds.on));
+  wireLayers();
   makeTimeDock();
   document.addEventListener('visibilitychange', () => {
     if (!entered) return;
@@ -1121,7 +1187,38 @@ function prov(kind, at) {
 }
 function scaleChips(v) {
   const chip = (k, word) => { const n = v.scales[k], m = v.max24[k]; return `${k}${n ?? 0}${m > (n ?? 0) ? ` (max ${m})` : ''} ${word}`; };
-  return SC.chipsHtml([chip('G', 'storms'), chip('R', 'radio'), chip('S', 'protons'), `Kp ${kpStr(v.kp)}`].slice(0, 3)).replace('</div>', `<span>Kp ${kpStr(v.kp)}</span></div>`);
+  return SC.chipsHtml([chip('G', 'storms'), chip('R', 'radio'), chip('S', 'protons'), `Kp ${kpStr(v.kp)}`].slice(0, 3)).replace('</div>', `<span>Kp ${tk('kp', v.kp == null ? null : Math.round(v.kp * 3) / 3)}</span></div>`);
+}
+const TICK_FMT = {
+  speed: (x) => String(Math.round(x)),
+  density: (x) => x.toFixed(1),
+  bz: (x) => `${x < 0 ? '−' : '+'}${Math.abs(x).toFixed(1)}`,
+  kp: (x) => kpStr(x),
+};
+const tk = (k, v) => (v == null ? '–' : `<span class="tk" data-tk="${k}" data-v="${v}">${TICK_FMT[k](v)}</span>`);
+const cardShown = new Map();
+function beat(dot) {
+  if (!dot || K.reduceMotion) return;
+  dot.classList.remove('beat');
+  void dot.offsetWidth;
+  dot.classList.add('beat');
+}
+function tickCard(body) {
+  const seen = new Set();
+  body.querySelectorAll('[data-tk]').forEach((el) => {
+    const k = el.dataset.tk, v = +el.dataset.v, prev = cardShown.get(k);
+    seen.add(k); cardShown.set(k, v);
+    if (prev == null || prev === v || !Number.isFinite(v)) return;
+    ticker(el, prev, { format: TICK_FMT[k], first: true });
+    ticker(el, v, { format: TICK_FMT[k] });
+    beat(el.closest('dd') && el.closest('dd').querySelector('.prov.live'));
+  });
+  body.querySelectorAll('[data-beat]').forEach((el) => {
+    const v = el.dataset.beat, prev = cardShown.get('beat');
+    seen.add('beat'); cardShown.set('beat', v);
+    if (prev != null && prev !== v) beat(el);
+  });
+  for (const k of [...cardShown.keys()]) if (!seen.has(k)) cardShown.delete(k);
 }
 function cardRightNow() {
   const v = nowValues(), t = st.live ? nowS() : st.t, h = hourOf(t);
@@ -1132,10 +1229,10 @@ function cardRightNow() {
   const lead = v.speed ? Math.round(1.5e6 / v.speed / 60) : null;
   const storms = st.live ? [] : stormsAt(h).slice(0, 5);
   const facts = [
-    ['Solar wind', v.speed != null ? `${Math.round(v.speed)} km/s${v.density != null ? ` · ${v.density.toFixed(1)} per cm³` : ''} ${prov(v.live ? 'live' : 'nightly', v.at)}` : '–'],
-    ['Bz (GSM)', v.bz != null ? `${v.bz < 0 ? '−' : '+'}${Math.abs(v.bz).toFixed(1)} nT, ${v.bz < 0 ? 'south' : 'north'} ${prov(live.st.mag.data ? 'live' : 'nightly', v.at)}` : '–'],
+    ['Solar wind', v.speed != null ? `${tk('speed', Math.round(v.speed))} km/s${v.density != null ? ` · ${tk('density', +v.density.toFixed(1))} per cm³` : ''} ${prov(v.live ? 'live' : 'nightly', v.at)}` : '–'],
+    ['Bz (GSM)', v.bz != null ? `${tk('bz', +v.bz.toFixed(1))} nT, ${v.bz < 0 ? 'south' : 'north'} ${prov(live.st.mag.data ? 'live' : 'nightly', v.at)}` : '–'],
     ['Reaches Earth in', lead ? `about ${lead} min from L1` : '–'],
-    [`Aurora from ${esc(site.label || 'your place')}`, ch != null ? `${ch}% chance · ${edge ? `oval above ${edge}° ${hemi > 0 ? 'N' : 'S'}` : 'no oval at this longitude'} ${prov('model')}` : 'no model run'],
+    [`Aurora from ${esc(site.label || 'your place')}`, ch != null ? `${ch}% chance · ${edge ? `oval above ${edge}° ${hemi > 0 ? 'N' : 'S'}` : 'no oval at this longitude'} ${prov('model').replace('<span ', `<span data-beat="${auroraShown ? esc(auroraShown.id) : ''}" `)}` : 'no model run'],
   ];
   const watch = [
     ...COV.filter((c) => c.state !== 'off').map((c) => [true, c.name, `${c.area} · nightly`]),
@@ -1281,6 +1378,7 @@ function renderCard() {
   if (!body) return;
   const s = st.sel;
   body.innerHTML = !s ? cardRightNow() : s.type === 'storm' ? cardStorm(s.i) : s.type === 'place' ? cardPlace(s.lat, s.lon) : cardAurora(s.hemi);
+  if (!s) tickCard(body); else cardShown.clear();
   body.querySelectorAll('[data-storm]').forEach((b) => b.addEventListener('click', () => selectStorm(+b.dataset.storm)));
   body.querySelectorAll('[data-back]').forEach((b) => b.addEventListener('click', () => { st.sel = null; st.emph.focus = -1; K.setUrl({ obj: null }); renderCard(); redraw(); }));
   const rc = body.querySelector('#eRate');
@@ -1680,7 +1778,7 @@ function searchItems(q) {
 
 function onUpdate(id, ok) {
   if (!entered) return;
-  if (id === 'ovation' && ok) { liveGrid = live.st.ovation.data; if (gridState === 'live') gridState = ''; if (st.live) glDirty = true; }
+  if (id === 'ovation' && ok) { liveGrid = live.st.ovation.data; auroraTurn(); }
   if (id === 'kpf' && ok) presets();
   scalesRow();
   if (!st.sel || st.sel.type === 'aurora') renderCard();
@@ -1696,13 +1794,13 @@ function buildDom() {
     qid: 'h-emap', stageCls: 'e-map', mainCls: 'emain', wrapCls: 'e-wrap', pillId: 'eTools',
     question: 'Where is the night sky glowing?',
     canvas: '<div class="e-stage"><canvas id="earthGl" tabindex="0" aria-label="Globe with the two polar caps. Drag to turn, wheel or pinch to zoom, plus and minus zoom, 0 resets, arrows turn."></canvas><canvas id="earthOv" aria-hidden="true"></canvas></div>',
-    zoom: '<div class="zoom ezoom"><button class="btn sm" type="button" id="eZoomIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="eZoomOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="eZoomReset" hidden>Reset view</button><button class="btn sm" type="button" id="eClouds" aria-pressed="false" title="Show today’s clouds from five weather satellites">Clouds</button></div>',
+    zoom: '<div class="zoom ezoom"><button class="btn sm" type="button" id="eZoomIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="eZoomOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="eZoomReset" hidden>Reset view</button><button class="btn sm" type="button" id="eClouds" aria-pressed="false" title="Show today’s clouds from five weather satellites">Clouds</button><button class="btn sm elayers" type="button" id="eLayers" aria-haspopup="dialog" aria-expanded="false" aria-controls="eLayersPop">' + icon('layers') + '<span>Layers</span></button><div class="elayers-pop" id="eLayersPop" role="dialog" aria-label="Layers" hidden><div class="pop-head"><h3>Layers</h3><button type="button" class="btn icon quiet sm pop-x" aria-label="Close" title="Close (Esc)">' + icon('close') + '</button></div><div class="pop-body"><p class="pop-note">Today’s clouds from five weather satellites, over the globe and the caps.</p></div></div></div>',
     overlay: '<p class="note ecloud" id="eCloudNote" aria-live="polite" hidden></p>',
     views: { nav: 'ePresets', label: 'Guided views of the Earth', first: 'Everything' },
     dockCls: 'etime',
     dock: dockHtml({ play: 'ePlay', date: 'eDate', track: 'eTrack', speed: 'eSpeed', live: 'eLive', label: 'Time track: lightning flashes in the 24 hours of nightly data, hatched after the nightly update, with the solar wind’s Bz below. Left and right arrows step 10 minutes, Shift an hour; L goes live.' }),
     info: {
-      cap: `The Earth at night from NASA’s Black Marble, the aurora the OVATION model expects, and the lightning the ${LI_ON ? 'GOES and Meteosat' : 'GOES'} satellites saw. Gold line: dusk and dawn.${LI_ON ? ' Contains modified EUMETSAT Meteosat data 2026.' : ''}`,
+      cap: `The Earth at night from NASA’s Black Marble, the aurora the OVATION model expects, and the lightning the ${LI_ON ? 'GOES and Meteosat' : 'GOES'} satellites saw. Gold line: dusk and dawn. In the dark theme three faint lines behind it mark civil, nautical and astronomical twilight, where the Sun is 6°, 12° and 18° below the horizon; past the last one the sky is dark enough to observe.${LI_ON ? ' Contains modified EUMETSAT Meteosat data 2026.' : ''}`,
       about: '<p>City lights are NASA’s Black Marble 2016 composite, not tonight’s lights. The aurora is OVATION Prime, a model: a 30–90 minute forecast from the solar wind measured at L1, not an observation. One model run is kept each night; for other hours it is turned with the Sun. Live shows the newest run. The aurora is drawn on two shells about 1.7% and 3.4% above the surface (110 and 220 km), true to scale, so it pokes past the limb. GLM (and, over Europe and Africa, MTG’s Lightning Imager) sees total lightning, cloud-to-ground and in-cloud, from geostationary orbit, and detects fewer flashes by day; where two satellites overlap, each flash is kept from the one whose point below is nearer. Hatched: nobody shares open lightning data there yet. GLM flash areas are optical footprints, not channel lengths. City lights and aurora are styled into the site’s palette. Geomagnetic poles: the 2025 IGRF dipole. Tags: <span class="prov live"></span> live, <span class="prov nightly"></span> nightly copy, <span class="prov model">◆</span> model.</p>',
       key: 'eLegend',
       honest: 'Aurora: a model (OVATION), not an observation. Lightning: last night’s satellites, not live. City lights: 2016. Hatched: no open lightning data.',
@@ -1778,7 +1876,7 @@ async function enter(objId) {
   if (cloudPref() && !clouds.on) setClouds(true); else cloudUi();
 }
 function leave() {
-  entered = false; setPlay(false); live.stop(); K.hideTip(); idleStop();
+  entered = false; stopGlide(); setPlay(false); live.stop(); K.hideTip(); idleStop();
   if (raf) { cancelAnimationFrame(raf); raf = 0; }
 }
 

@@ -1,3 +1,6 @@
+export const TWILIGHT = [6, 12, 18];
+const TWI_SIN = TWILIGHT.map((d) => Math.sin(d * Math.PI / 180).toFixed(6));
+const TWI_A = [0.22, 0.15, 0.1];
 const VERT = 'attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }';
 const FRAG = (deriv) => `${deriv ? '#extension GL_OES_standard_derivatives : enable\n' : ''}precision highp float;
 uniform sampler2D uLights; uniform sampler2D uLand; uniform sampler2D uOvA; uniform sampler2D uOvB; uniform sampler2D uCloud; uniform float uCloudA; uniform vec3 uCloudC;
@@ -5,7 +8,7 @@ uniform vec2 uRes; uniform vec3 uGlobe; uniform vec2 uView; uniform vec3 uCapN; 
 uniform vec2 uSun; uniform float uOvMix; uniform vec2 uOvShift; uniform float uAurGain; uniform float uHatchA; uniform float uDayTint; uniform float uDpr;
 uniform vec4 uCov0; uniform vec4 uCov1; uniform vec4 uCov2;
 uniform vec3 uNightSea; uniform vec3 uNightLand; uniform vec3 uDaySea; uniform vec3 uDayLand; uniform vec3 uLightsC; uniform vec3 uGold; uniform vec3 uGrid; uniform vec3 uInk;
-uniform vec3 uAur; uniform vec3 uAurHi; uniform vec3 uTint; uniform float uDark;
+uniform vec3 uAur; uniform vec3 uAurHi; uniform vec3 uTint; uniform float uDark; uniform float uTwi;
 const float PI = 3.14159265;
 const float D2R = 0.0174532925;
 vec3 vecOf(float lat, float lon) { return vec3(cos(lat) * cos(lon), cos(lat) * sin(lon), sin(lat)); }
@@ -51,6 +54,11 @@ vec4 surface(float lat, float lon, float z, bool cap) {
   }
   float term = exp(-pow(cz / 0.006, 2.0));
   col = mix(col, uGold, term * 0.45);
+  if (uTwi > 0.0) {
+    float tws = max(1.2 * uDpr / (cap ? uCapN.z * 1.4 : uGlobe.z), 0.0008);
+    float tw = ${TWI_SIN.map((v, i) => `exp(-pow((cz + ${v}) / tws, 2.0)) * ${TWI_A[i].toFixed(2)}`).join(' + ')};
+    col = mix(col, uGold, tw * uTwi);
+  }
   if (!cap) {
     float cov = max(max(covered(lat, lon, uCov0), covered(lat, lon, uCov1)), covered(lat, lon, uCov2));
     float sp = 7.0 * uDpr;
@@ -136,7 +144,7 @@ export function hexRgb(c) {
 }
 
 const UNIFORMS = ['uLights', 'uLand', 'uOvA', 'uOvB', 'uRes', 'uGlobe', 'uView', 'uCapN', 'uCapS', 'uCapA', 'uSun', 'uOvMix', 'uOvShift', 'uAurGain', 'uHatchA', 'uDayTint', 'uDpr',
-  'uCov0', 'uCov1', 'uCov2', 'uNightSea', 'uNightLand', 'uDaySea', 'uDayLand', 'uLightsC', 'uGold', 'uGrid', 'uInk', 'uAur', 'uAurHi', 'uTint', 'uDark', 'uCloud', 'uCloudA', 'uCloudC'];
+  'uCov0', 'uCov1', 'uCov2', 'uNightSea', 'uNightLand', 'uDaySea', 'uDayLand', 'uLightsC', 'uGold', 'uGrid', 'uInk', 'uAur', 'uAurHi', 'uTint', 'uDark', 'uTwi', 'uCloud', 'uCloudA', 'uCloudC'];
 
 export function initGl(cv) {
   let g = null;
@@ -200,7 +208,7 @@ export function drawGl(G, P) {
   g.uniform1f(U.uAurGain, P.aurGain); g.uniform1f(U.uHatchA, P.hatchA); g.uniform1f(U.uDayTint, P.dayTint); g.uniform1f(U.uDpr, P.dpr);
   g.uniform4f(U.uCov0, ...P.cov[0]); g.uniform4f(U.uCov1, ...P.cov[1]); g.uniform4f(U.uCov2, ...P.cov[2]);
   for (const k of ['NightSea', 'NightLand', 'DaySea', 'DayLand', 'LightsC', 'Gold', 'Grid', 'Ink', 'Aur', 'AurHi', 'Tint']) g.uniform3fv(U['u' + k], P.colors[k]);
-  g.uniform1f(U.uDark, P.dark ? 1 : 0);
+  g.uniform1f(U.uDark, P.dark ? 1 : 0); g.uniform1f(U.uTwi, P.twilight || 0);
   g.uniform1f(U.uCloudA, P.cloudA || 0); g.uniform3fv(U.uCloudC, P.colors.Cloud);
   g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
 }
