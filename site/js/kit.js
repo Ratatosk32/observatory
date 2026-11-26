@@ -155,9 +155,28 @@ export function setupCanvas(cv, draw) {
   return s;
 }
 
-export const font = (px, w = 400) => `${w} ${px}px 'IBM Plex Sans', system-ui, sans-serif`;
+export const TYPE = { micro: 11, small: 12.5, body: 14, lead: 16, title: 20, display: 28, hero: 56 };
+const STEPS = [TYPE.micro, TYPE.small, TYPE.body, TYPE.lead, TYPE.title];
+export const typeSize = (px) => (typeof px === 'string' ? TYPE[px] || TYPE.body : px >= 24 ? px : STEPS.reduce((b, x) => (Math.abs(x - px) < Math.abs(b - px) ? x : b), STEPS[0]));
+export const typeWeight = (w) => (w < 250 ? 200 : w < 350 ? 300 : w < 450 ? 400 : w < 550 ? 500 : 600);
+export const font = (px, w = 400) => `${typeWeight(w)} ${typeSize(px)}px 'IBM Plex Sans', system-ui, sans-serif`;
+export const MINUS = '−';
+export const signed = (v, d = 1) => `${v < 0 ? MINUS : v > 0 ? '+' : ''}${Math.abs(v).toFixed(d)}`;
+export function fmtK(v) {
+  const a = Math.abs(v), sg = v < 0 ? MINUS : '';
+  if (a >= 1e6) return `${sg}${+(a / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`;
+  if (a >= 1e3) return `${sg}${+(a / 1e3).toFixed(a >= 1e4 ? 0 : 1)}k`;
+  return `${sg}${+a.toFixed(a >= 10 || a === 0 ? 0 : 1)}`;
+}
+export function niceTicks(lo, hi, n = 4) {
+  const raw = (hi - lo) / Math.max(1, n), p = 10 ** Math.floor(Math.log10(raw || 1)), f = raw / p;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) out.push(Math.abs(v) < step * 1e-9 ? 0 : v);
+  return out;
+}
 export function annotate(ctx, str, x, y, { size = 19, color = C.ink, align = 'center', halo = true } = {}) {
-  ctx.font = font(Math.round(size * 0.7), 600); ctx.textAlign = align; ctx.textBaseline = 'alphabetic';
+  ctx.font = font(size * 0.7, 600); ctx.textAlign = align; ctx.textBaseline = 'alphabetic';
   if (halo) { ctx.lineWidth = 4; ctx.strokeStyle = C.bg; ctx.lineJoin = 'round'; ctx.strokeText(str, x, y); }
   ctx.fillStyle = color; ctx.fillText(str, x, y);
 }

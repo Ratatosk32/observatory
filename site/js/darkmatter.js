@@ -431,8 +431,7 @@ function drawOverlay() {
     g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.arc(cx[i], cy[i], ringR(i) + 5, 0, 6.283); g.stroke();
     if (i === st.sel) annotate(g, CL.name[i], cx[i] + 12, cy[i] - 12, { size: 17, color: C().ink, align: 'left' });
   }
-  if (s.w >= 600) text(g, fmtD(st.t), 16, s.h - 30, { size: 16, weight: 650, color: C().ink, halo: true });
-  if (s.w >= 600) text(g, `${fmtN(nNow)} SN-like alerts so far · ${fmtN(NC)} ${CL.catalogue} clusters, ${st.showAll ? 'all' : nFront()} in front (rings ${Math.round(RING_PX_PER_ARCMIN * ringScale() * 60 / (frameOf(s).sc * DEG))}× their R500)`, 16, s.h - 12, { size: 12, color: C().ink2, halo: true });
+  if (s.w >= 600) text(g, `${fmtN(nNow)} SN-like alerts so far · ${fmtN(NC)} ${CL.catalogue} clusters, ${st.showAll ? 'all' : nFront()} in front (rings ${Math.round(RING_PX_PER_ARCMIN * ringScale() * 60 / (frameOf(s).sc * DEG))}× their R500)`, 16, s.h - 12, { size: 'micro', color: C().ink2, halo: true });
   if (glFail) text(g, glFail, 16, 18, { size: 12, color: C().ink2, halo: true });
 }
 

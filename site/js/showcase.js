@@ -1,4 +1,5 @@
 import * as K from './kit.js';
+import { ticker } from './motion.js';
 
 export async function loadShowcase() {
   try { return await K.loadJson('data/showcase.json'); } catch { return null; }
@@ -79,6 +80,12 @@ export function stepWeights(W, now) {
   return moving;
 }
 
+const NUM = /\d[\d,.]*\d|\d/g;
+function tickNum(el, str, first = false) {
+  const dec = (str.split('.')[1] || '').length, v = parseFloat(str.replace(/,/g, ''));
+  ticker(el, v, { first, format: (x) => (dec ? x.toFixed(dec) : K.fmtN(Math.round(x))) });
+}
+
 export function makePill(host, { onToggle, onBack }) {
   const el = document.createElement('div');
   el.className = 'showcase';
@@ -87,7 +94,16 @@ export function makePill(host, { onToggle, onBack }) {
   const txt = el.querySelector('.sc-txt'), btn = el.querySelector('button');
   let mode = 'show', lastSet = 0, pending = null;
   btn.addEventListener('click', () => (mode === 'back' ? onBack() : onToggle()));
-  const apply = (t, b, m) => { txt.innerHTML = K.esc(t).replace(/\d[\d,.]*/g, (n) => `<b>${n}</b>`); btn.textContent = b; mode = m; lastSet = performance.now(); };
+  let tpl = '';
+  const apply = (t, b, m) => {
+    const nums = t.match(NUM) || [], shape = t.replace(NUM, '#'), cells = txt.querySelectorAll('b');
+    if (shape === tpl && cells.length === nums.length) nums.forEach((n, k) => tickNum(cells[k], n));
+    else {
+      txt.innerHTML = K.esc(t).replace(NUM, (n) => `<b>${n}</b>`);
+      txt.querySelectorAll('b').forEach((c, k) => tickNum(c, nums[k], true));
+    }
+    tpl = shape; btn.textContent = b; mode = m; lastSet = performance.now();
+  };
   return {
     el,
     set(t, b, m) {

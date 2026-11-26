@@ -801,9 +801,8 @@ function drawMap(s) {
 
   const inData = state.t >= META.tmin - 1 && state.t <= META.tmax + 1;
   if (s.w >= 600) {
-    text(s.ctx, fmtDate(state.t), 16, s.h - 30, { size: 16, weight: 650, color: C.ink, halo: true });
     text(s.ctx, i1 > i0 ? `${fmtN(i1 - i0)} detections within ±${win} days` : inData ? 'no detections in this sample within ±2 days' : 'outside the data window: positions are extrapolated',
-      16, s.h - 12, { size: 12, color: C.ink2, halo: true });
+      16, s.h - 12, { size: 'micro', color: C.ink2, halo: true });
   }
   perf.draw.push(performance.now() - t0);
   if (perf.draw.length > 600) perf.draw.shift();

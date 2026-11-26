@@ -423,8 +423,10 @@ function truncInPage() {
     const r = e.getBoundingClientRect();
     const rg = document.createRange();
     rg.selectNodeContents(e);
-    const tops = new Set([...rg.getClientRects()].filter((x) => x.width > 0.5).map((x) => Math.round(x.top)));
-    if (tops.size > 1) cut.push(`wrapped dd "${t.slice(0, 30)}"`);
+    const rs = [...rg.getClientRects()].filter((x) => x.width > 0.5).sort((p, q) => p.top - q.top);
+    let lines = 0, bottom = -Infinity;
+    for (const x of rs) { if (x.top >= bottom - 1) { lines++; bottom = x.bottom; } else bottom = Math.max(bottom, x.bottom); }
+    if (lines - e.querySelectorAll('br').length > 1) cut.push(`wrapped dd "${t.slice(0, 30)}"`);
     else if (e.scrollWidth > e.clientWidth + 1 || r.right > b.right + 1) cut.push(`overflow dd "${t.slice(0, 30)}"`);
   }
   return { width: Math.round(body.closest('.card').getBoundingClientRect().width), cut };

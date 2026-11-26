@@ -371,11 +371,23 @@ function kickerOf(body, fallback) {
   if (h) return h.dataset.kind;
   return fallback;
 }
+const HYPHEN_NUM = /(^|[\s(,:=])-(?=\d)/g;
+function typeset(root) {
+  for (const el of root.querySelectorAll('dd, .why > span, .chead')) {
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      if (!n.nodeValue.includes('-')) continue;
+      const t = n.nodeValue.replace(HYPHEN_NUM, '$1−');
+      if (t !== n.nodeValue) n.nodeValue = t;
+    }
+  }
+}
 function watchKicker(card) {
   const h2 = card.querySelector('.pbar h2'), body = card.querySelector('[aria-live]');
   const sync = () => {
     const t = kickerOf(body, h2.dataset.list);
     if (h2.textContent !== t) h2.textContent = t;
+    typeset(body);
   };
   new MutationObserver(sync).observe(body, { childList: true });
   sync();

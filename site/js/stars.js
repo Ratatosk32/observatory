@@ -788,8 +788,7 @@ function drawSky(s) {
     g.globalAlpha = hooks.skyAlpha * fa; g.drawImage(skyLabels, dx, dy, s.w * r, s.h * r); g.globalAlpha = 1;
   }
   if (tonightOn()) siteLabel(g, s);
-  if (s.w >= 600) text(g, fmtD(st.t), 16, s.h - 30, { size: 16, weight: 650, color: C().ink, halo: true });
-  if (s.w >= 600) text(g, `${fmtN(i1 - i0)} sample alerts in the last ${reduceMotion ? 'night' : '4 nights'} · ${fmtN(Math.min(nNow, N))} objects seen so far`, 16, s.h - 12, { size: 12, color: C().ink2, halo: true });
+  if (s.w >= 600) text(g, `${fmtN(i1 - i0)} sample alerts in the last ${reduceMotion ? 'night' : '4 nights'} · ${fmtN(Math.min(nNow, N))} objects seen so far`, 16, s.h - 12, { size: 'micro', color: C().ink2, halo: true });
   for (const [i, col, w] of [[st.hover, C().ink, 1.5], [st.sel, C().hi, 2]]) {
     if (i < 0) continue;
     const x = qx[i], y = qy[i];
@@ -2044,7 +2043,7 @@ function drawLc(s, i, fe, isTrans) {
   const L = 52, Rm = 10, T = 8, Bm = 28;
   const X = (t) => L + (t - tA) / Math.max(1e-6, tB - tA) * (s.w - L - Rm);
   const Y = mag ? (m) => T + (m - lo) / (hi - lo) * (s.h - T - Bm) : (f) => s.h - Bm - (f - lo) / (hi - lo) * (s.h - T - Bm);
-  for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4, y = Y(v); pencilLine(g, L, y, s.w - Rm, y, { color: C().grid, passes: 1 }); text(g, mag ? v.toFixed(1) : fmtN(Math.round(v)), L - 5, y + 4, { size: 10.5, color: C().ink3, align: 'right' }); }
+  for (const v of K.niceTicks(lo, hi, 4)) { const y = Y(v); pencilLine(g, L, y, s.w - Rm, y, { color: C().grid, passes: 1 }); text(g, mag ? v.toFixed(1) : K.fmtK(v), L - 5, y + 4, { size: 'micro', color: C().ink3, align: 'right' }); }
   if (!mag) pencilLine(g, L, Y(0), s.w - Rm, Y(0), { color: C().ink3, width: 1 });
   const span = tB - tA, step = span > 200 ? 60 : span > 60 ? 30 : span > 20 ? 7 : 2;
   for (let t = Math.ceil(tA / step) * step; t <= tB; t += step) text(g, fmtDs(t), X(t), s.h - Bm + 14, { size: 10.5, color: C().ink3, align: 'center' });
