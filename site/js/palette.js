@@ -346,7 +346,7 @@ function build() {
   scrim.className = 'pl-scrim';
   scrim.hidden = true;
   scrim.innerHTML = `<div class="pl-box" role="dialog" aria-modal="true" aria-label="Search and commands">
-    <div class="pl-field">${SEARCH_IC}<input type="text" role="combobox" aria-expanded="true" aria-controls="plList" aria-autocomplete="list" aria-label="Search objects, views, stories, instruments and actions" placeholder="Objects, views, stories, instruments, settings…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go"><button type="button" class="pl-esc" aria-label="Close"><kbd>Esc</kbd></button></div>
+    <div class="pl-field">${SEARCH_IC}<input type="text" role="combobox" aria-expanded="true" aria-controls="plList" aria-autocomplete="list" aria-label="Search objects, views, stories, instruments and actions" placeholder="Objects, views, stories, instruments, settings…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go"><button type="button" class="btn icon quiet sm pl-esc" aria-label="Close"><kbd>Esc</kbd></button></div>
     <ul id="plList" role="listbox" aria-label="Results"></ul>
     <p class="pl-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>${MOD}</kbd><kbd>K</kbd> or <kbd>/</kbd> from anywhere</span><button type="button" class="pl-keys">All shortcuts <kbd>?</kbd></button></p>
     <p class="sr" aria-live="polite"></p></div>`;
@@ -416,7 +416,7 @@ export function openKeys(from) {
     document.body.appendChild(keysEl);
   }
   const r = keyRows();
-  keysEl.innerHTML = `<div class="ky-box" role="dialog" aria-modal="true" aria-labelledby="kyTitle"><div class="ky-head"><h2 id="kyTitle">Keyboard shortcuts</h2><button type="button" class="icon-btn sm ky-close" aria-label="Close shortcuts" title="Close (Esc)">${CLOSE_IC}</button></div>
+  keysEl.innerHTML = `<div class="ky-box" role="dialog" aria-modal="true" aria-labelledby="kyTitle"><div class="ky-head"><h2 id="kyTitle">Keyboard shortcuts</h2><button type="button" class="btn icon quiet sm ky-close" aria-label="Close shortcuts" title="Close (Esc)">${CLOSE_IC}</button></div>
     <h3>Anywhere</h3>${dl(r.anywhere)}<h3>On a floor</h3>${dl(r.floor)}<h3>In a story</h3>${dl(r.story)}
     <p>Letter keys are ignored while you type in a field. Everything here is also in the palette (${esc(MOD)} K).</p></div>`;
   keysEl.querySelector('.ky-close').addEventListener('click', () => closeKeys());

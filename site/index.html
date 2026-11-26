@@ -24,7 +24,7 @@
       <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
       <label class="sr" for="search">Search</label>
       <input id="search" type="search" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sugg" placeholder="Search" autocomplete="off" spellcheck="false">
-      <button id="clear" class="icon-btn sm" type="button" aria-label="Clear search" title="Clear search" hidden><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <button id="clear" class="btn icon quiet sm" type="button" aria-label="Clear search" title="Clear search" hidden><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       <span class="slot search-slot" data-slot="search"></span>
     </div>
     <ul class="sugg" id="sugg" role="listbox" aria-label="Matching asteroids" hidden></ul>
@@ -32,29 +32,29 @@
   <nav id="altLadder" class="ladder" aria-label="Look up: modes by distance">
     <div class="lad-track" role="button" aria-label="Open the distance ladder"><svg class="lad-svg" aria-hidden="true" focusable="false"></svg></div>
     <div class="lad-group" role="radiogroup" aria-label="Mode" aria-describedby="ladderNow">
-    <button type="button" role="radio" data-mode="dm" aria-checked="false" tabindex="-1" aria-label="Dark matter: the CMB and galaxy clusters, 0.7 to 13.5 billion years of light" title="Dark matter"><span class="box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M3 12c3-5 6-7.5 9-7.5s6 2.5 9 7.5M3 12c3 5 6 7.5 9 7.5s6-2.5 9-7.5"/></svg></span><span class="lw">Dark matter</span></button>
-    <button type="button" role="radio" data-mode="stars" aria-checked="true" tabindex="0" aria-label="Stars and beyond: variable stars to quasars, 30 light-years to 11 billion years of light" title="Stars &amp; beyond"><span class="box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 5.2 5.4.3-4.2 3.4 1.4 5.3L12 14.7l-4.5 3 1.4-5.3-4.2-3.4 5.4-.3z"/><path d="M19 3v3M17.5 4.5h3M5 18.5v2.5M3.75 19.75h2.5"/></svg></span><span class="lw">Stars</span></button>
-    <button type="button" role="radio" data-mode="asteroids" aria-checked="false" tabindex="-1" aria-label="Asteroids: 0.02 to 6 AU from Earth" title="Asteroids"><span class="box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9.5" ry="4.2" transform="rotate(-20 12 12)"/><circle cx="12" cy="12" r="2.2"/><path d="M19.3 8.1c.9-.2 1.6.4 1.4 1.3-.2.8-1.1 1.1-1.7.6-.6-.4-.5-1.6.3-1.9z"/></svg></span><span class="lw">Asteroids</span></button>
-    <button type="button" role="radio" data-mode="earth" aria-checked="false" tabindex="-1" aria-label="Earth: lightning, aurora and the solar wind, 10 km to 1.5 million km" title="Earth"><span class="box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5c-3.2 2.6-4.6 5.4-4.6 8.5s1.4 5.9 4.6 8.5M3.5 12h17"/></svg></span><span class="lw">Earth</span></button>
+    <button type="button" class="btn tile" role="radio" data-mode="dm" aria-checked="false" tabindex="-1" aria-label="Dark matter: the CMB and galaxy clusters, 0.7 to 13.5 billion years of light" title="Dark matter"><span class="box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M3 12c3-5 6-7.5 9-7.5s6 2.5 9 7.5M3 12c3 5 6 7.5 9 7.5s6-2.5 9-7.5"/></svg></span><span class="lw">Dark matter</span></button>
+    <button type="button" class="btn tile" role="radio" data-mode="stars" aria-checked="true" tabindex="0" aria-label="Stars and beyond: variable stars to quasars, 30 light-years to 11 billion years of light" title="Stars &amp; beyond"><span class="box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 5.2 5.4.3-4.2 3.4 1.4 5.3L12 14.7l-4.5 3 1.4-5.3-4.2-3.4 5.4-.3z"/><path d="M19 3v3M17.5 4.5h3M5 18.5v2.5M3.75 19.75h2.5"/></svg></span><span class="lw">Stars</span></button>
+    <button type="button" class="btn tile" role="radio" data-mode="asteroids" aria-checked="false" tabindex="-1" aria-label="Asteroids: 0.02 to 6 AU from Earth" title="Asteroids"><span class="box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9.5" ry="4.2" transform="rotate(-20 12 12)"/><circle cx="12" cy="12" r="2.2"/><path d="M19.3 8.1c.9-.2 1.6.4 1.4 1.3-.2.8-1.1 1.1-1.7.6-.6-.4-.5-1.6.3-1.9z"/></svg></span><span class="lw">Asteroids</span></button>
+    <button type="button" class="btn tile" role="radio" data-mode="earth" aria-checked="false" tabindex="-1" aria-label="Earth: lightning, aurora and the solar wind, 10 km to 1.5 million km" title="Earth"><span class="box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5c-3.2 2.6-4.6 5.4-4.6 8.5s1.4 5.9 4.6 8.5M3.5 12h17"/></svg></span><span class="lw">Earth</span></button>
     </div>
     <p class="lad-read" aria-hidden="true"><b></b><span></span></p>
     <p id="ladderNow" class="sr"></p>
     <div id="ladderPeek" class="lad-peek" role="dialog" aria-label="Distance ladder" aria-modal="false" hidden>
-      <div class="lp-head"><h2>Distance ladder</h2><button class="icon-btn sm lp-close" type="button" aria-label="Close" title="Close"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <div class="lp-head"><h2>Distance ladder</h2><button class="btn icon quiet sm lp-close" type="button" aria-label="Close" title="Close"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
       <div class="lp-body"><svg aria-hidden="true" focusable="false"></svg><div class="lp-group" role="radiogroup" aria-label="Floor"></div></div>
       <div class="lp-sel"></div>
     </div>
   </nav>
   <div class="right">
     <div class="slot hdr-slot" data-slot="header"></div>
-    <button id="dataBtn" class="btn data-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="dataPanel" title="Data source and updates">
+    <button id="dataBtn" class="btn quiet data-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="dataPanel" title="Data source and updates">
       <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6M5 12v6c0 1.4 3.1 2.6 7 2.6.6 0 1.2 0 1.7-.1M19 12v2.5M17.5 17.5l2 2 2-2M19.5 14.5v5"/></svg>
       <span class="long" id="dataLbl">Data</span>
       <span class="hdot" id="hDot" aria-hidden="true" hidden></span>
     </button>
-    <button id="theme" class="icon-btn theme" type="button"></button>
+    <button id="theme" class="btn icon theme" type="button"></button>
     <div id="dataPanel" class="sheet" role="dialog" aria-modal="false" aria-labelledby="dataTtl" hidden>
-      <div class="sheet-head"><h2 id="dataTtl">Data</h2><button id="dataClose" class="icon-btn sm" type="button" aria-label="Close" title="Close"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <div class="sheet-head"><h2 id="dataTtl">Data</h2><button id="dataClose" class="btn icon quiet sm" type="button" aria-label="Close" title="Close"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
       <section class="health" id="health" aria-label="Data health" hidden></section>
       <p id="dataStatus" class="status"></p>
       <label class="opt"><input type="checkbox" id="optRefresh" checked> <span><span id="optRefreshTxt">Refresh the asteroids already here</span> <small id="optRefreshN"></small></span></label>

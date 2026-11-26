@@ -1173,7 +1173,7 @@ function cardStorm(i) {
   ];
   const img = IMAGERY[c.sat];
   const head = cardHead({
-    name: c.name, sw: tokens.ember, cls: 'Thunderstorm complex', note: `seen by ${esc(SAT_NAME[c.sat] || c.sat)}`,
+    name: c.name, sw: tokens.ember, kind: 'Storm', cls: 'Thunderstorm complex', note: `seen by ${esc(SAT_NAME[c.sat] || c.sat)}`,
     chips: SC.chipsHtml(chips).replace(/<div class="why">(.*)<\/div>/, (m, x) => `<div class="why">${x}${chips.slice(3).map((y) => `<span>${esc(y)}</span>`).join('')}</div>`),
     how: 'measured', prov: `flashes counted by ${esc(SAT_NAME[c.sat] || c.sat)}, ${c.sat === 'MTI1' ? 'via EUMETSAT' : 'via NOAA NODD'} · nightly copy to ${hhmm(T1)} UTC ${prov('nightly')}`,
     ladder: '<b>≈ 12 km</b> above the ground · a typical storm top; GLM gives no heights',
@@ -1223,7 +1223,7 @@ function cardPlace(lat, lon) {
   else if (nf != null) facts.push(['Flashes within 100 km', `${fmtN(nf)} <small>in the last hour</small>`]);
   const kinds = [cov ? `lightning from ${LI_ON ? 'GLM and MTG LI' : 'GLM'}, nightly to ${hhmm(T1)} UTC ${prov('nightly')}` : 'no open lightning data here', `aurora from the OVATION model ${prov('model')}`, 'city lights 2016'];
   const head = cardHead({
-    name: near ? `Near ${near.label}` : 'A place on the map', sw: 'var(--gold)', cls: llStr(lat, lon), note: fmtUtc(t),
+    name: near ? `Near ${near.label}` : 'A place on the map', kind: 'Place', sw: 'var(--gold)', cls: llStr(lat, lon), note: fmtUtc(t),
     how: cov ? 'measured' : 'model', prov: kinds.join(' · '),
     ladder: 'Above this point: storm tops at <b>≈ 12 km</b>, the green aurora at <b>≈ 110 km</b>',
     links: high ? [{ label: 'SWPC aurora forecast', href: SWPC_AURORA }] : [],
@@ -1248,7 +1248,7 @@ function cardAurora(hemi) {
   const v = nowValues(), ch = mine ? auroraAt(site.lat, site.lon, t) : null;
   const turned = !(st.live && liveGrid) && run;
   const head = cardHead({
-    name: hemi > 0 ? 'Northern lights' : 'Southern lights', sw: tokens.aurora, cls: 'Aurora oval', note: 'OVATION Prime model',
+    name: hemi > 0 ? 'Northern lights' : 'Southern lights', sw: tokens.aurora, kind: 'Aurora', cls: 'Aurora oval', note: 'OVATION Prime model',
     how: 'model', prov: run ? `OVATION run ${hhmm(run.obs)} UTC, valid ${hhmm(run.valid)}, from NOAA SWPC${turned ? `, turned with the Sun to ${hhmm(t)}` : ''} ${prov('model')}` : 'no model run kept',
     ladder: '<b>≈ 110 km</b> above the ground · the green aurora shell; the red glow reaches ≈ 220 km',
     links: [{ label: 'SWPC aurora forecast', href: SWPC_AURORA }],
@@ -1715,7 +1715,7 @@ function buildDom() {
       <canvas id="eStrip" aria-label="Space weather over the last day: solar wind, density, magnetic field, Kp, X-rays and aurora power. Click or drag to move in time."></canvas>` },
       { label: 'Regions', cls: 'e-reg', html: '<h3 id="h-ereg">Where is it storming?</h3><p class="cap">Flashes per region over the 24 hours, square-root bar length. Hatched: nobody shares open lightning data there. Click a region to fly to it.</p><div class="eregions" id="eRegions"></div>' },
     ],
-    card: { id: 'eCard', hid: 'h-ecard', body: 'eCardBody', title: 'Earth card' },
+    card: { id: 'eCard', hid: 'h-ecard', body: 'eCardBody', title: 'Lightning and space weather' },
   });
   wireScene('earth', root);
 }

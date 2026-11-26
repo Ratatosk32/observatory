@@ -568,7 +568,7 @@ function renderCard() {
   ];
   const lt = K.cosmo.lookbackGyr(CL.z[i]);
   body.innerHTML = `${cardHead({
-    name: CL.name[i], sw: 'var(--gold)', cls: `${esc(CL.catalogue)} SZ galaxy cluster`, chips: SC.chipsHtml(chipsFor(i)), how: 'indirect',
+    name: CL.name[i], kind: 'Galaxy cluster', sw: 'var(--gold)', cls: `${esc(CL.catalogue)} SZ galaxy cluster`, chips: SC.chipsHtml(chipsFor(i)), how: 'indirect',
     prov: `${esc(CL.catalogue)} catalogue redshift and calibrated SZ mass · alerts inside: Rubin via Fink`,
     ladder: `<b>${lt.toFixed(1)} Gyr of light</b> (z = ${CL.z[i].toFixed(2)}) · indirect, ${esc(CL.catalogue)} catalogue redshift`,
     links: [{ label: 'ACT DR6 on LAMBDA', href: 'https://lambda.gsfc.nasa.gov/product/act/' }],
@@ -682,7 +682,7 @@ function buildDom() {
         <li><b>How the needle should move.</b> As the wide survey fills the southern sky, the noise shrinks; if explosions follow dark matter like ordinary galaxies, the needle should cross 3σ around late 2027. ${CT.catalogue === 'ACT DR6' ? 'The cluster test, now on ten thousand ACT DR6 clusters, should get there about as soon.' : 'The cluster test should follow around mid-2028.'}</li>
       </ol>` },
     ],
-    card: { id: 'dCard', hid: 'h-dcard', body: 'dCardBody', title: 'Object card' },
+    card: { id: 'dCard', hid: 'h-dcard', body: 'dCardBody', title: 'ACT clusters' },
   });
   wireScene('dm', root);
 }

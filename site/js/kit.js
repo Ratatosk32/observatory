@@ -1,3 +1,5 @@
+import { icon } from './icons.js';
+
 export const DEG = Math.PI / 180;
 export const BANDS = ['u', 'g', 'r', 'i', 'z', 'y'];
 export const ns = (window.Observatory = window.Observatory || {});
@@ -176,11 +178,7 @@ export function showTip(html, x, y) {
 }
 export function hideTip() { tip.hidden = true; }
 
-const IC = {
-  chev: '<svg class="ic chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
-  fs: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
-  close: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>',
-};
+const IC = { chev: icon('chev', 'chev'), fs: icon('full'), close: icon('close') };
 let fsPanel = null;
 export const fullscreenPanel = () => fsPanel;
 const panelKey = (el) => 'observatory-collapsed-' + (el.querySelector('h2') || {}).id;
@@ -221,7 +219,7 @@ export function panelControls(root = document) {
     const bar = el.querySelector('.pbar');
     const ctl = document.createElement('div');
     ctl.className = 'pctl';
-    ctl.innerHTML = `<button type="button" class="icon-btn sm col">${IC.chev}</button><button type="button" class="icon-btn sm fsb" aria-label="Full screen" title="Full screen">${IC.fs}</button>`;
+    ctl.innerHTML = `<button type="button" class="btn icon quiet sm col">${IC.chev}</button><button type="button" class="btn icon quiet sm fsb" aria-label="Full screen" title="Full screen">${IC.fs}</button>`;
     bar.appendChild(ctl);
     ctl.querySelector('.col').addEventListener('click', () => { const v = !el.classList.contains('collapsed'); setCollapsed(el, v); saveCollapsed(el, v); });
     ctl.querySelector('.fsb').addEventListener('click', () => (fsPanel === el ? exitFs() : enterFs(el)));
@@ -237,8 +235,8 @@ export function setUrl(updates) {
 
 const themeHooks = [];
 export const onTheme = (fn) => themeHooks.push(fn);
-const SUN_IC = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.1 7.9c2.3.1 4.1 2 4 4.3-.1 2.3-2 4-4.3 3.9-2.2-.1-4-2-3.9-4.3.1-2.2 2-4 4.2-3.9z"/><path d="M12 2.6v2.3M12.1 19.2v2.2M2.7 12.1h2.2M19.1 11.9h2.3M5.3 5.4l1.6 1.5M17.1 17.2l1.6 1.6M5.4 18.7l1.5-1.6M17.2 6.9l1.5-1.6"/></svg>';
-const MOON_IC = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.6 14.6c-1 .4-2 .6-3.1.6-4.4 0-7.9-3.5-7.9-7.9 0-1.1.2-2.1.6-3.1-3.1 1.1-5.3 4.1-5.2 7.6.1 4.5 3.8 8 8.2 7.9 3.4 0 6.3-2.1 7.4-5.1z"/><path d="M17.3 4.2v2.4M16.1 5.4h2.4"/></svg>';
+const SUN_IC = icon('sun');
+const MOON_IC = icon('moon');
 export function setThemeLabel() {
   const b = $('#theme'), lbl = C.dark ? 'Switch to day paper' : 'Switch to night paper';
   b.innerHTML = C.dark ? SUN_IC : MOON_IC;

@@ -16,7 +16,7 @@ function buildDom() {
     mainId: 'astMain', qid: 'h-map', stageCls: 'map-panel', pillId: 'astTools',
     question: 'Where are they, and where is Rubin looking?',
     canvas: '<canvas id="map" aria-label="Solar System map"></canvas>',
-    zoom: '<div class="zoom stops"><button class="btn sm" data-zoom="1.8" type="button">Inner</button><button class="btn sm" data-zoom="3.9" type="button">Belt</button><button class="btn sm" data-zoom="6.2" type="button">Jupiter</button></div>',
+    zoom: '<div class="zoom stops seg" role="group" aria-label="Zoom stops"><button class="btn sm" data-zoom="1.8" type="button">Inner</button><button class="btn sm" data-zoom="3.9" type="button">Belt</button><button class="btn sm" data-zoom="6.2" type="button">Jupiter</button></div>',
     views: {
       nav: 'presets', label: 'Guided views of the asteroids', first: 'Whole sample', legend: 'legend-map',
       extra: [['Size', `<div class="sizebar" id="sizebar" role="group" aria-labelledby="sizeLbl">
@@ -48,7 +48,7 @@ function buildDom() {
     </div>
     <p class="body" id="stampBody">The template holds only noise at this spot: the asteroid was elsewhere when the template visits were taken. Subtracting it leaves the asteroid alone. It is an elongated streak rather than a round star because it moved about 3″ during the 30-second exposure, which is the signature of a nearby, fast-moving object. The alert pipeline then matches the source to a predicted position of a known object and attaches its heliocentric position and velocity, which is what every orbit on this page is built from.</p>` },
     ],
-    card: { id: 'card', hid: 'h-card', body: 'cardBody', title: 'Asteroid card' },
+    card: { id: 'card', hid: 'h-card', body: 'cardBody', title: 'Rubin asteroids' },
   });
   wireScene('asteroids', root);
 }
@@ -648,7 +648,7 @@ function hudRects(s) {
   const key = `${s.w}x${s.h}|${hud.textContent.length}`;
   if (hudBox.key === key) return hudBox.r;
   const cr = $('#map').getBoundingClientRect();
-  const r = [...hud.querySelectorAll('.hb, .pill-host > *')].filter((e) => e.getClientRects().length).map((e) => {
+  const r = [...hud.querySelectorAll('.btn, .pill-host > *')].filter((e) => e.getClientRects().length).map((e) => {
     const b = e.getBoundingClientRect();
     return [b.left - cr.left - 4, b.top - cr.top - 4, b.right - cr.left + 4, b.bottom - cr.top + 4];
   });
@@ -1464,7 +1464,7 @@ function renderCardInner() {
   const col = o.col ? Object.entries(o.col).map(([k, v]) => `${k[0]}−${k[1]} ${v.toFixed(2)}`).join(', ') : null;
   const sstr = encodeURIComponent(o.des || o.name);
   const head = cardHead({
-    name: o.name, sw: C.cls[o.cls], cls: esc(CLASS[o.cls].name), note: esc(CLASS[o.cls].desc), chips: SC.chipsHtml(chipsFor(o)), how: 'measured',
+    name: o.name, kind: 'Asteroid', sw: C.cls[o.cls], cls: esc(CLASS[o.cls].name), note: esc(CLASS[o.cls].desc), chips: SC.chipsHtml(chipsFor(o)), how: 'measured',
     prov: `orbit fitted to ${o.det.length} Rubin detection${o.det.length === 1 ? '' : 's'} on ${o.nn} night${o.nn === 1 ? '' : 's'}, via Fink, to ${fmtShort(Math.max(...t))}`,
     ladder: ladLine(o),
     links: [{ label: 'JPL SBDB', href: `https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=${sstr}` }, { label: 'MPC', href: `https://minorplanetcenter.net/db_search/show_object?object_id=${sstr}` }],
@@ -1573,7 +1573,7 @@ export const provider = {
 };
 function legendMap() {
   const counts = META.classes;
-  const clsBtns = (withN) => CLASS_ORDER.filter((c) => counts[c]).map((c) => `<button type="button" class="k${state.preset === 'cls-' + c ? ' on' : ''}" data-cls="${c}" title="${CLASS[c].name}: ${CLASS[c].desc}. Click to show only these." aria-pressed="${state.preset === 'cls-' + c}"><span class="sw" style="background:${C.cls[c]}"></span>${CLASS[c].short}${withN ? ' ' + fmtN(counts[c]) : ''}</button>`).join('');
+  const clsBtns = (withN) => CLASS_ORDER.filter((c) => counts[c]).map((c) => `<button type="button" class="chip k${state.preset === 'cls-' + c ? ' on' : ''}" data-cls="${c}" title="${CLASS[c].name}: ${CLASS[c].desc}. Click to show only these." aria-pressed="${state.preset === 'cls-' + c}"><span class="sw" style="background:${C.cls[c]}"></span>${CLASS[c].short}${withN ? ' ' + fmtN(counts[c]) : ''}</button>`).join('');
   $('#legend-map').innerHTML = `<span class="ttl">Orbit class (click to filter):</span>` + clsBtns(true) +
     `<span class="k"><span class="sw" style="background:${C.dark ? '#ffe4be' : '#8a3a14'};box-shadow:0 0 6px ${C.dark ? 'rgba(242,168,120,0.9)' : 'rgba(176,70,24,0.6)'}"></span>detected by Rubin within ±2 d</span><span class="k"><span class="sw sq" style="background:${C.gold};opacity:.45"></span>Rubin's lines of sight</span><span class="k"><span class="sw ring" style="border-color:${C.hi}"></span>selected</span>`;
   $('#legend-el').innerHTML = clsBtns(false) +

@@ -355,7 +355,7 @@ function probeInPage() {
   const W = innerWidth, H = innerHeight;
   const vis = (e) => {
     const r = e.getBoundingClientRect();
-    if (r.width < 1 || r.height < 1 || r.bottom <= 0 || r.top >= H || r.right <= 0 || r.left >= W) return false;
+    if (r.width <= 1.5 || r.height <= 1.5 || r.bottom <= 0 || r.top >= H || r.right <= 0 || r.left >= W) return false;
     if (e.closest('[hidden]')) return false;
     for (let n = e; n && n.nodeType === 1; n = n.parentElement) {
       const c = getComputedStyle(n);

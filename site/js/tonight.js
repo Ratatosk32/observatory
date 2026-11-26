@@ -1,4 +1,5 @@
 import * as K from './kit.js';
+import { icon } from './icons.js';
 import * as SKY from './skycalc.js';
 import * as SL from './starlight.js';
 import { PICK, RUBIN, guessSite } from './places.js';
@@ -353,7 +354,7 @@ export function createTonight(T, env) {
       <canvas class="finder" aria-label="Finder chart"></canvas>
       <p class="note sexa">${sexa(r.ra, true)} ${sexa(r.dec, false)}</p>
       <p class="links"><button class="btn" type="button" data-save>Save finder (PNG)</button> <span class="note">Report: <a href="https://www.wis-tns.org/object/${encodeURIComponent(tnsName)}" target="_blank" rel="noopener">TNS</a> · <a href="https://www.aavso.org/webobs" target="_blank" rel="noopener">AAVSO</a></span></p>
-      <p class="note"><button type="button" class="link" data-back>← Tonight’s list</button></p>`;
+      <p class="note"><button type="button" class="link lk" data-back>${icon('back')}Tonight’s list</button></p>`;
     const altS = K.setupCanvas(body.querySelector('.altc'), (s) => altChart(s, k));
     const lcS = K.setupCanvas(body.querySelector('.lcc'), (s) => lcChart(s, k));
     const finderS = K.setupCanvas(body.querySelector('.finder'), cardTokens((s) => { s.ctx.save(); drawFinder(s.ctx, s.w, r); s.ctx.restore(); }));

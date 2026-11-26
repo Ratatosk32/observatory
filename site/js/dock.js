@@ -5,11 +5,11 @@ const docks = {};
 const body = document.body;
 
 export function dockHtml({ play, date, track, speed, label, live = false }) {
-  const pin = live ? `<button id="${live}" class="elive" type="button" aria-pressed="false" aria-label="Live: now" title="Live: now (L)"><i aria-hidden="true"></i><span>Live</span></button>` : '';
+  const pin = live ? `<button id="${live}" class="btn elive" type="button" aria-pressed="false" aria-label="Live: now" title="Live: now (L)"><i aria-hidden="true"></i><span>Live</span></button>` : '';
   return `<button id="${play}" class="btn play" type="button" aria-label="Play" title="Play or pause (Space)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="${PLAY_D}"/></svg><span>Play</span></button>
 <output id="${date}" class="date"></output>
 <div class="trk"><canvas id="${track}" class="track" tabindex="0" role="slider" aria-label="${esc(label)}" aria-valuemin="0" aria-valuemax="1000" aria-valuenow="0"></canvas>${pin}</div>
-<button id="${speed}" class="spd" type="button" title="Playback speed: click, or [ and ]"></button>`;
+<button id="${speed}" class="btn spd" type="button" title="Playback speed: click, or [ and ]"></button>`;
 }
 
 export const fmtSpeed = (unit, units) => (v) => `${v} ${v === 1 ? unit : units}/s`;

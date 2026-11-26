@@ -6,8 +6,14 @@ export function provMark(how) {
   return `<svg class="pv how-${how}" viewBox="0 0 24 10" aria-hidden="true"><path class="cv" d="M1 0.5V9.5L7.5 5Z"/><path class="ct" d="M7 5H17"/><path class="cd" d="M18 5h6"/></svg>`;
 }
 
-export function cardHead({ name, sw, cls, note, chips = '', how = 'measured', prov, ladder, links = [] }) {
-  const out = [`<h3>${esc(name)}</h3>`];
+const kindOf = (cls) => {
+  const t = String(cls || '').replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/\s*\(.*$/, '').split(' · ')[0].trim();
+  return /\d/.test(t) || !t ? '' : t;
+};
+
+export function cardHead({ name, sw, cls, note, kind, chips = '', how = 'measured', prov, ladder, links = [] }) {
+  const k = kind || kindOf(cls);
+  const out = [`<h3${k ? ` data-kind="${esc(k)}"` : ''}>${esc(name)}</h3>`];
   if (cls) out.push(`<div class="cls"><span class="sw" style="background:${sw}"></span>${cls}${note ? ` <span class="cls-n">· ${note}</span>` : ''}</div>`);
   if (chips) out.push(chips);
   out.push('<div class="chead">');

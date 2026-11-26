@@ -1,4 +1,5 @@
 import * as K from './kit.js';
+import { icon } from './icons.js';
 import { sceneHtml, wireScene, openInstrument, showCard } from './scene.js';
 import { dockHtml, makeDock, fmtSpeed, dataLoop, LOOP_NOTE } from './dock.js';
 import { cardHead } from './cardhead.js';
@@ -146,7 +147,7 @@ function buildDom() {
   root.innerHTML = sceneHtml('stars', {
     qid: 'h-sky', stageCls: 's-sky', pillId: 'skyTools',
     question: 'Where in the sky does something change?',
-    canvas: `<canvas id="sky" tabindex="0" aria-label="${PROJ_LABEL.sky}"></canvas><div class="proj-switch" id="projSwitch" role="radiogroup" aria-label="Show the same objects on the sky, by distance or on the HR diagram (D)">${PROJS.map((k) => `<button type="button" role="radio" data-proj="${k}" aria-checked="${k === 'sky'}" tabindex="${k === 'sky' ? 0 : -1}">${PROJ_WORDS[k]}</button>`).join('')}</div>`,
+    canvas: `<canvas id="sky" tabindex="0" aria-label="${PROJ_LABEL.sky}"></canvas><div class="proj-switch seg" id="projSwitch" role="radiogroup" aria-label="Show the same objects on the sky, by distance or on the HR diagram (D)">${PROJS.map((k) => `<button type="button" role="radio" data-proj="${k}" aria-checked="${k === 'sky'}" tabindex="${k === 'sky' ? 0 : -1}">${PROJ_WORDS[k]}</button>`).join('')}</div>`,
     zoom: '<div class="zoom"><button class="btn sm" type="button" id="zoomIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="zoomOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="zoomReset" hidden>Reset view</button></div>',
     views: {
       nav: 'sPresets', label: 'Guided views of the stars sample', first: 'Everything', legend: 'sLegend',
@@ -167,7 +168,7 @@ function buildDom() {
       { label: 'HR diagram', cls: 's-hr', html: '<h3 id="h-hrd">What kind of star is it?</h3><p class="cap">Background: 1.34 million Gaia DR3 stars within 200 pc, each cell tinted with the stars’ own BP − RP colour and lit by how many stars it holds (log scale, lightly smoothed). Top and right axes are approximate: temperature from a dwarf colour–temperature relation, luminosity in the G band without bolometric correction. Gold band: the instability strip, where RR Lyrae, Cepheids and δ Scuti stars pulsate. On top: the sample’s stars with a Gaia parallax better than 5σ, shaped by family. Flare stars sit at the cool bottom of the main sequence, white-dwarf binaries below it; RR Lyrae are too far for good parallaxes, so only one appears. Scroll or pinch to zoom, drag to pan.</p><div class="map-wrap"><canvas id="hr" tabindex="0" aria-label="Hertzsprung-Russell diagram. Plus and minus zoom, 0 resets."></canvas><div class="zoom"><button class="btn sm" type="button" id="hrIn" aria-label="Zoom in" title="Zoom in">+</button><button class="btn sm" type="button" id="hrOut" aria-label="Zoom out" title="Zoom out">−</button><button class="btn sm" type="button" id="hrReset" hidden>Reset view</button></div></div><div class="legend" id="hrLegend"></div>' },
       { label: 'Season', cls: 's-ribbon', html: '<h3 id="h-rib">When was Rubin watching?</h3><p class="cap">The season ribbon is the time track under the map. Every night Fink has statistics for: all alerts that night (log scale), coloured by filter. Dots below: this sample’s alerts per night, to show how sparse the sample is. Hatched: no data. Click or drag to move in time; ← → step a night, Shift for a week.</p><p class="note" id="sSeason"></p>' },
     ],
-    card: { id: 'sCard', hid: 'h-scard', body: 'sCardBody', title: 'Object card' },
+    card: { id: 'sCard', hid: 'h-scard', body: 'sCardBody', title: 'Rubin alerts' },
   });
   wireScene('stars', root);
 }
@@ -1776,7 +1777,7 @@ function hrLegend() {
 function legend() {
   const counts = GROUPS.map(() => 0);
   for (let i = 0; i < N; i++) counts[grp[i]]++;
-  $('#sLegend').innerHTML = '<span class="ttl">Show:</span>' + GROUPS.map((gp, gi) => `<button type="button" class="k${st.groupsOn.has(gi) ? ' on' : ''}" data-g="${gi}" aria-pressed="${st.groupsOn.has(gi)}" title="${gp.fams.map((k) => FAM[FKEY.indexOf(k)].label).join(', ')}. Click to toggle; Alt-click to show only this."><span class="sw" style="background:${gcol[gi]}"></span>${gp.label} ${fmtN(counts[gi])}</button>`).join('') +
+  $('#sLegend').innerHTML = '<span class="ttl">Show:</span>' + GROUPS.map((gp, gi) => `<button type="button" class="chip k${st.groupsOn.has(gi) ? ' on' : ''}" data-g="${gi}" aria-pressed="${st.groupsOn.has(gi)}" title="${gp.fams.map((k) => FAM[FKEY.indexOf(k)].label).join(', ')}. Click to toggle; Alt-click to show only this."><span class="sw" style="background:${gcol[gi]}"></span>${gp.label} ${fmtN(counts[gi])}</button>`).join('') +
     `<span class="k"><span class="sw ring" style="border-color:${gcol[0]}"></span>got fainter</span><span class="k"><span class="sw ring" style="border-color:${C().hi}"></span>selected</span>`;
   $('#sLegend').querySelectorAll('[data-g]').forEach((b) => b.addEventListener('click', (e) => {
     const gi = +b.dataset.g;
@@ -1940,7 +1941,7 @@ function renderCard() {
     body.innerHTML = `<h3 class="ph">Most unusual right now</h3>
       <p class="cap">Chosen tonight from ${fmtN(N)} objects by rarity, outbursts, brightness, extremes and freshness.</p>
       <ul class="hooks">${top.map((o) => `<li><button type="button" data-pick="${o}"><span class="sw" style="background:${gcol[grp[o]]}"></span><b>${esc(humanName(o))}</b>${SC.chipsHtml(chipsFor(o).slice(0, 2))}</button></li>`).join('')}
-      <li><button type="button" class="solo" data-stories="1"><b>Objects from the stories →</b></button></li></ul>`;
+      <li><button type="button" class="solo" data-stories="1"><b class="lk">Objects from the stories ${icon('next')}</b></button></li></ul>`;
     body.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => select(+b.dataset.pick)));
     body.querySelector('[data-stories]').addEventListener('click', () => { st.cardStories = true; renderCard(); });
     return;
@@ -1949,7 +1950,7 @@ function renderCard() {
     const feats = [...new Set([...Object.values(S.stories || {}).map((x) => x.o), ...S.featured.map((f) => f.o)])];
     body.innerHTML = `<h3 class="ph">Pick an object</h3>
       <p class="cap">Tap a spark or ember on the sky, a marker on the distance ladder or a star in the HR diagram, or search a name. Some objects worth meeting:</p>
-      <ul class="hooks">${feats.map((o) => `<li><button type="button" data-pick="${o}"><span class="sw" style="background:${gcol[grp[o]]}"></span><b>${esc(humanName(o))}</b><span>${esc(hookOf(o))}</span></button></li>`).join('')}${scS ? '<li><button type="button" data-back="1"><b>← Most unusual right now</b></button></li>' : ''}</ul>`;
+      <ul class="hooks">${feats.map((o) => `<li><button type="button" data-pick="${o}"><span class="sw" style="background:${gcol[grp[o]]}"></span><b>${esc(humanName(o))}</b><span>${esc(hookOf(o))}</span></button></li>`).join('')}${scS ? `<li><button type="button" data-back="1"><b class="lk">${icon('back')}Most unusual right now</b></button></li>` : ''}</ul>`;
     body.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => select(+b.dataset.pick)));
     const back = body.querySelector('[data-back]'); if (back) back.addEventListener('click', () => { st.cardStories = false; renderCard(); });
     return;

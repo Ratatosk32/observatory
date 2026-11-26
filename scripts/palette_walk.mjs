@@ -15,7 +15,7 @@ const ROWS = [
   ['Stars sky', 'stars', 'floor:stars', `document.body.dataset.mode === 'stars' && shown('.scene[data-floor="stars"] .sc-stage')`],
   ['Ladder peek', 'distance ladder', 'act:ladder', `shown('#ladderPeek')`],
   ['Search per floor with Worth a look', '', '@worth', ''],
-  ['Data panel, live updates, resets', 'data', 'act:data', `shown('#dataPanel') && shown('#doReset')`],
+  ['Data panel, live updates, resets', 'data', 'act:data', `shown('#dataPanel') && (document.querySelector('#doReset').scrollIntoView({ block: 'nearest' }), shown('#doReset'))`],
   ['Data health verdict, first line of Above you', 'above', 'act:brief', `shown('#aboveYou .ab-status') && shown('#aboveYou .ab-floors')`],
   ['Showcase pill', 'show all', 'act:pill', `pillChanged()`],
   ['A sample of Rubin alerts, not the survey (info)', 'about', 'act:about', `shown('#starsInfo .honest')`],

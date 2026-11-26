@@ -1,14 +1,7 @@
 import { esc, ns, onKey, shell, setCollapsed, reduceMotion } from './kit.js';
+import { icon } from './icons.js';
 
-const svg = (d) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
-export const ICON = {
-  chev: svg('<path d="M7 10l5 5 5-5"/>'),
-  views: svg('<path d="M4 7h16M7 12h10M10 17h4"/>'),
-  book: svg('<path d="M4 5.5c2.5-1 5.5-1 8 .8 2.5-1.8 5.5-1.8 8-.8v13c-2.5-1-5.5-1-8 .8-2.5-1.8-5.5-1.8-8-.8z"/><path d="M12 6.3v13"/>'),
-  inst: svg('<path d="M4 19h16M6 16V9M10 16V5M14 16v-5M18 16V8"/>'),
-  info: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.2"/>'),
-  close: svg('<path d="M6 6l12 12M18 6 6 18"/>'),
-};
+export const ICON = Object.fromEntries(['chev', 'views', 'book', 'inst', 'info', 'close'].map((k) => [k, icon(k)]));
 
 const INDEP = 'Independent project, not affiliated with or endorsed by the Vera C. Rubin Observatory.';
 const CREDITS = {
@@ -30,8 +23,8 @@ const CREDITS = {
   },
 };
 
-const hudBtn = (cls, icon, label, controls, popup = true) => `<button type="button" class="hb ${cls}" aria-expanded="false" aria-controls="${controls}"${popup ? ' aria-haspopup="dialog"' : ''}>${icon}<span class="hb-t">${label}</span></button>`;
-const pop = (id, title, body, cls = '') => `<div class="pop ${cls}" id="${id}" role="dialog" aria-label="${esc(title)}" hidden><div class="pop-head"><h3>${esc(title)}</h3><button type="button" class="icon-btn sm pop-x" aria-label="Close" title="Close (Esc)">${ICON.close}</button></div><div class="pop-body">${body}</div></div>`;
+const hudBtn = (cls, icon, label, controls, popup = true) => `<button type="button" class="btn glass ${cls}" aria-expanded="false" aria-controls="${controls}"${popup ? ' aria-haspopup="dialog"' : ''}>${icon}<span class="hb-t">${label}</span></button>`;
+const pop = (id, title, body, cls = '') => `<div class="pop ${cls}" id="${id}" role="dialog" aria-label="${esc(title)}" hidden><div class="pop-head"><h3>${esc(title)}</h3><button type="button" class="btn icon quiet sm pop-x" aria-label="Close" title="Close (Esc)">${ICON.close}</button></div><div class="pop-body">${body}</div></div>`;
 
 export function sceneHtml(m, o) {
   const views = `<h4>Guided views</h4><nav class="presets" id="${o.views.nav}" aria-label="${esc(o.views.label)}"></nav>${o.views.legend ? `<h4>Show</h4><div class="legend" id="${o.views.legend}"></div>` : ''}${(o.views.extra || []).map(([h, html]) => `<h4>${esc(h)}</h4>${html}`).join('')}`;
@@ -47,14 +40,14 @@ export function sceneHtml(m, o) {
       ${o.canvas}
       <div class="hud">
         <div class="hud-l">
-          <button type="button" class="hb hb-view" aria-haspopup="dialog" aria-expanded="false" aria-controls="${m}View" aria-label="Guided views and filters">${ICON.views}<span class="hb-t">${esc(o.views.first)}</span>${ICON.chev}</button>
+          <button type="button" class="btn glass hb-view" aria-haspopup="dialog" aria-expanded="false" aria-controls="${m}View" aria-label="Guided views and filters">${ICON.views}<span class="hb-t">${esc(o.views.first)}</span>${ICON.chev}</button>
           ${pop(`${m}View`, 'Views and filters', views, 'pop-view')}
           <div class="pill-host"${o.pillId ? ` id="${o.pillId}"` : ''}></div>
         </div>
         <div class="hud-r">
           ${stories}
           ${hudBtn('hb-inst', ICON.inst, 'Instruments', `${m}Drawer`, false)}
-          <button type="button" class="hb hb-icon hb-info" aria-haspopup="dialog" aria-expanded="false" aria-controls="${m}Info" aria-label="About this view" title="About this view, key and credits">${ICON.info}</button>
+          <button type="button" class="btn glass icon hb-icon hb-info" aria-haspopup="dialog" aria-expanded="false" aria-controls="${m}Info" aria-label="About this view" title="About this view, key and credits">${ICON.info}</button>
           ${pop(`${m}Info`, 'About this view', info, 'pop-info')}
         </div>
       </div>
@@ -65,13 +58,13 @@ export function sceneHtml(m, o) {
     <div class="time dock${o.dockCls ? ' ' + o.dockCls : ''}">${o.dock}</div>
     <p class="credit"><span>${esc(CREDITS[m].line)}</span><button type="button" class="link credit-more">Sources and credits</button></p>
     <section class="drawer" id="${m}Drawer" aria-label="Instruments" hidden>
-      <div class="dhead"><div class="tabs" role="tablist" aria-label="Instruments">${tabs}</div><button type="button" class="icon-btn sm dclose" aria-label="Close instruments" title="Close (Esc or I)">${ICON.close}</button></div>
+      <div class="dhead"><div class="tabs" role="tablist" aria-label="Instruments">${tabs}</div><button type="button" class="btn icon quiet sm dclose" aria-label="Close instruments" title="Close (Esc or I)">${ICON.close}</button></div>
       <div class="dpane">${panes}</div>
     </section>
   </section>
   <aside class="panel card" id="${o.card.id}" aria-labelledby="${o.card.hid}">
     <button type="button" class="grab" aria-label="Expand the card" aria-expanded="false"><span></span></button>
-    <div class="phead"><div class="pbar"><h2 id="${o.card.hid}">${esc(o.card.title)}</h2></div></div>
+    <div class="phead"><div class="pbar"><h2 id="${o.card.hid}" data-list="${esc(o.card.title)}">${esc(o.card.title)}</h2></div></div>
     <div id="${o.card.body}" aria-live="polite"></div>
   </aside>
 </main>`;
@@ -187,7 +180,7 @@ const FLING = 0.45;
 const clampN = (x, a, b) => Math.max(a, Math.min(b, x));
 
 function makeSheet(s, card) {
-  const grab = card.querySelector('.grab'), inner = card.lastElementChild, title = card.querySelector('h2').textContent.trim();
+  const grab = card.querySelector('.grab'), inner = card.lastElementChild, kick = card.querySelector('h2');
   const sh = { pos: 'peek', h: null, on: false, drag: null, moved: false, key: '' };
   grab.setAttribute('aria-controls', inner.id);
   grab.title = 'Drag, tap, or use the arrow keys';
@@ -204,7 +197,7 @@ function makeSheet(s, card) {
   }
   function label() {
     const next = sh.pos === 'full' ? 'lower it to peek' : `raise it to ${SHEET_NAME[SHEET[SHEET.indexOf(sh.pos) + 1]]}`;
-    grab.setAttribute('aria-label', `${title}: ${SHEET_NAME[sh.pos]}. Activate to ${next}`);
+    grab.setAttribute('aria-label', `Card, ${kick.textContent.trim()}: ${SHEET_NAME[sh.pos]}. Activate to ${next}`);
   }
   function apply(pos) {
     sh.pos = pos;
@@ -353,7 +346,7 @@ export function wireScene(m, root) {
   const head = card.querySelector('.pbar');
   const ctl = document.createElement('div');
   ctl.className = 'pctl';
-  ctl.innerHTML = `<button type="button" class="icon-btn sm col"><svg class="ic chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>`;
+  ctl.innerHTML = `<button type="button" class="btn icon quiet sm col">${icon('chev', 'chev')}</button>`;
   head.appendChild(ctl);
   let stored = false;
   try { stored = localStorage.getItem('observatory-collapsed-' + card.querySelector('h2').id) === '1'; } catch (e) { stored = false; }
@@ -364,6 +357,7 @@ export function wireScene(m, root) {
   });
   setCollapsed(card, stored);
   s.sheet = makeSheet(s, card);
+  watchKicker(card);
   const v = stage.querySelector('.verdict');
   if (v) v.addEventListener('click', () => openInstrument(m, 0));
   sync();
@@ -371,6 +365,21 @@ export function wireScene(m, root) {
 }
 
 export const sceneOf = (m) => scenes[m];
+
+function kickerOf(body, fallback) {
+  const h = body.querySelector('h3[data-kind]');
+  if (h) return h.dataset.kind;
+  return fallback;
+}
+function watchKicker(card) {
+  const h2 = card.querySelector('.pbar h2'), body = card.querySelector('[aria-live]');
+  const sync = () => {
+    const t = kickerOf(body, h2.dataset.list);
+    if (h2.textContent !== t) h2.textContent = t;
+  };
+  new MutationObserver(sync).observe(body, { childList: true });
+  sync();
+}
 
 function wake() {
   body.classList.remove('idle');

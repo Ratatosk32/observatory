@@ -216,7 +216,7 @@ function render(b) {
       <p class="ab-fa"><span>${esc(f.source || '')}</span><span>${linksHtml(f.links || (f.link ? [f.link] : []))}</span></p>
     </li>`;
   }).join('');
-  el.innerHTML = `<div class="ab-head"><div><h2 id="abTitle">Above you</h2><p>One line per floor, top to bottom${b.built ? ` · built ${esc(asOf(b.built))}` : ''}</p></div><button type="button" class="icon-btn sm ab-close" aria-label="Close Above you" title="Close (Esc)">${CLOSE_IC}</button></div>
+  el.innerHTML = `<div class="ab-head"><div><h2 id="abTitle">Above you</h2><p>One line per floor, top to bottom${b.built ? ` · built ${esc(asOf(b.built))}` : ''}</p></div><button type="button" class="btn icon quiet sm ab-close" aria-label="Close Above you" title="Close (Esc)">${CLOSE_IC}</button></div>
     ${st ? `<div class="ab-status lvl-${esc(st.level || '')}"><p>${esc(st.text)}${stale}</p>${st.link ? `<p class="ab-fa"><span>${esc(st.source || '')}${st.asOf ? ` · checked ${esc(asOf(st.asOf))}` : ''}</span><span>${linksHtml([st.link])}</span></p>` : ''}</div>` : ''}
     ${b.failed ? '<p class="ab-fd">The brief could not be loaded. Each floor still shows its own data.</p>' : `<ol class="ab-floors">${floors}</ol>`}
     <p class="ab-foot">Live: straight from the source in your browser. Nightly: refreshed once a day. Model: a forecast, not a sighting.</p>`;

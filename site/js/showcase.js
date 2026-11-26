@@ -87,7 +87,7 @@ export function makePill(host, { onToggle, onBack }) {
   const txt = el.querySelector('.sc-txt'), btn = el.querySelector('button');
   let mode = 'show', lastSet = 0, pending = null;
   btn.addEventListener('click', () => (mode === 'back' ? onBack() : onToggle()));
-  const apply = (t, b, m) => { txt.textContent = t; btn.textContent = b; mode = m; lastSet = performance.now(); };
+  const apply = (t, b, m) => { txt.innerHTML = K.esc(t).replace(/\d[\d,.]*/g, (n) => `<b>${n}</b>`); btn.textContent = b; mode = m; lastSet = performance.now(); };
   return {
     el,
     set(t, b, m) {
@@ -109,5 +109,5 @@ export function pillCopy({ phone, all, guided, accepted, total, n0, noun = 'most
 }
 
 export function chipsHtml(chips) {
-  return chips.length ? `<div class="why">${chips.slice(0, 3).map((c, k) => `<span class="${k === 0 ? 'best' : ''}" title="${K.esc(c)}">${K.esc(c)}</span>`).join('')}</div>` : '';
+  return chips.length ? `<div class="why">${chips.slice(0, 3).map((c, k) => `<span class="chip${k === 0 ? ' lead' : ''}" title="${K.esc(c)}">${K.esc(c)}</span>`).join('')}</div>` : '';
 }
