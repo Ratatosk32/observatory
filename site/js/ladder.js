@@ -1,5 +1,5 @@
 import { reduceMotion, esc, ns, perf, pushPerf } from './kit.js';
-import { smoothstep, DUR } from './motion.js';
+import { smoothstep, DUR, ease, reduced } from './motion.js';
 import { lookbackGyr, comovingLy, KM_PER_LY, KM_PER_AU } from './cosmo.js';
 
 const uKm = (km) => Math.log10(km);
@@ -164,10 +164,53 @@ function finish(svg, v) {
 }
 
 
+function flowThumb(group) {
+  const th = document.createElement('span');
+  th.className = 'lad-thumb';
+  th.setAttribute('aria-hidden', 'true');
+  group.prepend(th);
+  group.classList.add('flow');
+  let raf = 0, cur = null;
+  const boxOf = (b) => { const x = b.querySelector('.box'); return x && parseFloat(getComputedStyle(x).borderTopWidth) > 0 ? x : b; };
+  const rel = (r) => { const o = (th.offsetParent || document.body).getBoundingClientRect(); return { l: r.left - o.left, t: r.top - o.top, r: r.right - o.left, b: r.bottom - o.top }; };
+  const put = (q) => {
+    cur = q;
+    Object.assign(th.style, { transform: `translate(${q.l}px, ${q.t}px)`, width: `${q.r - q.l}px`, height: `${q.b - q.t}px`, opacity: '1' });
+  };
+  const target = () => {
+    const on = group.querySelector('[role=radio][aria-checked="true"]');
+    return on && on.getClientRects().length ? rel(boxOf(on).getBoundingClientRect()) : null;
+  };
+  const snap = () => { if (raf) return; const q = target(); if (q) put(q); else th.style.opacity = '0'; };
+  const mix = (a, b, e) => a + (b - a) * e;
+  const lead = (p) => ease.io(Math.min(1, p / 0.65)), trail = (p) => ease.io(Math.max(0, (p - 0.35) / 0.65));
+  const go = () => {
+    const from = cur;
+    cancelAnimationFrame(raf); raf = 0;
+    if (!from || reduced) { snap(); return; }
+    const t0 = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / DUR.travel), to = target();
+      if (!to) { raf = 0; snap(); return; }
+      const fx = to.l + to.r > from.l + from.r, fy = to.t + to.b > from.t + from.b;
+      put({
+        l: mix(from.l, to.l, fx ? trail(p) : lead(p)), r: mix(from.r, to.r, fx ? lead(p) : trail(p)),
+        t: mix(from.t, to.t, fy ? trail(p) : lead(p)), b: mix(from.b, to.b, fy ? lead(p) : trail(p)),
+      });
+      raf = p < 1 ? requestAnimationFrame(step) : 0;
+    };
+    raf = requestAnimationFrame(step);
+  };
+  new ResizeObserver(snap).observe(group);
+  addEventListener('resize', snap);
+  return { go, snap };
+}
+
 export function initLadder({ onPick }) {
   const nav = document.getElementById('altLadder');
   const group = nav.querySelector('[role=radiogroup]');
   const radios = [...group.querySelectorAll('[role=radio]')];
+  const thumb = flowThumb(group);
   const track = nav.querySelector('.lad-track');
   const railSvg = nav.querySelector('.lad-svg');
   const read = nav.querySelector('.lad-read');
@@ -217,13 +260,17 @@ export function initLadder({ onPick }) {
 
   function applyShown() {
     for (const v of [rail, pk]) if (v) v.brk.forEach((el) => el.classList.toggle('on', el.dataset.mode === S.shown));
-    radios.concat(peekRadios).forEach((b) => b.classList.toggle('on', b.dataset.mode === S.shown));
+    peekRadios.forEach((b) => b.classList.toggle('on', b.dataset.mode === S.shown));
+    radios.forEach((b) => b.classList.toggle('on', b.getAttribute('aria-checked') === 'true'));
+    thumb.snap();
   }
   function setShown(m) { if (S.shown === m) return; S.shown = m; applyShown(); }
 
   function select(m) {
     for (const list of [radios, peekRadios]) list.forEach((b) => { const on = b.dataset.mode === m; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; });
     if (!wide && !sheetOpen) peekRadios.forEach((b) => { b.tabIndex = -1; });
+    radios.forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
+    thumb.go();
   }
 
   function normalize(r) {

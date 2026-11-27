@@ -821,6 +821,14 @@ h1 .arw { color: var(--gold-ink); }
 .btn.tile:hover .box { background-color: var(--hover); color: var(--ink); }
 .btn.tile.on { color: var(--gold-ink); background: none; }
 .btn.tile.on .box { background-color: var(--gold-tint); border-color: var(--line-gold); }
+.lad-thumb { position: absolute; left: 0; top: 0; z-index: 0; box-sizing: border-box; border-radius: var(--r-full); border: 1px solid var(--line-gold); background: var(--gold-tint); pointer-events: none; opacity: 0; }
+.lad-group.flow .btn.tile { z-index: 1; }
+.lad-group.flow .btn.tile.on, .lad-group.flow .btn.tile.on .box { background-color: transparent; border-color: transparent; }
+@media (prefers-reduced-motion: no-preference) {
+  .lad-group .btn.tile { transition: flex-grow var(--d-gentle) var(--ease-io), padding var(--d-gentle) var(--ease-io), color var(--d-gentle) var(--ease-out), background-color var(--d-instant) var(--ease-out), border-color var(--d-quick) var(--ease-out); }
+  .lad-group .btn.tile[aria-checked="true"] .lw { animation: lw-in var(--d-gentle) var(--ease-out) var(--d-quick) backwards; }
+}
+@keyframes lw-in { from { opacity: 0; } to { opacity: 1; } }
 .lad-read { margin: 0; }
 .lad-peek:not([hidden]) { display: flex; }
 .lad-peek {
@@ -879,6 +887,7 @@ h1 .arw { color: var(--gold-ink); }
   .lad-group .lw { font-size: var(--t-micro); line-height: 13px; white-space: nowrap; }
   .lad-group .btn.tile:hover { background-color: var(--hover); color: var(--ink); }
   .lad-group .btn.tile.on { background-color: var(--gold-tint); border-color: var(--line-gold); }
+  .lad-group .btn.tile { position: relative; }
   .lad-read { display: none; }
 }
 @media (max-width: 700px) {
@@ -1120,10 +1129,11 @@ body.zen .scene > .card { overflow: hidden; padding: 0; border: 0; }
   .btn.theme { --bh: 40px; }
   .lad-track { height: 40px; padding: 13px 0 9px; margin: -4px 0 0; }
   .lad-group { height: 44px; gap: 6px; margin-top: 0; }
-  .lad-group .btn.tile { --bh: 44px; flex: 0 0 44px; padding: 0; background-color: transparent; flex-direction: row; gap: 7px; }
+  .lad-group .btn.tile { --bh: 44px; flex: 0 0 44px; padding: 0; background-color: transparent; flex-direction: row; gap: 7px; overflow: hidden; }
   .lad-group .btn.tile .ic { width: 18px; height: 18px; }
-  .lad-group .btn.tile:not(.on) .lw { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  .lad-group .btn.tile.on { flex: 1 1 auto; padding: 0 16px; background-color: var(--gold-tint); }
+  .lad-group .btn.tile:not([aria-checked="true"]) .lw { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .lad-group .btn.tile[aria-checked="true"] { flex: 1 0 44px; padding: 0 16px; }
+  .lad-group .btn.tile.on { background-color: var(--gold-tint); }
   .lad-group .lw { font-size: var(--t-body); font-weight: 500; }
   .scene { display: block; height: auto; padding: 0 8px; --dock-h: 96px; }
   .sc-stage > .question { display: none; }
