@@ -2,7 +2,7 @@ import { DUR, STAGGER, play, stagger } from './motion.js';
 
 const GRACE_MS = 150;
 const SLOW_MS = 4000;
-const FALLBACK_MS = 3000;
+const FALLBACK_MS = 8000;
 const ROOTS = { stars: 'starsRoot', dm: 'dmRoot', earth: 'earthRoot', asteroids: 'astRoot' };
 const LOADS = { stars: 'starsLoading', dm: 'dmLoading', earth: 'earthLoading', asteroids: 'astLoading' };
 const NOUN = { stars: 'the sky', dm: 'the CMB', earth: 'the Earth', asteroids: 'the asteroids' };

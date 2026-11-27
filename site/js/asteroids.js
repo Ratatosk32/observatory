@@ -1900,7 +1900,8 @@ export function start(params) {
 export function show(params) {
   setUrl({ mode: 'asteroids', obj: null, chapter: null, beat: null, sel: state.sel ? state.sel.name : null });
   metaText(); mapS.draw(mapS);
-  requestAnimationFrame(() => { if (mapS.w) floorDrawn('asteroids'); });
+  const arrived = () => { if (mapS.w) floorDrawn('asteroids'); else requestAnimationFrame(arrived); };
+  requestAnimationFrame(arrived);
   setTimeout(() => { elS.draw(elS); colS.draw(colS); cadS.draw(cadS); cardPlots.forEach((p) => p.draw(p)); }, 0);
   $('#search').value = state.sel ? state.sel.name : '';
   if (params && !reduceMotion && params.has('play')) setPlaying(true);
