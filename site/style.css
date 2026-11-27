@@ -1272,14 +1272,32 @@ body.idle .proj-switch { opacity: 0.28; }
 :is(.scene.skel, .loading:not([hidden]) + .floor > .scene) { --skel-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 100'%3E%3Cellipse cx='100' cy='50' rx='98' ry='48' fill='%23000' fill-opacity='.28' stroke='%23000' stroke-width='1.2' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E"); }
 :is(.scene.skel, .loading:not([hidden]) + .floor > .scene)[data-floor="earth"] { --skel-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='47' fill='%23000' fill-opacity='.28' stroke='%23000' stroke-width='1.2' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E"); }
 :is(.scene.skel, .loading:not([hidden]) + .floor > .scene)[data-floor="asteroids"] { --skel-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='none' stroke='%23000' stroke-width='1.2'%3E%3Ccircle cx='50' cy='50' r='47' fill='%23000' fill-opacity='.18' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='50' cy='50' r='30' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='50' cy='50' r='13' vector-effect='non-scaling-stroke'/%3E%3Ccircle cx='50' cy='50' r='1.6' fill='%23000'/%3E%3C/svg%3E"); }
-:is(.scene.skel, .loading:not([hidden]) + .floor > .scene) :is(.hud, .map-wrap > :not(.floor-error), .dock > *, .card > *) { opacity: 0; pointer-events: none; }
-:is(.scene.skel, .loading:not([hidden]) + .floor > .scene) .map-wrap::before { content: ''; position: absolute; inset: 8px; background: var(--ink3); opacity: 0.4; -webkit-mask: var(--skel-mask) center / contain no-repeat; mask: var(--skel-mask) center / contain no-repeat; pointer-events: none; }
+:is(.scene.skel, .loading:not([hidden]) + .floor > .scene) :is(.hud, .map-wrap > :not(.floor-error, .curtain), .dock > *, .card > *) { opacity: 0; pointer-events: none; }
+:is(.floor:not(.waiting, .boot) > .scene.skel, .loading:not([hidden]) + .floor:not(.waiting) > .scene) .map-wrap::before { content: ''; position: absolute; inset: 8px; background: var(--ink3); opacity: 0.4; -webkit-mask: var(--skel-mask) center / contain no-repeat; mask: var(--skel-mask) center / contain no-repeat; pointer-events: none; }
 :is(.scene.skel, .loading:not([hidden]) + .floor > .scene) > .card::after { content: ''; position: absolute; left: 18px; right: 18px; top: 20px; height: 150px; opacity: 0.7; pointer-events: none; background: linear-gradient(var(--line-2), var(--line-2)) 0 0 / 34% 8px no-repeat, linear-gradient(var(--line-2), var(--line-2)) 0 26px / 70% 16px no-repeat, linear-gradient(var(--line-2), var(--line-2)) 0 60px / 92% 8px no-repeat, linear-gradient(var(--line-2), var(--line-2)) 0 78px / 84% 8px no-repeat, linear-gradient(var(--line-2), var(--line-2)) 0 112px / 60% 12px no-repeat, linear-gradient(var(--line-2), var(--line-2)) 0 136px / 76% 8px no-repeat; }
+.floor.waiting > .scene :is(.sc-stage > .question, .sc-stage > .credit, .map-wrap > :not(.curtain, .floor-error), .dock > *, .card > *) { visibility: hidden; }
+:is(.scene.skel, .loading:not([hidden]) + .floor > .scene) > .sc-stage > .dock::after { content: ''; position: absolute; left: 8px; right: 14px; top: 50%; height: 34px; margin-top: -17px; opacity: 0.7; pointer-events: none; background: radial-gradient(circle at 17px 17px, transparent 15.5px, var(--line-2) 16px, var(--line-2) 17px, transparent 17.5px) 0 0 / 34px 34px no-repeat, linear-gradient(var(--line-2), var(--line-2)) 50px 13px / 88px 8px no-repeat, linear-gradient(var(--line-2), var(--line-2)) 156px 16px / calc(100% - 252px) 1px no-repeat, linear-gradient(var(--line-2), var(--line-2)) right 0 top 13px / 64px 8px no-repeat; }
+.curtain { position: absolute; inset: 8px; z-index: 2; pointer-events: none; opacity: 0; transition: opacity var(--d-base) var(--ease-out); }
+.curtain.on { opacity: 1; }
+.curtain svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; fill: none; }
+.curtain .cu-base { stroke: var(--line-2); stroke-width: 1; }
+.curtain .cu-base * { vector-effect: non-scaling-stroke; }
+.curtain .cu-band { stroke: none; fill: var(--line-1); }
+.curtain .cu-sun { stroke: none; fill: var(--ink3); }
+.curtain .cu-trace { stroke: var(--ink2); stroke-linecap: round; stroke-dasharray: 1 1; stroke-dashoffset: var(--cu-p, 1); transition: stroke-dashoffset var(--d-travel) var(--ease-out); }
+.curtain.done .cu-trace { stroke-dashoffset: 0; transition-duration: var(--d-quick); }
+.cu-note { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: calc(100% - 32px); margin: 0; padding: 4px 12px; border-radius: var(--r-full); background: var(--paper); font-size: var(--t-small); line-height: 16px; color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity var(--d-gentle) var(--ease-out); }
+.curtain.slow .cu-note { opacity: 1; }
+.cu-note:empty { display: none; }
+.floor:empty { display: none; }
 .floor-error { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 8; width: min(380px, calc(100% - 32px)); padding: 18px 20px; border-radius: var(--r-3); background: var(--glass); border: 1px solid var(--line-2); text-align: center; }
 .floor-error .fe-t { margin: 0 0 6px; font-size: var(--t-lead); font-weight: 600; color: var(--ink); }
 .floor-error .fe-d { margin: 0 0 14px; font-size: var(--t-body); line-height: 1.45; color: var(--ink2); }
 @media (max-width: 699.98px) {
-  .scene.skel .map-wrap { min-height: calc((100vw - 16px) * 0.62); }
+  .scene.skel .map-wrap { min-height: calc((100vw - 16px) * 0.485 + 144px); }
+  .scene.skel[data-floor="asteroids"] .map-wrap { min-height: calc(100vw + 34px); }
+  .scene.skel[data-floor="dm"] .map-wrap { min-height: calc((100vw - 16px) * 0.485 + 58px); }
+  .scene.skel[data-floor="earth"] .map-wrap { min-height: calc((100vw - 16px) * 1.05 + 46px); }
   .scene.skel > .card { height: 76px; }
 }
 

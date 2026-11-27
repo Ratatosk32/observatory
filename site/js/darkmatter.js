@@ -6,6 +6,7 @@ import { openStore, post, pool, storageUsage } from './net.js';
 import * as SC from './showcase.js';
 import { cardHead } from './cardhead.js';
 import { DUR, ease, tween, play } from './motion.js';
+import { floorDrawn } from './curtain.js';
 
 const [D, SCD] = await Promise.all([K.loadJson('data/cmb.json'), SC.loadShowcase()]);
 const { $, fmtN, MON, clamp, esc, text, annotate } = K;
@@ -525,6 +526,7 @@ function frame(ts) {
   if (breathing()) glDirty = true;
   if (glDirty || st.glDirty) { st.glDirty = false; drawGl(); }
   drawOverlay();
+  if (skyBox.w && imgs) floorDrawn('dm');
   K.pushPerf(K.perf.draw, performance.now() - c0);
   raf = requestAnimationFrame(frame);
 }
@@ -938,8 +940,7 @@ function searchItems(q) {
 async function enter(objId) {
   entered = true;
   if (!built) {
-    $('#dmLoading').hidden = false;
-    try { await build(); } finally { $('#dmLoading').hidden = true; }
+    await build();
   }
   if (!entered) return;
   K.shell.setSearch({ items: searchItems, empty: 'No ACT cluster matches. Try ACT-CL J0102.' }, `Search ${fmtN(NC)} ACT clusters, e.g. ACT-CL J0102`);

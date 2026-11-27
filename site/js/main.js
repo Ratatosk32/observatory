@@ -4,6 +4,7 @@ import { activate as activateData } from './datapanel.js';
 import { initLadder, MODES as FLOORS } from './ladder.js';
 import './health.js';
 import { floorTransition } from './transition.js';
+import { arm, fail, isDrawn } from './curtain.js';
 
 const sIn = $('#search'), sBox = $('#searchbox'), sList = $('#sugg'), sClear = $('#clear');
 let provider = { items: () => [], empty: '' };
@@ -92,11 +93,13 @@ const loadMode = (m) => (modules[m] ||= loaders[m]());
 
 function skeleton(m) {
   const root = $(LOADING[m][1]);
+  document.querySelector('.floor.boot')?.remove();
   if (!root.querySelector('.scene')) root.innerHTML = `<main class="scene skel" data-floor="${m}" aria-hidden="true"><section class="sc-stage"><h2 class="question">&nbsp;</h2><div class="map-wrap"></div><div class="time dock"></div></section><aside class="panel card"></aside></main>`;
   return root.querySelector('.scene');
 }
 function failCard(m, err, retry) {
   const [sel, , what] = LOADING[m];
+  fail(m);
   $(sel).hidden = true;
   const scene = skeleton(m), wrap = scene.querySelector('.map-wrap');
   scene.classList.add('skel');
@@ -153,10 +156,9 @@ async function setMode(m, opts = {}) {
   activateData(m);
   const [sel] = LOADING[m];
   skeleton(m);
-  $(sel).hidden = false;
+  if (!isDrawn(m)) { $(sel).hidden = false; arm(m); }
   try {
     const mod = await loadMode(m);
-    $(sel).hidden = true;
     if (mode !== m) return;
     activateData(m);
     if (m === 'asteroids') {

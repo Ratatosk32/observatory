@@ -1,6 +1,7 @@
 import { $, esc, ns, shell, reduceMotion, onTheme } from './kit.js';
 import { DUR, play, stagger, ticker } from './motion.js';
 import { health, quietNights, ticksHtml } from './quiet.js';
+import { waiting } from './curtain.js';
 
 export const FLOOR_NAME = { dm: 'Dark matter', stars: 'Stars & beyond', asteroids: 'Asteroids', earth: 'Earth' };
 export const FLOOR_ORDER = ['dm', 'stars', 'asteroids', 'earth'];
@@ -41,6 +42,7 @@ export function waitFor(test, ms = 15000) {
 
 export async function toFloor(m) {
   if (mode() !== m) await shell.setMode(m);
+  await waitFor(() => !waiting(m));
 }
 
 export function reveal(el, focus = true) {

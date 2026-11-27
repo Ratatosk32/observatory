@@ -2,6 +2,7 @@ import { reduceMotion } from './kit.js';
 import { ease as EASE, smoothstep, CSS_EASE, DUR, STAGGER, stagger, play } from './motion.js';
 import { FLOORS, MODES } from './ladder.js';
 import { KM_PER_LY, KM_PER_AU } from './cosmo.js';
+import { waiting } from './curtain.js';
 
 const FADE_MS = 150;
 const SHRINK_END = 0.45, GROW_AT = 0.5, GROW_LEN = 0.48, CARD_IN = DUR.gentle;
@@ -282,11 +283,12 @@ function watchArrival(run) {
     const now = performance.now();
     if (current === run && now - run.t0 < run.dur) {
       run.grow = grow(run, now - run.t0);
+      if (waiting(run.to)) return;
       chrome(run, now);
       enterCard(run, now);
       return;
     }
-    if (reduceMotion) return;
+    if (reduceMotion || waiting(run.to)) return;
     const wrap = scene.querySelector('.map-wrap');
     if (wrap) play(wrap, [{ opacity: 0 }, { opacity: 1 }], { dur: DUR.gentle, fill: 'backwards' });
     stagger(inView(bandsOf(scene.querySelector(':scope > .card') || scene)), { dur: DUR.base, y: 8 });
@@ -303,7 +305,7 @@ function unwatch(run) {
 
 export function climbEntrance(m) {
   const run = current;
-  if (!run || run.reduced || run.to !== m) return null;
+  if (!run || run.reduced || run.to !== m || waiting(m)) return null;
   const left = run.t0 + CARD_IN - performance.now();
   return left > -DUR.base ? Math.max(0, left) : null;
 }

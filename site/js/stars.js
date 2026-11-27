@@ -8,6 +8,7 @@ import { health, quietNights } from './quiet.js';
 import * as SL from './starlight.js';
 import * as SC from './showcase.js';
 import * as TN from './tonight.js';
+import { floorDrawn } from './curtain.js';
 import { createStarSync, QUERIES } from './starsync.js';
 import { register as registerData, refresh as refreshData, fmtBytes } from './datapanel.js';
 
@@ -348,14 +349,14 @@ function buildSkyStatic(s) {
   const key = [s.w, s.h, s.dpr, C().dark, view.k.toFixed(4), view.px.toFixed(1), view.py.toFixed(1), mwF ? 1 : 0].join('|');
   if (key === skyKey && skyStatic) return;
   if (skyJob && skyJob.key === key) return;
-  skyJob = { key, steps: skyStaticSteps(s, key) };
+  skyJob = { key, washed: !!mwF || mwFailed, steps: skyStaticSteps(s, key) };
   runSkyJob(skyJob);
 }
 function runSkyJob(job) {
   const t0 = performance.now();
   for (;;) {
     if (skyJob !== job) return;
-    if (job.steps.next().done) { skyJob = null; if (entered && !st.playing) drawSky(skyS); return; }
+    if (job.steps.next().done) { skyJob = null; if (entered && !st.playing) drawSky(skyS); if (job.washed) requestAnimationFrame(() => { if (entered) floorDrawn('stars'); }); return; }
     if (performance.now() - t0 > 8) { setTimeout(() => runSkyJob(job), 0); return; }
   }
 }

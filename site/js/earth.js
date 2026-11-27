@@ -11,6 +11,7 @@ import { createLive } from './swpc.js';
 import * as CL from './clouds.js';
 import { cardHead } from './cardhead.js';
 import { icon } from './icons.js';
+import { floorDrawn } from './curtain.js';
 
 const [E, LT, AU] = await Promise.all([K.loadJson('data/earth.json'), K.loadJson('data/earth-lightning.json'), K.loadJson('data/earth-aurora.json').catch(() => null)]);
 const { $, esc, fmtN, MON, clamp, text, annotate } = K;
@@ -859,6 +860,7 @@ function frame(ts) {
   }
   if (glDirty) drawGl();
   drawOverlay(performance.now());
+  if (box.w && imgs) floorDrawn('earth');
   const cost = performance.now() - c0;
   K.pushPerf(K.perf.draw, cost);
   if (dock && (st.playing || st.live || glide.job)) dock.update();
@@ -1875,8 +1877,7 @@ function toggleWhy() { whyEl.hidden = !whyEl.hidden; }
 async function enter(objId) {
   entered = true;
   if (!built) {
-    $('#earthLoading').hidden = false;
-    try { await build(); } finally { $('#earthLoading').hidden = true; }
+    await build();
   }
   if (!entered) return;
   K.shell.setSearch({ items: searchItems, empty: 'No storm or place matches. Try Northern lights.' }, 'Search a storm or a place');

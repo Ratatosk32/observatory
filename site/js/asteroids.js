@@ -10,6 +10,7 @@ import { sceneHtml, wireScene, openInstrument } from './scene.js';
 import { dockHtml, makeDock, fmtSpeed, dataLoop, LOOP_NOTE } from './dock.js';
 import { cardHead } from './cardhead.js';
 import { DUR, ease, tween, flightMs } from './motion.js';
+import { floorDrawn } from './curtain.js';
 
 function buildDom() {
   const root = $('#astRoot');
@@ -1899,6 +1900,7 @@ export function start(params) {
 export function show(params) {
   setUrl({ mode: 'asteroids', obj: null, chapter: null, beat: null, sel: state.sel ? state.sel.name : null });
   metaText(); mapS.draw(mapS);
+  requestAnimationFrame(() => { if (mapS.w) floorDrawn('asteroids'); });
   setTimeout(() => { elS.draw(elS); colS.draw(colS); cadS.draw(cadS); cardPlots.forEach((p) => p.draw(p)); }, 0);
   $('#search').value = state.sel ? state.sel.name : '';
   if (params && !reduceMotion && params.has('play')) setPlaying(true);
