@@ -325,4 +325,15 @@ Selection continuity, phone 412 at 4× CPU, from 120 to 720 ms after the selecti
 
 End of UX 3 (`--probe`, both themes, 1440 × 900 and 390 × 844; before = `15e49ec`): 7 font sizes in the CSS (21 before) and 5–6 in any first viewport (9–13); 4 weights (6); 4 radius tokens plus the circle, 4–5 radii in any first viewport (8–10); 3–4 border colours (4–6); 2 gold borders on every resting screen, the active floor and Play (11–21); 4–5 gold text runs (8–19); controls 40 and 44 px on phones; every ink token at 4.5:1 or more on paper, deep paper and field in both themes (day `--ink3` was 4.1:1). `scripts/box_check.mjs` passes at 360, 390 and 412 px, portrait and landscape, in both themes.
 
+First load with the curtain (27 Nov 2026, a trace-and-screenshot harness in headless Chrome, 4× CPU, Fast 4G (165 ms, 9 Mbit/s), Brotli like the live site, night theme; "complete" is the floor's ready signal, the same definition before and after; before = `137b1bf` with only the signal added):
+
+| Floor | Cold, desktop 1440 | Cold, phone 390 | Curtain visible, cold (desktop / phone) | Warm, desktop | Warm, phone |
+|---|---|---|---|---|---|
+| Stars | 7.37 → 6.44 s | 6.02 → 5.31 s | 5.0 / 3.9 s | 5.53 → 5.02 s (4.03 s with stamped, immutable `js/`) | 3.95 → 3.84 s (2.93 s) |
+| Asteroids | 3.24 → 2.78 s | 7.82 → 7.21 s | 1.4 / 5.8 s | 2.74 → 2.57 s (1.89 s) | see below |
+| Dark matter | 6.87 → 5.69 s | 6.96 → 5.71 s | 4.3 / 4.3 s | 2.89 → 2.83 s (2.14 s) | 2.96 → 2.87 s (2.19 s) |
+| Earth | 3.51 → 2.81 s | 3.18 → 2.64 s | 1.4 / 1.2 s | 2.54 → 2.40 s (1.75 s) | 2.51 → 2.46 s (1.72 s) |
+
+The complete scene arrives 0.4–1.3 s earlier cold because each floor's data and images are preloaded when `main.js` starts and the start-up modules are `modulepreload`ed, so the network is busy while the module waterfall runs. Before the curtain, the first 0.6–1.4 s showed an empty page, a dark page on day paper, and then the skeleton; Stars showed its stars without the Milky Way for 1–2 s, and Dark matter an empty frame for about 4 s. Now the layout is there from the first paint and the curtain from about 1.4 s. On the emulated phone the first asteroid map draw is one long task of about 6 s in SwiftShader (the single 175,000-segment orbit path in `buildStatic`); it was there before as well, and the curtain now covers it instead of a frozen half-drawn map. Steady drawing is unchanged (phone 412 at 4× CPU, p95 draw before → after: Stars 7.1 → 6.3, Asteroids 14.4 → 11.9, Dark matter 7.2 → 7.5, Earth 3.5 → 3.4 ms; desktop 1920 within 0.4 ms); the first entry on the phone has one or two more long tasks of 50–90 ms (the develop), the longest is unchanged or shorter.
+
 Animation pauses in hidden tabs and respects `prefers-reduced-motion`.
