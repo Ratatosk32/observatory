@@ -67,7 +67,7 @@ function preload(m) {
     const link = document.createElement('link');
     link.rel = 'preload';
     link.href = href;
-    if (href.endsWith('.json')) { link.as = 'fetch'; link.crossOrigin = 'anonymous'; } else link.as = 'image';
+    if (pathOf(href).endsWith('.json')) { link.as = 'fetch'; link.crossOrigin = 'anonymous'; } else link.as = 'image';
     document.head.appendChild(link);
   }
 }
